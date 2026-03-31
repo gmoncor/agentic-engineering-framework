@@ -137,7 +137,7 @@ Para evitar que el mismo bug vuelva en el futuro, seguir el protocolo RED-GREEN:
 2. **GREEN — Aplica la correccion** — ejecuta el test otra vez — debe PASAR
 3. **Anade casos extra** — que pasa con valores limite o datos similares al que causo el bug?
 
-Si no hay infraestructura de testing en el proyecto, sugiere al usuario configurarla con `core_templates/INIT4_setup_testing.md`. Aun sin framework, documenta en el resumen como se verifico manualmente.
+Si no hay infraestructura de testing en el proyecto, sugiere al usuario configurarla con `core_templates/04_setup_testing.md`. Aun sin framework, documenta en el resumen como se verifico manualmente.
 
 ---
 

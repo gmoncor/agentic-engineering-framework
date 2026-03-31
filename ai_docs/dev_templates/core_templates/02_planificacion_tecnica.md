@@ -1,6 +1,6 @@
 # Plantilla de Planificacion Tecnica
 
-> **Cuando usar:** Despues de tener la Vision del Proyecto (`INIT1_vision_del_proyecto.md`). Este documento define la estructura de la aplicacion: paginas, datos y arquitectura.
+> **Cuando usar:** Despues de tener la Vision del Proyecto (`01_vision_del_proyecto.md`). Este documento define la estructura de la aplicacion: paginas, datos y arquitectura.
 > **Como usar:** Copia este documento completo y pegalo en tu asistente de IA. Adjunta o referencia tambien el documento de vision del proyecto.
 > **Resultado:** Un documento de planificacion tecnica con la estructura de paginas, modelo de datos y arquitectura del sistema.
 

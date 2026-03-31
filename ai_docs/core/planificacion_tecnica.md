@@ -1,6 +1,6 @@
 # Planificacion Tecnica
 
-> Este documento fue generado usando `INIT2_planificacion_tecnica.md` aplicada sobre este mismo framework. Sirve como ejemplo de lo que produce la plantilla.
+> Este documento fue generado usando `02_planificacion_tecnica.md` aplicada sobre este mismo framework. Sirve como ejemplo de lo que produce la plantilla.
 
 ---
 
@@ -21,7 +21,7 @@
 - **README.md:** Punto de entrada — explica que es, como usar, estructura, quick start
 - **LICENSE:** CC-BY 4.0
 - **ai_docs/dev_templates/:** 6 plantillas operativas + README
-- **ai_docs/dev_templates/core_templates/:** 4 plantillas INIT + README
+- **ai_docs/dev_templates/core_templates/:** 4 plantillas de planificacion inicial + README
 
 ### Contenido del usuario (lo que genera al usarlo)
 - **ai_docs/core/:** Documentos de vision, planificacion y roadmap de su proyecto
@@ -31,7 +31,7 @@
 ### Navegacion
 - El README raiz es el punto de entrada unico
 - Cada subcarpeta tiene su propio README con instrucciones detalladas
-- Las plantillas INIT se usan en orden secuencial (1 → 2 → 3 → 4)
+- Las plantillas de planificacion inicial se usan en orden secuencial (01 → 02 → 03 → 04)
 - Las plantillas operativas se usan segun necesidad (flujo diario)
 
 ---

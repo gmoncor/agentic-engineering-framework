@@ -1,6 +1,6 @@
 # Vision del Proyecto
 
-> Este documento fue generado usando `INIT1_vision_del_proyecto.md` aplicada sobre este mismo framework. Sirve como ejemplo de lo que produce la plantilla.
+> Este documento fue generado usando `01_vision_del_proyecto.md` aplicada sobre este mismo framework. Sirve como ejemplo de lo que produce la plantilla.
 
 ---
 
@@ -52,10 +52,10 @@ Sin modelo de negocio. Proyecto open source bajo licencia CC-BY 4.0.
 
 ### Equipo de desarrollo
 - Puede usar las mismas plantillas que el desarrollador individual
-- Puede definir la vision de un proyecto nuevo (INIT1)
-- Puede generar planificacion tecnica desde la vision (INIT2)
-- Puede crear roadmaps feature-first (INIT3)
-- Puede configurar testing en una sesion (INIT4)
+- Puede definir la vision de un proyecto nuevo (01_vision_del_proyecto)
+- Puede generar planificacion tecnica desde la vision (02_planificacion_tecnica)
+- Puede crear roadmaps feature-first (03_roadmap_de_desarrollo)
+- Puede configurar testing en una sesion (04_setup_testing)
 
 ### Fuera de Scope
 - **Integracion nativa con IDEs:** Excluido porque las plantillas funcionan copiando y pegando — no necesitan plugins

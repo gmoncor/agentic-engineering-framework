@@ -1,6 +1,6 @@
 # Roadmap de Desarrollo
 
-> Este documento fue generado usando `INIT3_roadmap_de_desarrollo.md` aplicado sobre este mismo framework. Sirve como ejemplo de lo que produce la plantilla.
+> Este documento fue generado usando `03_roadmap_de_desarrollo.md` aplicado sobre este mismo framework. Sirve como ejemplo de lo que produce la plantilla.
 
 ---
 
@@ -47,10 +47,10 @@
 **Meta:** Un desarrollador puede arrancar un proyecto nuevo con documentacion completa
 
 **Contenido:**
-- [x] INIT1 — Vision del proyecto
-- [x] INIT2 — Planificacion tecnica
-- [x] INIT3 — Roadmap de desarrollo
-- [x] INIT4 — Setup de testing
+- [x] 01_vision_del_proyecto — Vision del proyecto
+- [x] 02_planificacion_tecnica — Planificacion tecnica
+- [x] 03_roadmap_de_desarrollo — Roadmap de desarrollo
+- [x] 04_setup_testing — Setup de testing
 
 **Documentacion:**
 - [x] README de core_templates/ con guia de uso y flujo completo
@@ -59,11 +59,11 @@
 
 ## Fase 3: Documentacion de ejemplo (dogfooding)
 
-**Meta:** La carpeta core/ tiene documentos reales que muestran que genera cada plantilla INIT
+**Meta:** La carpeta core/ tiene documentos reales que muestran que genera cada plantilla de planificacion inicial
 
-- [x] vision_del_proyecto.md — ejemplo real usando INIT1
-- [x] planificacion_tecnica.md — ejemplo real usando INIT2
-- [x] roadmap.md — ejemplo real usando INIT3
+- [x] vision_del_proyecto.md — ejemplo real usando 01_vision_del_proyecto
+- [x] planificacion_tecnica.md — ejemplo real usando 02_planificacion_tecnica
+- [x] roadmap.md — ejemplo real usando 03_roadmap_de_desarrollo
 
 ---
 
@@ -72,7 +72,7 @@
 **Meta:** El framework esta disponible en ingles para audiencia internacional
 
 - [ ] Traducir las 6 plantillas operativas
-- [ ] Traducir las 4 plantillas INIT
+- [ ] Traducir las 4 plantillas de planificacion inicial
 - [ ] Traducir READMEs
 - [ ] Traducir documentos de ejemplo en core/
 

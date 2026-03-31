@@ -14,7 +14,7 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 3. **EXPLICA el porque** — Para cada test, explica QUE escenario cubre y POR QUE es importante.
 4. **SUGIERE mejoras** — Si detectas areas sin tests o tests de baja calidad, mencionalos.
 5. **VERIFICA despues** — Ejecuta los tests y muestra los resultados.
-6. **ESCALA cuando corresponda** — Si no hay infraestructura de testing, sugiere configurarla primero con `core_templates/INIT4_setup_testing.md`.
+6. **ESCALA cuando corresponda** — Si no hay infraestructura de testing, sugiere configurarla primero con `core_templates/04_setup_testing.md`.
 7. **NUNCA asumas que la primera solucion es la mejor** — Si hay varias formas de testear algo, menciona las opciones.
 
 **Instrucciones adicionales para esta plantilla:**
@@ -56,7 +56,7 @@ Todo test sigue este patron:
 Antes de escribir tests:
 
 1. **Hay framework de testing?** Buscar en la configuracion del proyecto (package.json, pyproject.toml, etc.)
-   - Si NO hay: sugerir configurarlo primero con `core_templates/INIT4_setup_testing.md`
+   - Si NO hay: sugerir configurarlo primero con `core_templates/04_setup_testing.md`
    - Si SI hay: usarlo tal cual
 2. **Hay tests existentes?** Buscar carpetas `tests/`, `__tests__/`, archivos `*.test.*` o `*.spec.*`
 3. **Que funciones/modulos son criticos?** Identificar el codigo que mas importa testear
@@ -230,5 +230,5 @@ Esto garantiza que:
 3. **RESPETAR el framework existente** — no migrar, no cambiar configuracion
 4. **Los tests son archivos NUEVOS** — no modifican el codigo de produccion
 5. **Si se corrige un bug**, el test de regresion (RED-GREEN) es OBLIGATORIO
-6. **Si no hay framework de testing**, sugerir configurarlo con `core_templates/INIT4_setup_testing.md` antes de escribir tests
+6. **Si no hay framework de testing**, sugerir configurarlo con `core_templates/04_setup_testing.md` antes de escribir tests
 7. **Solo testear lo que se modifica** — no crear suites masivas para codigo intacto

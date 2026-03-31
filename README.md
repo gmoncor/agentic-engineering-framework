@@ -42,15 +42,15 @@ ai_docs/
 │   ├── revision_pr.md
 │   └── core_templates/      # Plantillas de planificacion inicial
 │       ├── README.md
-│       ├── INIT1_vision_del_proyecto.md
-│       ├── INIT2_planificacion_tecnica.md
-│       ├── INIT3_roadmap_de_desarrollo.md
-│       └── INIT4_setup_testing.md
+│       ├── 01_vision_del_proyecto.md
+│       ├── 02_planificacion_tecnica.md
+│       ├── 03_roadmap_de_desarrollo.md
+│       └── 04_setup_testing.md
 │
 ├── core/                    # Documentacion de TU proyecto (incluye ejemplos)
-│   ├── vision_del_proyecto.md      # Ejemplo generado con INIT1
-│   ├── planificacion_tecnica.md    # Ejemplo generado con INIT2
-│   └── roadmap.md                  # Ejemplo generado con INIT3
+│   ├── vision_del_proyecto.md      # Ejemplo generado con 01_vision_del_proyecto
+│   ├── planificacion_tecnica.md    # Ejemplo generado con 02_planificacion_tecnica
+│   └── roadmap.md                  # Ejemplo generado con 03_roadmap_de_desarrollo
 ├── tasks/                   # Documentos de tarea de TU proyecto (ver abajo)
 └── refs/                    # Referencias externas de TU proyecto (ver abajo)
 ```
@@ -78,25 +78,25 @@ Para proyectos nuevos o existentes sin documentacion. Se usan en orden y cada un
 
 | Plantilla | Cuando usarla |
 |-----------|---------------|
-| **INIT1 — Vision del Proyecto** | Definir QUE se construye, PARA QUIEN y POR QUE |
-| **INIT2 — Planificacion Tecnica** | Definir la estructura: paginas, datos y arquitectura |
-| **INIT3 — Roadmap de Desarrollo** | Definir EN QUE ORDEN se construye todo |
-| **INIT4 — Setup de Testing** | Configurar el entorno de tests (una sola vez) |
+| **01 — Vision del Proyecto** | Definir QUE se construye, PARA QUIEN y POR QUE |
+| **02 — Planificacion Tecnica** | Definir la estructura: paginas, datos y arquitectura |
+| **03 — Roadmap de Desarrollo** | Definir EN QUE ORDEN se construye todo |
+| **04 — Setup de Testing** | Configurar el entorno de tests (una sola vez) |
 
 ### `core/` — Documentacion de tu proyecto
 
-Aqui guardas los documentos que generan las plantillas INIT:
+Aqui guardas los documentos que generan las plantillas de planificacion inicial:
 
-- El documento de vision (generado con INIT1)
-- La planificacion tecnica (generada con INIT2)
-- El roadmap de desarrollo (generado con INIT3)
+- El documento de vision (generado con 01_vision_del_proyecto)
+- La planificacion tecnica (generada con 02_planificacion_tecnica)
+- El roadmap de desarrollo (generado con 03_roadmap_de_desarrollo)
 - Cualquier otro documento de referencia de tu proyecto
 
-**En este repo, incluimos 3 documentos de ejemplo** generados aplicando las plantillas INIT sobre el propio framework (dogfooding). Sirven para que veas el formato y nivel de detalle que produce cada plantilla:
+**En este repo, incluimos 3 documentos de ejemplo** generados aplicando las plantillas de planificacion inicial sobre el propio framework (dogfooding). Sirven para que veas el formato y nivel de detalle que produce cada plantilla:
 
-- `vision_del_proyecto.md` — ejemplo generado con INIT1
-- `planificacion_tecnica.md` — ejemplo generado con INIT2
-- `roadmap.md` — ejemplo generado con INIT3
+- `vision_del_proyecto.md` — ejemplo generado con 01_vision_del_proyecto
+- `planificacion_tecnica.md` — ejemplo generado con 02_planificacion_tecnica
+- `roadmap.md` — ejemplo generado con 03_roadmap_de_desarrollo
 
 Cuando uses el framework en tu proyecto, reemplaza estos ejemplos con los documentos de tu propio proyecto.
 
@@ -134,7 +134,7 @@ Tu equipo ya tiene codigo y arquitectura. Empieza directamente con las plantilla
 2. Cuando te asignen una tarea  →  documento_de_tarea.md
 3. Implementa con tu asistente de IA
 4. Revisa la calidad           →  limpieza_de_codigo.md
-5. Si no hay tests             →  core_templates/INIT4_setup_testing.md (una sola vez)
+5. Si no hay tests             →  core_templates/04_setup_testing.md (una sola vez)
 6. Escribe tests               →  testing_basico.md
 7. Haz commit                  →  hacer_commit.md
 8. Crea la PR                  →  revision_pr.md
@@ -142,13 +142,13 @@ Tu equipo ya tiene codigo y arquitectura. Empieza directamente con las plantilla
 
 ### Si arrancas un proyecto nuevo
 
-Usa las plantillas INIT en orden para definir la idea, la estructura y el plan:
+Usa las plantillas de planificacion inicial en orden para definir la idea, la estructura y el plan:
 
 ```
-1. INIT1  →  Definir QUE se construye y PARA QUIEN
-2. INIT2  →  Definir COMO se construye (datos, paginas, arquitectura)
-3. INIT3  →  Definir EN QUE ORDEN se construye
-4. INIT4  →  Configurar el entorno de tests
+1. 01  →  Definir QUE se construye y PARA QUIEN
+2. 02  →  Definir COMO se construye (datos, paginas, arquitectura)
+3. 03  →  Definir EN QUE ORDEN se construye
+4. 04  →  Configurar el entorno de tests
 5. Documento de Tarea  →  Crear tarea para la primera fase del roadmap
 6. Implementar + Testear + Commit + PR (flujo diario)
 ```

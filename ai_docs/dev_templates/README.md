@@ -39,7 +39,7 @@ Tu equipo ya tiene codigo, repositorio y arquitectura definida. No necesitas pla
 2. Cuando te asignen una tarea  →  documento_de_tarea.md
 3. Implementa con tu asistente de IA
 4. Revisa la calidad           →  limpieza_de_codigo.md
-5. Si no hay tests             →  core_templates/INIT4_setup_testing.md (una sola vez)
+5. Si no hay tests             →  core_templates/04_setup_testing.md (una sola vez)
 6. Escribe tests               →  testing_basico.md
 7. Haz commit                  →  hacer_commit.md
 8. Crea la PR                  →  revision_pr.md
@@ -49,18 +49,18 @@ Tu equipo ya tiene codigo, repositorio y arquitectura definida. No necesitas pla
 
 ### Si arrancas un proyecto nuevo
 
-Necesitas definir la idea, la estructura y el plan antes de escribir codigo. Usa las plantillas INIT en orden:
+Necesitas definir la idea, la estructura y el plan antes de escribir codigo. Usa las plantillas core en orden:
 
 ```
-1. INIT1 Vision del Proyecto     →  Definir QUE se construye y PARA QUIEN
-2. INIT2 Planificacion Tecnica   →  Definir COMO se construye (datos, paginas, arquitectura)
-3. INIT3 Roadmap de Desarrollo   →  Definir EN QUE ORDEN se construye
-4. INIT4 Setup de Testing        →  Configurar el entorno de tests
+1. 01 Vision del Proyecto        →  Definir QUE se construye y PARA QUIEN
+2. 02 Planificacion Tecnica      →  Definir COMO se construye (datos, paginas, arquitectura)
+3. 03 Roadmap de Desarrollo      →  Definir EN QUE ORDEN se construye
+4. 04 Setup de Testing           →  Configurar el entorno de tests
 5. Documento de Tarea            →  Crear tarea para la primera fase del roadmap
 6. Implementar + Testear + Commit + PR (flujo diario)
 ```
 
-Las plantillas INIT estan en la carpeta `core_templates/`. Consulta su README para mas detalle.
+Las plantillas core estan en la carpeta `core_templates/`. Consulta su README para mas detalle.
 
 ---
 
@@ -72,10 +72,10 @@ Plantillas para definir y planificar un proyecto. Cada una genera un documento d
 
 | Plantilla | Cuando usarla |
 |-----------|---------------|
-| **INIT1 — Vision del Proyecto** | Al arrancar un proyecto nuevo o para documentar uno existente que no tiene vision clara |
-| **INIT2 — Planificacion Tecnica** | Despues de INIT1. Para definir paginas, modelo de datos y arquitectura |
-| **INIT3 — Roadmap de Desarrollo** | Despues de INIT2. Para organizar el trabajo en fases secuenciales |
-| **INIT4 — Setup de Testing** | Una vez por proyecto. Configura framework de tests, coverage y scripts |
+| **01 — Vision del Proyecto** | Al arrancar un proyecto nuevo o para documentar uno existente que no tiene vision clara |
+| **02 — Planificacion Tecnica** | Despues de 01. Para definir paginas, modelo de datos y arquitectura |
+| **03 — Roadmap de Desarrollo** | Despues de 02. Para organizar el trabajo en fases secuenciales |
+| **04 — Setup de Testing** | Una vez por proyecto. Configura framework de tests, coverage y scripts |
 
 ### Operaciones del dia a dia
 
@@ -86,7 +86,7 @@ Plantillas que usaras regularmente durante el desarrollo.
 | **Documento de Tarea** | Antes de empezar cualquier trabajo: planificar, analizar alternativas y definir criterios de exito | Para bugs simples (usa correccion_de_bugs) o cambios de una linea |
 | **Limpieza de Codigo** | Despues de implementar, para revisar calidad: redundancias, nombres, comentarios, DRY, KISS | Para anadir funcionalidad nueva (eso es una tarea) |
 | **Correccion de Bugs** | Cuando algo no funciona o tiene comportamiento inesperado | Para mejoras o features nuevos (eso es una tarea) |
-| **Testing** | Para escribir tests de calidad o mejorar tests existentes | Si no hay framework de testing (primero usa INIT4) |
+| **Testing** | Para escribir tests de calidad o mejorar tests existentes | Si no hay framework de testing (primero usa 04_setup_testing) |
 | **Hacer Commit** | Cada vez que quieras guardar cambios en Git | Para crear PRs (usa revision_pr) |
 | **Revision de PR** | Para crear una PR nueva o revisar una existente antes de mergear | Para revision de codigo sin PR (usa limpieza_de_codigo) |
 
@@ -117,7 +117,7 @@ Este es el ciclo que seguiras para cada tarea:
 
 **Si encuentras un bug** durante la implementacion: usa `correccion_de_bugs.md`.
 
-**Si el proyecto no tiene tests configurados:** usa `core_templates/INIT4_setup_testing.md` una sola vez antes de escribir tests.
+**Si el proyecto no tiene tests configurados:** usa `core_templates/04_setup_testing.md` una sola vez antes de escribir tests.
 
 ---
 
