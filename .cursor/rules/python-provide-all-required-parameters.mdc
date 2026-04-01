@@ -1,0 +1,95 @@
+---
+description: Proporcionar todos los parametros requeridos en llamadas a funciones e instanciacion de modelos Python
+globs: *.py
+alwaysApply: false
+---
+# Proporcionar todos los parametros requeridos
+
+## Contexto
+
+Omitir parametros requeridos en llamadas a funciones e instanciacion de modelos provoca errores en tiempo de ejecucion y fallos en la verificacion de tipos con mypy. Todos los parametros requeridos deben proporcionarse al llamar funciones o crear instancias.
+
+## Regla
+
+1. **Todos los parametros requeridos** deben proporcionarse al llamar funciones o crear instancias.
+2. Usar **valores por defecto adecuados** para parametros opcionales.
+3. Usar `default=None` o `default_factory=dict` para campos opcionales de Pydantic.
+4. **Comprobar firmas de funcion** antes de llamar para asegurar que se incluyen todos los parametros.
+5. Usar **argumentos con nombre** para claridad en funciones con muchos parametros.
+
+## Ejemplos
+
+### Incorrecto
+```python
+def process_file(file_path: str, user_id: str, mode: str = "read") -> None:
+    pass
+
+# Falta user_id
+process_file("file.txt")
+
+# Modelo Pydantic sin defaults en campos opcionales
+class ProcessingJob(BaseModel):
+    job_id: str
+    user_id: str
+    started_at: str | None  # Falta default
+    completed_at: str | None  # Falta default
+```
+
+### Correcto
+```python
+def process_file(file_path: str, user_id: str, mode: str = "read") -> None:
+    pass
+
+# Todos los parametros proporcionados
+process_file("file.txt", "user123")
+process_file(file_path="file.txt", user_id="user123", mode="write")
+
+# Modelo Pydantic con defaults correctos
+class ProcessingJob(BaseModel):
+    job_id: str
+    user_id: str
+    started_at: str | None = Field(default=None)
+    completed_at: str | None = Field(default=None)
+```
+
+### Patrones comunes
+
+```python
+# Definicion con defaults correctos
+def create_user(
+    name: str,
+    email: str,
+    age: int | None = None,
+    is_active: bool = True
+) -> User:
+    return User(name=name, email=email, age=age, is_active=is_active)
+
+# Modelo Pydantic completo
+class UserModel(BaseModel):
+    id: str
+    name: str
+    email: str
+    age: int | None = Field(default=None)
+    is_active: bool = Field(default=True)
+    metadata: dict[str, str] = Field(default_factory=dict)
+
+# TypedDict para parametros complejos
+class ConnectionConfig(TypedDict):
+    host: str
+    port: int
+    database: str
+    username: str
+    password: str
+
+def create_connection(config: ConnectionConfig) -> Connection:
+    pass
+```
+
+## Checklist
+
+- [ ] Comprobar firmas de funcion antes de llamar
+- [ ] Proporcionar todos los parametros requeridos
+- [ ] Usar `Field(default=None)` para campos opcionales de Pydantic
+- [ ] Usar `Field(default_factory=dict)` para defaults mutables
+- [ ] Usar argumentos con nombre en funciones con muchos parametros
+- [ ] Validar que todos los campos requeridos se proporcionan en instanciacion de modelos

@@ -1,0 +1,114 @@
+---
+description: En Next.js 15+, params y searchParams son Promises que deben ser awaited antes de acceder a sus propiedades
+globs: *.tsx
+alwaysApply: false
+---
+# Next.js 15 requiere `params` y `searchParams` asincronos
+
+### Contexto
+
+En Next.js 15, `params` y `searchParams` son **Promises** que deben ser awaited antes de acceder a sus propiedades. El acceso directo sin await provoca errores en tiempo de ejecucion:
+
+```
+Error: Route "/path/[...param]" used `params.param`. `params` should be awaited before using its properties.
+```
+
+Este cambio afecta a Pages, Layouts, Route Handlers y funciones `generateMetadata`.
+
+---
+
+### Regla
+
+1. **Tipos**: Definir `params` y `searchParams` como `Promise<object>`.
+2. **Acceso asincrono**: Usar `await` en funciones async antes de acceder a propiedades.
+3. **Client Components**: Usar el hook `use()` de React (no pueden ser async).
+4. **revalidatePath**: Incluir siempre el parametro `type` en rutas dinamicas.
+
+---
+
+### Ejemplos
+
+| Incorrecto (estilo Next.js 14) | Correcto (estilo Next.js 15) |
+|---|---|
+| ```tsx
+interface PageProps {
+  params: { id: string };
+  searchParams: { query: string };
+}
+
+export default async function Page({ params, searchParams }: PageProps) {
+  const { id } = params; // Acceso directo
+  const { query } = searchParams; // Acceso directo
+}
+``` | ```tsx
+interface PageProps {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ query: string }>;
+}
+
+export default async function Page({ params, searchParams }: PageProps) {
+  const { id } = await params; // Debe usar await
+  const { query } = await searchParams; // Debe usar await
+}
+``` |
+| ```tsx
+// Client Component
+'use client';
+export default function Page({ params }: { params: { id: string } }) {
+  const { id } = params; // Acceso directo
+}
+``` | ```tsx
+// Client Component
+'use client';
+import { use } from 'react';
+
+export default function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params); // Usar hook use() de React
+}
+``` |
+| ```tsx
+// revalidatePath sin tipo
+revalidatePath('/path/[...param]');
+``` | ```tsx
+// revalidatePath con parametro type
+revalidatePath('/path/[...param]', 'page');
+``` |
+
+### Route Handlers
+
+```tsx
+// Incorrecto
+export async function GET(request: Request, { params }: { params: { id: string } }) {
+  const { id } = params; // Acceso directo
+}
+
+// Correcto
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params; // Debe usar await
+}
+```
+
+### generateMetadata
+
+```tsx
+// Incorrecto
+export function generateMetadata({ params }: { params: { slug: string } }) {
+  const { slug } = params; // Acceso directo
+}
+
+// Correcto
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params; // Debe usar await
+}
+```
+
+---
+
+### Checklist
+
+- [ ] Definir `params` y `searchParams` como `Promise<object>` en Next.js 15.
+- [ ] Usar `await` antes de acceder a propiedades en Server Components.
+- [ ] Usar el hook `use()` de React en Client Components.
+- [ ] Incluir el parametro `type` en `revalidatePath` con rutas dinamicas.
+- [ ] Actualizar Route Handlers y `generateMetadata` para usar await en `params`.
+- [ ] Verificar que los tipos TypeScript coinciden con el comportamiento en tiempo de ejecucion.

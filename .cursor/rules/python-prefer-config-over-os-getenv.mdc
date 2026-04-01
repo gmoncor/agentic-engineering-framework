@@ -1,0 +1,105 @@
+---
+description: Usar modulo de configuracion centralizado en vez de os.getenv() directo en archivos de servicio Python
+globs: *.py
+alwaysApply: false
+---
+# Preferir configuracion centralizada sobre os.getenv()
+
+## Contexto
+
+El uso directo de `os.getenv()` dispersa la logica de configuracion por el codigo, impide la validacion centralizada, causa inconsistencias en valores por defecto y dificulta el seguimiento de variables de entorno utilizadas.
+
+## Regla
+
+1. **Nunca usar** `os.getenv()` en archivos de servicio, utilidades o logica de negocio.
+2. **Siempre usar** el modulo centralizado de config (`from ..config import config`).
+3. **Definir todas las variables de entorno** en el modulo config con defaults adecuados.
+4. **Solo usar `os.getenv()`** dentro del propio modulo config o en scripts de despliegue.
+
+## Ejemplos
+
+### Incorrecto (os.getenv directo)
+```python
+import os
+
+class ProcessingService:
+    def __init__(self, project_id: str | None = None):
+        # Incorrecto: acceso directo a variable de entorno
+        self.project_id = project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
+
+def get_embedding_service():
+    # Incorrecto: logica de configuracion dispersa
+    text_model = os.getenv("TEXT_EMBEDDING_MODEL", "text-embedding-004")
+    dimensions = int(os.getenv("TEXT_EMBEDDING_DIMENSIONS", "768"))
+    return EmbeddingService(text_model, dimensions)
+```
+
+### Correcto (modulo config)
+```python
+from ..config import config
+
+class ProcessingService:
+    def __init__(self, project_id: str | None = None):
+        # Correcto: configuracion centralizada
+        self.project_id = project_id or config.PROJECT_ID
+
+def get_embedding_service():
+    # Correcto: todo desde un unico punto
+    return EmbeddingService(
+        text_model=config.TEXT_EMBEDDING_MODEL,
+        dimensions=config.TEXT_EMBEDDING_DIMENSIONS
+    )
+```
+
+### Patron de modulo config
+```python
+# config.py - UNICO lugar para os.getenv()
+import os
+
+class Config:
+    # Google Cloud
+    GOOGLE_CLOUD_PROJECT: str = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+    GOOGLE_CLOUD_REGION: str = os.getenv("GOOGLE_CLOUD_REGION", "us-central1")
+    PROJECT_ID: str = GOOGLE_CLOUD_PROJECT
+    VERTEX_AI_LOCATION: str = GOOGLE_CLOUD_REGION
+
+    # Servidor
+    PORT: int = int(os.getenv("PORT", "8080"))
+    HOST: str = os.getenv("HOST", "0.0.0.0")
+    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+
+    @classmethod
+    def validate(cls) -> dict[str, Any]:
+        """Validar configuracion y devolver estado."""
+        missing: list[str] = []
+        if not cls.GOOGLE_CLOUD_PROJECT:
+            missing.append("GOOGLE_CLOUD_PROJECT")
+        return {"valid": len(missing) == 0, "missing": missing}
+
+config = Config()
+```
+
+### Uso aceptable de os.getenv()
+
+```python
+# En config.py (unico lugar permitido)
+class Config:
+    PROJECT_ID: str = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+
+# En scripts de despliegue
+def deploy():
+    trigger_name = os.getenv("TRIGGER_NAME", "default-trigger")
+
+# Para deteccion de entorno
+def is_development() -> bool:
+    return os.getenv("ENVIRONMENT", "production").lower() == "development"
+```
+
+## Checklist
+
+- [ ] Nunca sugerir `os.getenv()` en archivos de servicio o logica de negocio
+- [ ] Siempre importar y usar el modulo config
+- [ ] Anadir variables de entorno nuevas al modulo config primero
+- [ ] Usar atributos de config en vez de nombres de variable de entorno
+- [ ] Defaults consistentes a traves del modulo config
+- [ ] Eliminar `import os` no usado tras reemplazar os.getenv()

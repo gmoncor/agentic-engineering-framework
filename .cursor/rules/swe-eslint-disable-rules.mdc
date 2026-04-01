@@ -1,0 +1,194 @@
+---
+description: Nunca usar comentarios eslint-disable - corregir siempre la causa raíz
+globs: *.ts,*.tsx
+alwaysApply: false
+---
+
+# Nunca Usar Comentarios eslint-disable
+
+## Contexto
+
+Las reglas de ESLint previenen errores reales, problemas de rendimiento, vulnerabilidades de seguridad y deuda técnica. Desactivarlas oculta estos problemas y puede causar errores en producción, mala experiencia de usuario y brechas de seguridad.
+
+Esta es una política de **TOLERANCIA CERO** - no hay excepciones aceptables.
+
+## Regla
+
+PROHIBIDO: Todas las formas de directivas eslint-disable:
+- `/* eslint-disable */`
+- `/* eslint-disable-next-line */`
+- `// eslint-disable-next-line`
+- `/* eslint-disable rule-name */`
+- `// eslint-disable-next-line rule-name`
+- `/* eslint-disable-line */`
+
+SIEMPRE corregir la causa raíz en lugar de desactivar la regla.
+
+### Proceso de análisis de causa raíz
+
+1. Leer el mensaje de error - ESLint indica exactamente qué ocurre
+2. Entender el propósito de la regla - Qué está previniendo
+3. Identificar el problema real - Qué debe cambiar en la estructura del código
+4. Aplicar la corrección adecuada - Refactorizar, añadir dependencias, corregir tipos, mejorar accesibilidad
+5. Verificar la solución - Comprobar que el código sigue funcionando y es más robusto
+
+## Ejemplos
+
+### react-hooks/exhaustive-deps
+
+Las dependencias omitidas causan closures obsoletos y comportamiento incorrecto de efectos.
+
+Incorrecto:
+```tsx
+useEffect(() => {
+  fetchData(userId);
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+```
+
+Correcto:
+```tsx
+// Opción 1: Añadir dependencias faltantes
+useEffect(() => {
+  fetchData(userId);
+}, [userId, fetchData]);
+
+// Opción 2: Mover la función dentro del efecto
+useEffect(() => {
+  function fetchData() {
+    // lógica usando userId
+  }
+  fetchData();
+}, [userId]);
+
+// Opción 3: Estabilizar la función con useCallback
+const fetchData = useCallback(() => {
+  // lógica aquí
+}, [actualDependencies]);
+
+useEffect(() => {
+  fetchData();
+}, [fetchData]);
+
+// Opción 4: Estado trigger para romper dependencias circulares
+const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+useEffect(() => {
+  if (refreshTrigger > 0) {
+    fetchData();
+  }
+}, [refreshTrigger]);
+```
+
+### react/no-unescaped-entities
+
+Las comillas sin escapar pueden romper el renderizado HTML.
+
+Incorrecto:
+```tsx
+// eslint-disable-next-line react/no-unescaped-entities
+<p>Sarah's workflow</p>
+```
+
+Correcto:
+```tsx
+<p>Sarah&rsquo;s workflow</p>
+// O bien
+<p>{"Sarah's workflow"}</p>
+```
+
+### no-constant-condition
+
+Nunca usar bucles `while (true)`. Usar patrones recursivos para procesamiento de streams.
+
+Incorrecto:
+```typescript
+// eslint-disable-next-line no-constant-condition
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+}
+```
+
+Correcto:
+```typescript
+const pump = async () => {
+  const { done, value } = await reader.read();
+  if (done) return;
+
+  const chunk = decoder.decode(value, { stream: true });
+  // ... procesar chunk ...
+
+  return pump(); // Llamada recursiva
+};
+
+await pump();
+```
+
+### @typescript-eslint/no-explicit-any
+
+Incorrecto:
+```tsx
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const data: any = response;
+```
+
+Correcto:
+```tsx
+interface ResponseType {
+  id: string;
+  name: string;
+}
+const data: ResponseType = response;
+```
+
+### jsx-a11y/alt-text
+
+Incorrecto:
+```tsx
+// eslint-disable-next-line jsx-a11y/alt-text
+<img src="photo.jpg" />
+```
+
+Correcto:
+```tsx
+<img src="photo.jpg" alt="Descripción de la foto" />
+// O para imágenes decorativas
+<img src="photo.jpg" alt="" aria-hidden="true" />
+```
+
+### @typescript-eslint/no-unused-vars
+
+Incorrecto:
+```tsx
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const unusedVar = getValue();
+```
+
+Correcto:
+```tsx
+// Eliminar si realmente no se usa
+// O prefijar con guion bajo si es intencionalmente no usada
+const _unusedVar = getValue();
+// O usar la variable
+const neededVar = getValue();
+doSomethingWith(neededVar);
+```
+
+### Patrones comunes en el proyecto
+
+- **React hooks**: Incluir todas las dependencias, usar useCallback para estabilidad
+- **TypeScript**: Definir interfaces en lugar de usar `any`
+- **Accesibilidad**: Añadir atributos ARIA y texto alt adecuados
+- **JSX**: Usar entidades HTML para comillas y apóstrofos
+- **Imports**: Eliminar imports no usados, organizar correctamente
+- **Procesamiento de streams**: Usar funciones recursivas pump en lugar de while(true)
+
+## Checklist
+
+- [ ] NUNCA sugerir ninguna forma de comentario eslint-disable
+- [ ] Ante errores de ESLint, analizar siempre la causa raíz
+- [ ] Investigar el propósito de la regla específica y sus soluciones recomendadas
+- [ ] Proporcionar correcciones que aborden el problema subyacente
+- [ ] Verificar que las correcciones resuelven el problema sin romper funcionalidad
+- [ ] Asegurar que las correcciones siguen los patrones y convenciones del proyecto

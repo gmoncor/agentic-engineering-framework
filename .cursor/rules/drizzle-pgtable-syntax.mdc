@@ -1,0 +1,31 @@
+---
+description: Usar sintaxis moderna de pgTable con array para constraints en lugar de objeto deprecado
+globs: **/*.ts
+alwaysApply: false
+---
+# Sintaxis Correcta de `pgTable` para Constraints
+
+### Contexto
+
+La funcion `pgTable` de Drizzle ORM ha deprecado la sintaxis donde la funcion de configuracion devuelve un objeto para definir constraints a nivel de tabla (indices, claves unicas compuestas, etc.). Esta sintaxis antigua genera un aviso de deprecacion y sera eliminada en futuras versiones.
+
+La sintaxis moderna requiere que la funcion de configuracion devuelva un **array** de constraints.
+
+### Regla
+
+1. La funcion de configuracion (tercer argumento de `pgTable`) **debe** devolver un array.
+2. Cada constraint (`unique()`, `index()`, `foreignKey()`) debe ser un elemento del array.
+3. **Nunca** usar la sintaxis deprecada que devuelve un objeto.
+
+### Ejemplos
+
+| Incorrecto (devuelve objeto) | Correcto (devuelve array) |
+|---|---|
+| ```ts export const users = pgTable("users", {   id: integer("id"),   name: text("name"), }, (t) => ({   name_idx: index('name_idx').on(t.name), })); ``` | ```ts export const users = pgTable("users", {   id: integer("id"),   name: text("name"), }, (t) => [   index('name_idx').on(t.name), ]); ``` |
+| ```ts export const posts = pgTable("posts", {   id: integer("id"),   author_id: integer("author_id"),   city_id: integer("city_id"), }, (t) => ({   author_city_unq: unique().on(t.author_id, t.city_id), })); ``` | ```ts export const posts = pgTable("posts", {   id: integer("id"),   author_id: integer("author_id"),   city_id: integer("city_id"), }, (t) => [   unique().on(t.author_id, t.city_id), ]); ``` |
+
+### Checklist
+
+- [ ] La funcion de configuracion de `pgTable` devuelve un array `[...]`.
+- [ ] No se usa objeto literal `{...}` para devolver constraints.
+- [ ] La definicion de tabla pasa linting y type-checking sin avisos de deprecacion.

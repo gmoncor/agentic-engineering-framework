@@ -1,0 +1,264 @@
+---
+description: Todas las funciones TypeScript deben tener tipos de retorno explícitos para prevenir errores en tiempo de ejecución
+globs: *.ts
+alwaysApply: false
+---
+
+# Tipos de Retorno Explícitos en TypeScript
+
+### Contexto
+
+Las funciones TypeScript sin tipos de retorno explícitos pueden provocar comportamientos impredecibles y errores en tiempo de ejecución. Cuando falta la anotación del tipo de retorno, TypeScript infiere el tipo, que puede resultar `undefined` o más permisivo de lo previsto.
+
+Los tipos de retorno explícitos aportan:
+- **Contratos claros** entre funciones y sus consumidores
+- **Detección temprana de errores** cuando cambia la implementación
+- **Mejor soporte del IDE** con autocompletado preciso
+- **Prevención de retornos undefined accidentales**
+- **Seguridad en refactorizaciones** con garantías en tiempo de compilación
+
+### Regla
+
+1. **TODAS las funciones TypeScript DEBEN tener tipos de retorno explícitos** — sin excepciones.
+2. **Nunca depender de la inferencia de tipos de retorno** en declaraciones de funciones.
+3. **Usar uniones discriminadas** para funciones que pueden devolver distintos tipos de resultado.
+4. **Ser específico con los tipos** — evitar `any`, `unknown` o tipos excesivamente amplios.
+5. **Incluir tipos Promise** en funciones asíncronas.
+6. **Usar tipos de manejo de errores adecuados** en funciones que pueden fallar.
+
+### Ejemplos
+
+**Funciones regulares**
+```typescript
+// Incorrecto - sin tipo de retorno
+function getUserData(id: string) {
+  return fetchUser(id);
+}
+
+// Correcto - tipo de retorno explícito
+function getUserData(id: string): Promise<User | null> {
+  return fetchUser(id);
+}
+```
+
+**Arrow functions**
+```typescript
+// Incorrecto
+const calculateTotal = (items: Item[]) => {
+  return items.reduce((sum, item) => sum + item.price, 0);
+};
+
+// Correcto
+const calculateTotal = (items: Item[]): number => {
+  return items.reduce((sum, item) => sum + item.price, 0);
+};
+```
+
+**Funciones asíncronas**
+```typescript
+// Incorrecto
+async function saveUser(userData: UserData) {
+  const result = await db.users.insert(userData);
+  return result;
+}
+
+// Correcto
+async function saveUser(userData: UserData): Promise<{ success: boolean; userId?: string; error?: string }> {
+  try {
+    const result = await db.users.insert(userData);
+    return { success: true, userId: result.id };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+```
+
+**Server Actions con unión discriminada**
+```typescript
+// Correcto
+export type GetCurrentUserUsageResult =
+  | { success: true; data: UsageStats }
+  | { success: false; error: string };
+
+export async function getCurrentUserUsage(): Promise<GetCurrentUserUsageResult> {
+  try {
+    const result = await getUsageStats();
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: "Failed to fetch" };
+  }
+}
+```
+
+**API Route Handlers**
+```typescript
+// Incorrecto
+export async function GET(request: NextRequest) {
+  const data = await fetchData();
+  return NextResponse.json(data);
+}
+
+// Correcto
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  try {
+    const data = await fetchData();
+    return NextResponse.json({ success: true, data });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: "Failed to fetch" }, { status: 500 });
+  }
+}
+```
+
+**Componentes React**
+```typescript
+// Incorrecto
+function UserProfile({ userId }: { userId: string }) {
+  const [user, setUser] = useState(null);
+  return <div>{user?.name}</div>;
+}
+
+// Correcto
+function UserProfile({ userId }: { userId: string }): JSX.Element {
+  const [user, setUser] = useState<User | null>(null);
+  return <div>{user?.name}</div>;
+}
+```
+
+**Métodos de clase**
+```typescript
+// Incorrecto
+class UserService {
+  async getUser(id: string) {
+    return await this.db.findUser(id);
+  }
+}
+
+// Correcto
+class UserService {
+  async getUser(id: string): Promise<User | null> {
+    return await this.db.findUser(id);
+  }
+}
+```
+
+### Patrones de tipo de retorno recomendados
+
+**Patrón Result para operaciones que pueden fallar**
+```typescript
+export type Result<T, E = string> =
+  | { success: true; data: T }
+  | { success: false; error: E };
+
+export async function saveDocument(doc: Document): Promise<Result<string>> {
+  try {
+    const id = await db.documents.insert(doc);
+    return { success: true, data: id };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+```
+
+**Patrón de datos opcionales**
+```typescript
+export async function findUser(email: string): Promise<User | null> {
+  const user = await db.users.findByEmail(email);
+  return user || null;
+}
+```
+
+**Patrón de resultado de validación**
+```typescript
+export type ValidationResult<T> = {
+  valid: T[];
+  invalid: { item: T; reason: string }[];
+};
+
+export function validateFiles(files: File[]): ValidationResult<File> {
+  const valid: File[] = [];
+  const invalid: { item: File; reason: string }[] = [];
+
+  files.forEach(file => {
+    if (file.size > MAX_SIZE) {
+      invalid.push({ item: file, reason: "File too large" });
+    } else {
+      valid.push(file);
+    }
+  });
+
+  return { valid, invalid };
+}
+```
+
+### Errores comunes
+
+**Usar `any` como tipo de retorno**
+```typescript
+// Incorrecto
+function processData(input: unknown): any {
+  return JSON.parse(input as string);
+}
+
+// Correcto
+interface ProcessedData {
+  id: string;
+  name: string;
+}
+
+function processData(input: unknown): ProcessedData {
+  const parsed = JSON.parse(input as string);
+  return { id: parsed.id, name: parsed.name };
+}
+```
+
+**Olvidar el wrapper Promise en funciones asíncronas**
+```typescript
+// Incorrecto
+async function fetchUser(id: string): User {
+  return await db.users.findById(id);
+}
+
+// Correcto
+async function fetchUser(id: string): Promise<User | null> {
+  return await db.users.findById(id);
+}
+```
+
+**No contemplar los casos de error en el tipo de retorno**
+```typescript
+// Incorrecto - no contempla errores
+async function uploadFile(file: File): Promise<string> {
+  return await storage.upload(file);
+}
+
+// Correcto - manejo de errores explícito
+async function uploadFile(file: File): Promise<{ success: true; url: string } | { success: false; error: string }> {
+  try {
+    const url = await storage.upload(file);
+    return { success: true, url };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+```
+
+### Configuración ESLint
+
+```json
+{
+  "rules": {
+    "@typescript-eslint/explicit-function-return-type": "error",
+    "@typescript-eslint/explicit-module-boundary-types": "error"
+  }
+}
+```
+
+### Checklist
+
+- [ ] Proporcionar tipos de retorno explícitos en TODAS las declaraciones de funciones
+- [ ] Usar uniones discriminadas para funciones con múltiples resultados posibles
+- [ ] Incluir wrappers Promise en funciones asíncronas
+- [ ] Considerar los casos de error al definir tipos de retorno
+- [ ] Evitar `any` y tipos excesivamente amplios en las anotaciones de retorno
+- [ ] Usar nombres de tipos significativos que describan el propósito de la función
+- [ ] Asegurar que los tipos de retorno coincidan con la implementación real

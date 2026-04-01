@@ -1,0 +1,75 @@
+---
+description: Detectar tipo de proyecto antes de ejecutar comandos de linting
+globs:
+alwaysApply: true
+---
+
+# Detectar Tipo de Proyecto para Linting
+
+## Contexto
+
+En repositorios multi-aplicación, distintos directorios pueden contener distintos tipos de proyecto (Python, Node.js, etc.). Usar los comandos de linting equivocados genera confusión y errores.
+
+## Regla
+
+Antes de ejecutar cualquier comando de linting o validación, **comprueba siempre el tipo de proyecto** según los ficheros presentes en el directorio actual o destino.
+
+### Detección del tipo de proyecto
+
+1. **Proyectos Python** - Buscar:
+   - `pyproject.toml`
+   - `requirements.txt`
+   - Ficheros `.py`
+   - Directorios comunes: `src/`, `tests/`
+
+2. **Proyectos Node.js/TypeScript** - Buscar:
+   - `package.json`
+   - `tsconfig.json`
+   - Ficheros `.js`, `.ts`, `.tsx`
+   - Directorios comunes: `app/`, `components/`, `lib/`
+
+### Comandos por tipo de proyecto
+
+| Tipo de proyecto | Linting | Comprobación de tipos | Formateo |
+|------------------|---------|----------------------|----------|
+| **Python** | `uv run ruff check` | `uv run mypy` | `uv run black --check` |
+| **Node.js/TypeScript** | `npm run lint` | `npm run type-check` | `npm run format` |
+
+## Ejemplos
+
+```bash
+# Incorrecto - Comandos equivocados para el tipo de proyecto
+
+# En un proyecto Python (tiene pyproject.toml)
+npm run lint  # Incorrecto - es para Node.js
+
+# En un proyecto Node.js (tiene package.json)
+uv run ruff check  # Incorrecto - es para Python
+```
+
+```bash
+# Correcto - Comandos adecuados para cada tipo
+
+# En un proyecto Python (con pyproject.toml)
+uv run ruff check
+uv run mypy
+uv run black --check
+
+# En un proyecto Node.js (con package.json)
+npm run lint
+npm run type-check
+```
+
+### Estrategia de detección
+
+1. Comprobar el directorio actual en busca de indicadores de proyecto
+2. Buscar en directorios padre si no se encuentra en el actual
+3. Usar los comandos apropiados según el tipo detectado
+4. Nunca asumir: verificar siempre antes de ejecutar
+
+## Checklist
+
+- [ ] Comprobar `pyproject.toml` vs `package.json` en el directorio actual/destino
+- [ ] Usar comandos Python (`uv run`) para proyectos Python
+- [ ] Usar comandos Node.js (`npm run`) para proyectos JavaScript/TypeScript
+- [ ] Ante la duda, verificar explícitamente qué ficheros existen en el directorio

@@ -1,0 +1,121 @@
+---
+description: Separar utilidades servidor/cliente en archivos distintos para evitar errores de bundling en Next.js
+globs: *.tsx,*.ts
+alwaysApply: false
+---
+# Separar utilidades de servidor y cliente
+
+### Contexto
+
+En aplicaciones Next.js, los archivos que mezclan imports del servidor (`next/headers`, `@/lib/supabase/server`) con constantes o funciones compatibles con el cliente causan errores de build cuando un componente cliente intenta importar las partes seguras:
+
+```
+Error: You're importing a component that needs "next/headers". That only works in a Server Component.
+```
+
+Esto ocurre aunque el componente cliente solo necesite constantes o funciones puras del archivo.
+
+---
+
+### Regla
+
+1. **Nunca mezclar** imports del servidor con utilidades del cliente en el mismo archivo.
+2. **Separar en archivos dedicados**:
+   - `*-constants.ts` -- constantes, tipos y funciones puras (seguro para cliente)
+   - `*.ts` -- funciones del servidor, con re-exports del archivo de constantes para compatibilidad
+3. **Imports del servidor**: `next/headers`, `@/lib/supabase/server`, `@/lib/auth`, modulos con APIs de Node.js.
+4. **Utilidades seguras para cliente**: constantes, funciones puras, tipos, schemas de validacion.
+
+---
+
+### Ejemplos
+
+| Incorrecto (mezclado) | Correcto (separado) |
+|---|---|
+| ```typescript
+// lib/storage.ts
+import { createClient } from "@/lib/supabase/server";
+
+export const IMAGE_CONSTRAINTS = {
+  MAX_SIZE: 10 * 1024 * 1024,
+  ALLOWED_TYPES: ["image/jpeg", "image/png"]
+};
+
+export function generatePath(id: string) {
+  return `images/${id}`;
+}
+
+export async function getPublicUrl(path: string) {
+  const supabase = await createClient();
+  return supabase.storage.from("bucket").getPublicUrl(path);
+}
+``` | ```typescript
+// lib/storage-constants.ts (seguro para cliente)
+export const IMAGE_CONSTRAINTS = {
+  MAX_SIZE: 10 * 1024 * 1024,
+  ALLOWED_TYPES: ["image/jpeg", "image/png"]
+};
+
+export function generatePath(id: string) {
+  return `images/${id}`;
+}
+
+// lib/storage.ts (solo servidor)
+import { createClient } from "@/lib/supabase/server";
+
+export async function getPublicUrl(path: string) {
+  const supabase = await createClient();
+  return supabase.storage.from("bucket").getPublicUrl(path);
+}
+
+// Re-export para compatibilidad
+export { IMAGE_CONSTRAINTS, generatePath } from "./storage-constants";
+``` |
+
+### Convenciones de nombres
+
+- **`lib/[nombre]-constants.ts`** -- constantes y utilidades seguras para cliente
+- **`lib/[nombre].ts`** -- funciones del servidor con re-exports opcionales
+- **`lib/[nombre]-client.ts`** -- utilidades especificas del cliente (si necesario)
+- **`lib/[nombre]-server.ts`** -- funciones explicitamente solo-servidor
+
+### Guia de imports
+
+```typescript
+// Correcto: componentes cliente importan de constants
+import { IMAGE_CONSTRAINTS } from "@/lib/storage-constants";
+
+// Correcto: componentes servidor pueden importar de cualquiera
+import { getPublicUrl } from "@/lib/storage";
+import { IMAGE_CONSTRAINTS } from "@/lib/storage"; // Re-exportado
+
+// Correcto: server actions importan funciones del servidor
+import { getPublicUrl } from "@/lib/storage";
+```
+
+### Patrones que necesitan separacion
+
+| Patron | Archivo servidor | Archivo cliente |
+|---|---|---|
+| **Storage** | Funciones upload/download | Constantes, generadores de rutas |
+| **Base de datos** | Operaciones CRUD | Schemas de validacion, tipos |
+| **Autenticacion** | Gestion de sesiones | Definiciones de tipos de usuario |
+| **Integraciones API** | Llamadas API del servidor | Tipos request/response |
+| **Email** | Funciones de envio | Constantes de templates |
+
+### Estrategia de migracion
+
+1. **Crear archivo de constantes** con exports seguros para cliente.
+2. **Actualizar archivo original** para importar solo modulos del servidor y re-exportar constantes.
+3. **Actualizar componentes cliente** para importar del archivo de constantes.
+4. **Mantener imports del servidor** sin cambios (pueden usar cualquier archivo).
+
+---
+
+### Checklist
+
+- [ ] Al crear archivos de utilidades, separar funciones del servidor de constantes del cliente.
+- [ ] Sugerir archivos `-constants.ts` para utilidades seguras del cliente.
+- [ ] Nunca mezclar `next/headers`, `@/lib/supabase/server` u otros imports solo-servidor con utilidades del cliente.
+- [ ] Recomendar re-exports en archivos del servidor para compatibilidad.
+- [ ] Actualizar imports en componentes cliente para usar archivos de constantes.

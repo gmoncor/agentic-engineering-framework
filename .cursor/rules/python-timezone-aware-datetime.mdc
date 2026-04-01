@@ -1,0 +1,107 @@
+---
+description: Usar datetime con zona horaria en vez del deprecado datetime.utcnow() en Python
+globs: *.py
+alwaysApply: false
+---
+# Datetime con zona horaria obligatorio
+
+## Contexto
+
+`datetime.utcnow()` esta deprecado desde Python 3.12 y sera eliminado en versiones futuras. Crea objetos datetime ingenuos sin informacion de zona horaria, causando bugs y ambiguedad. El codigo moderno debe usar objetos datetime con zona horaria.
+
+## Regla
+
+1. **Nunca usar** `datetime.utcnow()` - esta deprecado.
+2. **Siempre usar** `datetime.now(timezone.utc)` para timestamps UTC.
+3. **Importar timezone** del modulo datetime.
+
+### Import requerido
+```python
+from datetime import datetime, timezone
+```
+
+## Ejemplos
+
+### Incorrecto
+```python
+from datetime import datetime
+
+# Deprecado: generara avisos y sera eliminado
+created_at = datetime.utcnow()
+updated_at = datetime.utcnow()
+```
+
+### Correcto
+```python
+from datetime import datetime, timezone
+
+# Moderno: datetime con zona horaria UTC
+created_at = datetime.now(timezone.utc)
+updated_at = datetime.now(timezone.utc)
+
+# Para zonas horarias especificas
+from zoneinfo import ZoneInfo
+local_time = datetime.now(ZoneInfo("America/New_York"))
+```
+
+### Timestamps en base de datos
+```python
+# Incorrecto
+job = ProcessingJob(
+    created_at=datetime.utcnow(),
+    updated_at=datetime.utcnow()
+)
+
+# Correcto
+job = ProcessingJob(
+    created_at=datetime.now(timezone.utc),
+    updated_at=datetime.now(timezone.utc)
+)
+```
+
+### Calculos de tiempo
+```python
+from datetime import timedelta
+
+# Incorrecto
+cutoff_time = datetime.utcnow() - timedelta(minutes=5)
+
+# Correcto
+cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=5)
+```
+
+### Modelos Pydantic
+```python
+from datetime import datetime, timezone
+from pydantic import BaseModel, Field
+
+class ProcessingJob(BaseModel):
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+```
+
+### Servicio de base de datos
+```python
+class DatabaseService:
+    def create_record(self, data: dict) -> None:
+        now = datetime.now(timezone.utc)
+        data.update({
+            'created_at': now,
+            'updated_at': now
+        })
+```
+
+### Python 3.11+ alternativa
+```python
+from datetime import datetime
+# Alternativa moderna (Python 3.11+)
+timestamp = datetime.now(datetime.UTC)
+```
+
+## Checklist
+
+- [ ] Nunca sugerir `datetime.utcnow()` en codigo Python
+- [ ] Siempre usar `datetime.now(timezone.utc)` para timestamps UTC
+- [ ] Incluir import de `timezone` al usar datetime con zona horaria
+- [ ] Reemplazar instancias existentes de `datetime.utcnow()` cuando se encuentren
+- [ ] Verificar que los imports estan actualizados al corregir uso deprecado

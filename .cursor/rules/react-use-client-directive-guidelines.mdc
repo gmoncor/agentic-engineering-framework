@@ -1,0 +1,208 @@
+---
+description: Directrices para la directiva "use client" - limites entre Server y Client Components en Next.js
+globs: *.tsx
+alwaysApply: false
+---
+# Directrices de "use client" - Limites Server vs Client Component
+
+### Contexto
+
+En Next.js App Router, los **Server Components son el valor por defecto** y ofrecen mejor rendimiento. La directiva `"use client"` solo debe anadirse cuando se necesita funcionalidad del lado del cliente que no puede ejecutarse en el servidor. Anadir `"use client"` innecesariamente aumenta el tamano del bundle, reduce los beneficios del SSR y puede causar problemas de hidratacion.
+
+Principio clave: **Usar Server Components por defecto, anadir `"use client"` solo cuando sea estrictamente necesario.**
+
+### Regla
+
+1. **Por defecto Server Components** - Nunca anadir `"use client"` salvo que se necesite funcionalidad del cliente.
+2. **Empujar `"use client"` hacia abajo en el arbol** - Anadirlo al componente mas pequeno que necesite funcionalidad del cliente.
+3. **Nunca hacer async en Client Components** - Los Server Components manejan la carga async de datos.
+4. **Identificar funcionalidades solo de cliente** - Usar `"use client"` solo para APIs del navegador, hooks de React e interactividad.
+
+### Cuando SI usar "use client"
+
+```tsx
+// Hooks de React y estado
+"use client";
+import { useState, useEffect } from "react";
+
+function Counter() {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    document.title = `Count: ${count}`; // API del navegador
+  }, [count]);
+  return (
+    <button onClick={() => setCount(count + 1)}>Count: {count}</button>
+  );
+}
+```
+
+```tsx
+// Navegacion del lado del cliente
+"use client";
+import { useRouter, useSearchParams } from "next/navigation";
+
+function SearchComponent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const handleSearch = (query: string) => {
+    router.push(`/search?q=${query}`);
+  };
+  return <SearchForm onSearch={handleSearch} />;
+}
+```
+
+```tsx
+// Librerias de terceros solo de cliente
+"use client";
+import { GoogleMap } from "@googlemaps/react";
+
+function MapComponent() {
+  return <GoogleMap center={{ lat: 0, lng: 0 }} />;
+}
+```
+
+### Cuando NO usar "use client"
+
+| Incorrecto (Client Component) | Correcto (Server Component) |
+|---|---|
+| ```tsx
+"use client";
+import { useEffect, useState } from "react";
+
+function UserList() {
+  const [users, setUsers] = useState([]);
+  useEffect(() => {
+    fetch("/api/users")
+      .then(res => res.json())
+      .then(setUsers);
+  }, []);
+  return (
+    <div>
+      {users.map(user => (
+        <div key={user.id}>{user.name}</div>
+      ))}
+    </div>
+  );
+}
+``` | ```tsx
+// Sin "use client" - Server Component
+async function UserList() {
+  const users = await getUsers(); // Correcto: fetch en servidor
+  return (
+    <div>
+      {users.map(user => (
+        <div key={user.id}>{user.name}</div>
+      ))}
+    </div>
+  );
+}
+``` |
+| ```tsx
+"use client"; // Incorrecto: innecesario
+
+function Header() {
+  return (
+    <header>
+      <h1>My App</h1>
+      <nav>
+        <Link href="/">Home</Link>
+      </nav>
+    </header>
+  );
+}
+``` | ```tsx
+// Sin "use client" - Server Component
+function Header() {
+  return (
+    <header>
+      <h1>My App</h1>
+      <nav>
+        <Link href="/">Home</Link>
+      </nav>
+    </header>
+  );
+}
+``` |
+| ```tsx
+"use client";
+
+function ContactForm() {
+  const handleSubmit = async (formData: FormData) => {
+    await fetch("/api/contact", {
+      method: "POST", body: formData,
+    });
+  };
+  return (
+    <form onSubmit={handleSubmit}>
+      <input name="email" />
+      <button type="submit">Submit</button>
+    </form>
+  );
+}
+``` | ```tsx
+import { submitContact } from "@/app/actions/contact";
+
+// Sin "use client" - Server Action
+function ContactForm() {
+  return (
+    <form action={submitContact}>
+      <input name="email" />
+      <button type="submit">Submit</button>
+    </form>
+  );
+}
+``` |
+
+### Patron recomendado: Wrapper
+
+```tsx
+// Server Component wrapper para datos + layout
+async function ProductPage({ params }: { params: { id: string } }) {
+  const product = await getProduct(params.id);
+  return (
+    <div>
+      <ProductDetails product={product} />
+      <AddToCartButton productId={product.id} /> {/* Client solo donde se necesita */}
+    </div>
+  );
+}
+
+// Client Component pequeno solo para interactividad
+"use client";
+function AddToCartButton({ productId }: { productId: string }) {
+  const [isLoading, setIsLoading] = useState(false);
+  const handleAddToCart = async () => {
+    setIsLoading(true);
+    await addToCart(productId);
+    setIsLoading(false);
+  };
+  return (
+    <button onClick={handleAddToCart} disabled={isLoading}>
+      {isLoading ? "Adding..." : "Add to Cart"}
+    </button>
+  );
+}
+```
+
+### Arbol de decision
+
+```
+Necesitas funcionalidad del lado del cliente?
+-- NO --> No usar "use client" (Server Component)
+-- SI --> Que funcionalidad?
+   -- Hooks de React (useState, useEffect, etc.) --> Usar "use client"
+   -- Event handlers (onClick, onChange, etc.) --> Usar "use client"
+   -- APIs del navegador (localStorage, window, etc.) --> Usar "use client"
+   -- Routing del cliente (useRouter, useSearchParams) --> Usar "use client"
+   -- Librerias solo de cliente --> Usar "use client"
+   -- Carga de datos async/await --> NO usar "use client" (Server Component)
+```
+
+### Checklist
+
+- [ ] Por defecto Server Components - nunca sugerir `"use client"` salvo que sea estrictamente necesario
+- [ ] Identificar la funcionalidad especifica del cliente que requiere `"use client"`
+- [ ] Sugerir empujar `"use client"` al componente mas pequeno que lo necesite
+- [ ] Nunca usar `"use client"` con funciones async - usar Server Components para carga de datos
+- [ ] Recomendar Server Actions sobre manejo de formularios del lado del cliente
+- [ ] En caso de duda, empezar con Server Component y anadir `"use client"` solo cuando haya errores

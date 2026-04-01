@@ -1,0 +1,168 @@
+---
+description: Eliminar y recrear funciones PostgreSQL al cambiar parametros en lugar de usar CREATE OR REPLACE
+globs: *.sql
+alwaysApply: false
+---
+# Cambios de Parametros en Funciones PostgreSQL - DROP Antes de Recrear
+
+### Contexto
+
+`CREATE OR REPLACE FUNCTION` de PostgreSQL tiene limitaciones estrictas al cambiar firmas de funciones, especialmente nombres de parametros. Intentar cambiar nombres de parametros (incluso manteniendo tipos y orden) produce un error:
+
+```
+PostgresError: cannot change name of input parameter "old_param_name"
+```
+
+PostgreSQL trata los cambios de nombre de parametros como modificaciones de firma que no permite con `OR REPLACE`. La solucion es usar `DROP FUNCTION` primero.
+
+`CREATE OR REPLACE` solo es seguro cuando **unicamente** cambia el cuerpo de la funcion, manteniendo la firma identica.
+
+### Regla
+
+1. **Nunca usar `CREATE OR REPLACE FUNCTION`** al cambiar nombres de parametros, aunque los tipos sean iguales.
+2. **Siempre usar `DROP FUNCTION IF EXISTS`** con la firma exacta actual antes de recrear.
+3. **Incluir firmas completas** en sentencias DROP (tipos de parametros, no solo nombres).
+4. **Usar `IF EXISTS`** para evitar errores si la funcion no existe.
+5. **Cambiar a `CREATE FUNCTION`** (sin `OR REPLACE`) despues de eliminar.
+6. **Usar tipos del catalogo de sistema** en DROP (ej: `double precision` en lugar de `float`).
+
+### Ejemplos
+
+**Incorrecto: cambio de nombre con OR REPLACE**
+
+```sql
+-- Incorrecto - Esto falla
+CREATE OR REPLACE FUNCTION match_text_chunks (
+    query_embedding vector(768),
+    p_user_id uuid,
+    p_match_threshold float DEFAULT 0.7,
+    p_match_count int DEFAULT 10,
+    p_embedding_types text[] DEFAULT NULL  -- Cambio de nombre de parametro
+)
+```
+
+**Correcto: eliminar primero, luego recrear**
+
+```sql
+-- Eliminar la funcion existente con firma exacta
+DROP FUNCTION IF EXISTS match_text_chunks(vector, uuid, double precision, integer, text[]);
+
+-- Crear la nueva funcion (sin OR REPLACE)
+CREATE FUNCTION match_text_chunks (
+    query_embedding vector(768),
+    p_user_id uuid,
+    p_match_threshold float DEFAULT 0.7,
+    p_match_count int DEFAULT 10,
+    p_embedding_types text[] DEFAULT NULL  -- Nuevo nombre de parametro
+)
+RETURNS TABLE (
+    -- ... columnas de retorno
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- ... cuerpo de la funcion
+END;
+$$;
+```
+
+**Mapeo de tipos para sentencias DROP:**
+
+| Tipo original | Tipo en catalogo PostgreSQL | Usar en DROP |
+|---|---|---|
+| `vector(768)` | `vector` | `vector` |
+| `uuid` | `uuid` | `uuid` |
+| `float` | `double precision` | `double precision` |
+| `int` | `integer` | `integer` |
+| `text[]` | `text[]` | `text[]` |
+
+**Escenarios comunes de migracion:**
+
+```sql
+-- Cambio de nombres de parametros
+DROP FUNCTION IF EXISTS function_name(vector, uuid, double precision, integer, text[]);
+CREATE FUNCTION function_name (
+    query_embedding vector(768),     -- Mismo tipo, nuevo nombre
+    p_user_id uuid,
+    p_threshold float DEFAULT 0.7,
+    p_count int DEFAULT 10,
+    p_types text[] DEFAULT NULL
+);
+
+-- Cambio de tipos de parametros
+DROP FUNCTION IF EXISTS function_name(vector, uuid, double precision, integer, text[]);
+CREATE FUNCTION function_name (
+    query_embedding vector(1408),    -- Dimensiones cambiadas
+    p_user_id uuid,
+    p_threshold float DEFAULT 0.7,
+    p_count int DEFAULT 10,
+    p_types text[] DEFAULT NULL
+);
+
+-- Anadir parametros
+DROP FUNCTION IF EXISTS function_name(vector, uuid, double precision, integer);
+CREATE FUNCTION function_name (
+    query_embedding vector(768),
+    p_user_id uuid,
+    p_threshold float DEFAULT 0.7,
+    p_count int DEFAULT 10,
+    p_new_param boolean DEFAULT false  -- Parametro anadido
+);
+```
+
+**Consultar firma exacta para DROP:**
+
+```sql
+SELECT
+    p.proname as function_name,
+    pg_get_function_identity_arguments(p.oid) as signature
+FROM pg_proc p
+WHERE p.proname = 'your_function_name';
+```
+
+**Multiples funciones en una migracion:**
+
+```sql
+-- Eliminar todas primero
+DROP FUNCTION IF EXISTS match_text_chunks(vector, uuid, double precision, integer, text[]);
+DROP FUNCTION IF EXISTS match_multimodal_chunks(vector, uuid, double precision, integer, text[]);
+
+-- Luego recrear todas
+CREATE FUNCTION match_text_chunks (
+    -- ... nueva firma
+);
+
+CREATE FUNCTION match_multimodal_chunks (
+    -- ... nueva firma
+);
+```
+
+**Plantilla de migracion:**
+
+```sql
+-- Descripcion: [cambios realizados]
+
+DROP FUNCTION IF EXISTS [function_name]([firma_tipos_exacta]);
+
+CREATE FUNCTION [function_name] (
+    [nueva_lista_parametros]
+)
+RETURNS TABLE (
+    [columnas_retorno]
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    [cuerpo_funcion]
+END;
+$$;
+```
+
+### Checklist
+
+- [ ] Nunca sugerir `CREATE OR REPLACE FUNCTION` para cambios de nombres de parametros.
+- [ ] Siempre usar `DROP FUNCTION IF EXISTS` con firma exacta antes de recrear.
+- [ ] Usar tipos del catalogo de sistema en sentencias DROP (ej: `double precision`, no `float`).
+- [ ] Usar `CREATE FUNCTION` (sin `OR REPLACE`) despues de eliminar.
+- [ ] Incluir firma completa de tipos en sentencias DROP.
+- [ ] Considerar migraciones de rollback que restauren la firma original.

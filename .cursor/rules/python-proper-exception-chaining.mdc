@@ -1,0 +1,92 @@
+---
+description: Encadenamiento correcto de excepciones en Python con raise...from e/None
+globs: *.py
+alwaysApply: false
+---
+# Encadenamiento correcto de excepciones
+
+## Contexto
+
+Al capturar una excepcion y lanzar una nueva, Python requiere `raise ... from e` en lugar de un raise desnudo. Esto lo aplica la regla B904 de Ruff y es crucial para mantener trazas de error claras en produccion.
+
+## Regla
+
+Usar SIEMPRE encadenamiento adecuado al relanzar excepciones:
+
+1. **`raise ... from e`** - Encadenar la excepcion original (preserva la traza).
+2. **`raise ... from None`** - Suprimir la excepcion original (cuando no es relevante).
+3. **`raise`** - Relanzar la misma excepcion sin modificar.
+
+## Ejemplos
+
+### Incorrecto
+```python
+def process_file(file_path: str) -> None:
+    try:
+        with open(file_path, 'r') as f:
+            data = f.read()
+    except IOError as e:
+        logger.error(f"Failed to read file: {e}")
+        # Incorrecto: pierde contexto de excepcion original
+        raise ProcessingError(f"File processing failed: {e}")
+```
+
+### Correcto (preservar contexto)
+```python
+def process_file(file_path: str) -> None:
+    try:
+        with open(file_path, 'r') as f:
+            data = f.read()
+    except IOError as e:
+        logger.error(f"Failed to read file: {e}")
+        # Correcto: preserva contexto original
+        raise ProcessingError(f"File processing failed: {e}") from e
+```
+
+### Correcto (suprimir cuando no es relevante)
+```python
+def validate_input(data: str) -> None:
+    try:
+        parsed = json.loads(data)
+    except json.JSONDecodeError as e:
+        # Correcto: supresion para error mas limpio al usuario
+        raise ValidationError("Invalid JSON format provided") from None
+```
+
+### Cuando usar cada patron
+
+| Patron | Usar cuando |
+|---|---|
+| `raise ... from e` | La excepcion original es relevante para depuracion |
+| `raise ... from None` | La excepcion original es detalle de implementacion |
+| `raise` (desnudo) | Relanzar la misma excepcion sin cambios |
+
+### Patron capa de servicio
+```python
+class ProcessingService:
+    async def process_data(self, data: dict) -> ProcessingResult:
+        try:
+            result = await self._internal_process(data)
+            return result
+        except DatabaseError as e:
+            logger.error("Database operation failed", error=str(e))
+            raise ProcessingServiceError("Data processing failed") from e
+        except ValidationError as e:
+            raise ProcessingServiceError("Invalid data format") from None
+```
+
+### Configuracion Ruff
+```toml
+[tool.ruff.lint]
+select = [
+    "B904",  # raise exceptions with `raise ... from err`
+]
+```
+
+## Checklist
+
+- [ ] Usar `raise ... from e` cuando el contexto original es valioso
+- [ ] Usar `raise ... from None` al suprimir detalles de implementacion
+- [ ] Usar `raise` desnudo solo al relanzar la misma excepcion sin cambios
+- [ ] Registrar detalles de excepcion original antes de lanzar encadenadas
+- [ ] Nunca usar `raise NewException()` desnudo en bloques except

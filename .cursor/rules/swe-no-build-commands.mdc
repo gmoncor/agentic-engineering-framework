@@ -1,0 +1,50 @@
+---
+description: No ejecutar comandos de build durante desarrollo - usar lint en su lugar
+globs:
+alwaysApply: true
+---
+
+# Nunca Ejecutar Comandos de Build
+
+## Contexto
+
+Los comandos de build (`npm run build`, `next build`, etc.) son operaciones costosas que:
+- Tardan bastante tiempo (a menudo 30+ segundos)
+- Consumen recursos significativos del sistema
+- No son necesarios para validar cambios de código durante desarrollo
+- Están pensados para despliegue a producción, no para validación en desarrollo
+
+Comandos más ligeros como `npm run lint` y `npm run type-check` proporcionan feedback más rápido y detectan las mismas categorías de problemas que causarían fallos de build.
+
+## Regla
+
+1. **Nunca sugerir ni ejecutar** `npm run build`, `next build` ni comandos de build similares durante sesiones de desarrollo.
+2. **En su lugar usar** comandos de validación apropiados:
+   - `npm run lint` - Errores de linting e imports
+   - `npm run type-check` - Validar tipos TypeScript sin compilar
+   - `npm test` - Ejecutar tests si están disponibles
+3. **Los comandos de build solo se usan** para despliegue real o pipelines CI/CD.
+4. **Al probar cambios de código**, preferir herramientas de validación incremental.
+
+## Ejemplos
+
+| Incorrecto (ejecutar build) | Correcto (usar lint/type-check) |
+|-----------------------------|--------------------------------|
+| `npm run build --dry-run` | `npm run lint` |
+| `next build` | `npm run type-check` |
+| `npm run build 2>&1 \| head -20` | `npm run lint --fix` |
+
+### Estrategia de validación por tipo de cambio
+
+- **Cambios en rutas de import**: `npm run lint`
+- **Cambios en definiciones de tipos**: `npm run type-check`
+- **Cambios en lógica de componentes**: `npm run lint` + `npm test`
+- **Cambios de configuración**: `npm run lint` + testing manual
+
+## Checklist
+
+- [ ] Nunca sugerir comandos de build para validación de código durante desarrollo
+- [ ] Usar `npm run lint` para validar rutas de import y calidad de código
+- [ ] Usar `npm run type-check` para validación de TypeScript
+- [ ] Solo mencionar comandos de build en el contexto de despliegue real
+- [ ] Preferir herramientas de validación rápidas e incrementales frente a builds completos

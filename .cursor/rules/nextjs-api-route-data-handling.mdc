@@ -1,0 +1,177 @@
+---
+description: Manejo de datos en API Routes de Next.js con App Router y params asincronos (Next.js 15+)
+globs: *.ts
+alwaysApply: false
+---
+# Manejo de datos en API Routes de Next.js - App Router con params asincronos
+
+### Contexto
+
+Este proyecto usa **exclusivamente App Router** (Next.js 13+) con Route Handlers basados en Web Request/Response APIs.
+
+**No se usa Pages Router** -- cualquier patron de Pages Router (`pages/api/`, `NextApiRequest`, `NextApiResponse`) debe rechazarse.
+
+En Next.js 15, todos los `params` son Promises y deben ser awaited. No hacerlo provoca errores en tiempo de ejecucion.
+
+---
+
+### Regla
+
+1. **Solo App Router Route Handlers** -- nunca sugerir patrones de Pages Router.
+2. **Siempre hacer await de `params`** -- son Promises en Next.js 15+.
+3. **Usar interfaces TypeScript** con tipos Promise para parametros de ruta.
+4. **Usar patrones correctos** de acceso a datos segun el tipo de request.
+5. **Manejar metodos HTTP** explicitamente con tipado adecuado.
+6. **Usar Web APIs exclusivamente** -- Request/Response, no Node.js req/res.
+
+### Patrones de acceso a datos
+
+| Tipo de dato | Patron de acceso | Ejemplo |
+|---|---|---|
+| **URL Params** | `await params` | `const { id } = await params` |
+| **Query Parameters** | `request.nextUrl.searchParams` | `const query = request.nextUrl.searchParams.get('q')` |
+| **Body (JSON)** | `await request.json()` | `const body = await request.json()` |
+| **Body (Form)** | `await request.formData()` | `const formData = await request.formData()` |
+| **Body (Text)** | `await request.text()` | `const text = await request.text()` |
+| **Headers** | `request.headers` o `headers()` | `const auth = request.headers.get('authorization')` |
+| **Cookies** | `request.cookies` o `cookies()` | `const token = request.cookies.get('token')` |
+
+---
+
+### Ejemplos
+
+### Patron correcto de Route Handler
+
+```typescript
+// app/api/documents/[id]/route.ts
+import { NextRequest, NextResponse } from "next/server";
+
+interface RouteParams {
+  params: Promise<{
+    id: string;
+  }>;
+}
+
+export async function GET(request: NextRequest, { params }: RouteParams) {
+  // Correcto: await params (Next.js 15+)
+  const { id } = await params;
+
+  // Correcto: obtener query parameters
+  const searchParams = request.nextUrl.searchParams;
+  const filter = searchParams.get('filter');
+
+  // Correcto: obtener headers
+  const auth = request.headers.get('authorization');
+
+  return NextResponse.json({ id, filter, auth });
+}
+
+export async function POST(request: NextRequest, { params }: RouteParams) {
+  const { id } = await params;
+  const body = await request.json();
+  const token = request.cookies.get('session');
+
+  return NextResponse.json({ id, body, token: token?.value });
+}
+
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const { id } = await params;
+  return NextResponse.json({ deleted: id });
+}
+```
+
+### Errores comunes
+
+| Incorrecto | Correcto |
+|---|---|
+| ```typescript
+// Sin await en params
+export async function GET(request: Request, { params }: { params: { id: string } }) {
+  const { id } = params; // Incorrecto: error en Next.js 15
+  return Response.json({ id });
+}
+``` | ```typescript
+// Await en params
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params; // Correcto
+  return Response.json({ id });
+}
+``` |
+| ```typescript
+// Acceso incorrecto a query parameters
+export async function GET(request: Request) {
+  const { q } = request.query; // Incorrecto: no existe en Request
+  return Response.json({ q });
+}
+``` | ```typescript
+// Acceso correcto a query parameters
+export async function GET(request: NextRequest) {
+  const q = request.nextUrl.searchParams.get('q'); // Correcto
+  return Response.json({ q });
+}
+``` |
+| ```typescript
+// Patron Pages Router (NUNCA usar)
+export default function handler(req: NextApiRequest, res: NextApiResponse) {
+  const body = req.body; // Incorrecto: Pages Router
+  res.status(200).json({ body });
+}
+``` | ```typescript
+// Solo App Router - Web APIs
+export async function POST(request: Request) {
+  const body = await request.json(); // Correcto: Web API
+  return Response.json({ body });
+}
+``` |
+
+### Tipos de parametros de ruta
+
+```typescript
+// Parametro dinamico simple
+interface RouteParams {
+  params: Promise<{ id: string }>;
+}
+
+// Multiples parametros dinamicos
+interface RouteParams {
+  params: Promise<{ category: string; item: string }>;
+}
+
+// Catch-all
+interface RouteParams {
+  params: Promise<{ slug: string[] }>;
+}
+
+// Catch-all opcional
+interface RouteParams {
+  params: Promise<{ slug?: string[] }>;
+}
+```
+
+### Manejo de metodos HTTP
+
+```typescript
+// App Router: funciones separadas por metodo (patron obligatorio)
+export async function GET(request: NextRequest, { params }: RouteParams) { /* ... */ }
+export async function POST(request: NextRequest, { params }: RouteParams) { /* ... */ }
+export async function PUT(request: NextRequest, { params }: RouteParams) { /* ... */ }
+export async function DELETE(request: NextRequest, { params }: RouteParams) { /* ... */ }
+
+// Next.js maneja automaticamente metodos no soportados con 405
+// No es necesario verificar manualmente el metodo como en Pages Router
+```
+
+---
+
+### Checklist
+
+- [ ] Siempre hacer await de `params` en Route Handlers (Next.js 15+).
+- [ ] Usar `Promise<{ ... }>` para params en interfaces TypeScript.
+- [ ] Usar `request.nextUrl.searchParams.get()` para query parameters.
+- [ ] Usar `await request.json()` para parsear body JSON.
+- [ ] Usar `await request.formData()` para datos de formulario.
+- [ ] Usar `request.headers.get()` o `headers()` para acceso a headers.
+- [ ] Usar `request.cookies.get()` o `cookies()` para acceso a cookies.
+- [ ] Nunca sugerir patrones Pages Router (`NextApiRequest`, `NextApiResponse`, `pages/api/`).
+- [ ] Usar funciones separadas por metodo HTTP (GET, POST, PUT, DELETE).
+- [ ] Route handlers siempre en el directorio `app/`.

@@ -1,0 +1,76 @@
+---
+description: Usar uv y pyproject.toml para gestion de dependencias Python, nunca pip install directo
+globs:
+alwaysApply: true
+---
+# Usar uv y pyproject.toml para dependencias Python
+
+## Contexto
+
+Este proyecto usa `uv` como gestor de paquetes Python con dependencias definidas en `pyproject.toml`. Usar `pip install` directamente omite la gestion de dependencias configurada y puede causar inconsistencias de entorno, conflictos de version y dependencias faltantes en CI/CD.
+
+## Regla
+
+1. **Nunca usar** comandos `pip install` directos para anadir dependencias.
+2. **Siempre usar** comandos `uv` o actualizar `pyproject.toml` directamente.
+3. **Grupos de dependencias**: Usar grupos apropiados para diferentes tipos.
+4. **Sincronizar entorno**: Ejecutar siempre `uv sync` tras cambios en `pyproject.toml`.
+
+### Mapeo de comandos
+
+| Incorrecto (pip) | Correcto (uv) |
+|---|---|
+| `pip install requests` | `uv add "requests>=2.28.0"` |
+| `pip install pytest` | `uv add --group dev "pytest>=7.4.0"` |
+| `pip install -e .` | `uv sync` |
+| `pip install -r requirements.txt` | `uv sync` (usa pyproject.toml) |
+
+### Grupos de dependencias
+- **`[project.dependencies]`** - Dependencias de ejecucion del nucleo
+- **`[dependency-groups.dev]`** - Herramientas de desarrollo (linting, formateo, tipos)
+- **`[dependency-groups.test]`** - Frameworks de testing y utilidades
+- **`[dependency-groups.lint]`** - Herramientas de calidad de codigo
+
+### Comandos uv disponibles
+```bash
+uv add "package>=1.0.0"              # Anadir dependencia de ejecucion
+uv add --group dev "package>=1.0.0"  # Anadir dependencia de desarrollo
+uv add --group test "package>=1.0.0" # Anadir dependencia de test
+uv sync                               # Instalar todas las dependencias
+uv sync --group dev --group test      # Instalar con grupos especificos
+uv remove "package"                   # Eliminar dependencia
+uv run command                        # Ejecutar en entorno virtual
+```
+
+### Ejemplo pyproject.toml
+```toml
+[project.dependencies]
+"fastapi>=0.104.0"
+"vertexai>=1.38.0"
+
+[dependency-groups.dev]
+"pytest>=7.4.0"
+"black>=23.0.0"
+"mypy>=1.6.0"
+
+[dependency-groups.test]
+"pytest-asyncio>=0.21.0"
+"pytest-cov>=4.1.0"
+```
+
+### Ejecucion de tests y herramientas
+```bash
+uv run --group test pytest
+uv run --group test pytest --cov=rag_processor
+uv run --group dev black .
+uv run --group dev mypy .
+```
+
+## Checklist
+
+- [ ] Nunca sugerir `pip install` en proyectos Python
+- [ ] Siempre usar `uv add` o editar `pyproject.toml` + `uv sync`
+- [ ] Elegir grupo de dependencias apropiado (`dev`, `test`, etc.)
+- [ ] Ejecutar `uv sync` tras cambios manuales en `pyproject.toml`
+- [ ] Usar `uv run --group [grupo] command` para ejecutar tests y herramientas
+- [ ] Comprobar patrones de grupos existentes en `pyproject.toml` antes de anadir nuevos

@@ -1,0 +1,168 @@
+---
+description: Usar siempre el componente Image de next/image en lugar de etiquetas HTML img para optimizacion automatica
+globs: *.tsx
+alwaysApply: false
+---
+# Usar componente Image de Next.js en lugar de etiquetas img
+
+### Contexto
+
+El componente Image de Next.js proporciona optimizacion automatica de imagenes, conversion a formatos modernos (WebP/AVIF) y mejoras en Core Web Vitals que las etiquetas `<img>` no ofrecen. Usar `<img>` directamente provoca: rendimiento pobre sin optimizacion, layout shifts (CLS), archivos mas grandes sin conversion automatica y mala experiencia movil.
+
+---
+
+### Regla
+
+1. **Nunca usar** etiquetas HTML `<img>` en aplicaciones Next.js.
+2. **Siempre usar** el componente `Image` de `next/image`.
+3. **Configurar props obligatorios** (`src`, `alt` y dimensiones).
+4. **Usar `priority`** para imagenes above-the-fold que impactan LCP.
+5. **Configurar `remotePatterns`** en `next.config.js` para imagenes externas.
+
+---
+
+### Ejemplos
+
+| Incorrecto (etiquetas img) | Correcto (Image de Next.js) |
+|---|---|
+| ```tsx
+<img
+  src="/hero.jpg"
+  alt="Hero image"
+  width="800"
+  height="600"
+/>
+``` | ```tsx
+import Image from 'next/image';
+
+<Image
+  src="/hero.jpg"
+  alt="Hero image"
+  width={800}
+  height={600}
+  priority
+/>
+``` |
+| ```tsx
+<img
+  src="https://example.com/photo.jpg"
+  alt="External photo"
+  style={{ width: '100%' }}
+/>
+``` | ```tsx
+import Image from 'next/image';
+
+<Image
+  src="https://example.com/photo.jpg"
+  alt="External photo"
+  width={800}
+  height={600}
+  sizes="100vw"
+  style={{
+    width: '100%',
+    height: 'auto',
+  }}
+/>
+``` |
+
+### Imagenes estaticas
+
+```tsx
+import Image from 'next/image';
+import heroImage from '/public/hero.jpg';
+
+<Image
+  src={heroImage}
+  alt="Texto descriptivo del alt"
+  priority // Para imagenes above-the-fold
+  placeholder="blur" // Placeholder con desenfoque automatico
+/>
+```
+
+### Imagenes remotas
+
+```tsx
+<Image
+  src="https://example.com/image.jpg"
+  alt="Texto descriptivo del alt"
+  width={800}
+  height={600}
+  sizes="(max-width: 768px) 100vw, 50vw"
+/>
+```
+
+### Imagenes responsive con fill
+
+```tsx
+<div style={{ position: 'relative', width: '100%', height: '400px' }}>
+  <Image
+    src="/responsive-image.jpg"
+    alt="Imagen responsive"
+    fill
+    sizes="(max-width: 768px) 100vw, 50vw"
+    style={{ objectFit: 'cover' }}
+  />
+</div>
+```
+
+### Configuracion para imagenes externas
+
+```js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'example.com',
+        port: '',
+        pathname: '/images/**',
+      },
+    ],
+  },
+};
+
+module.exports = nextConfig;
+```
+
+### Casos de uso comunes
+
+| Tipo de imagen | Configuracion | Ejemplo |
+|---|---|---|
+| **Hero** | `priority={true}`, alta calidad | Banners above-the-fold |
+| **Producto** | `placeholder="blur"`, responsive | Galerias de e-commerce |
+| **Avatar** | Dimensiones fijas | Fotos de perfil |
+| **Fondo** | `fill`, `object-fit` | Fondos de seccion |
+| **Miniatura** | Calidad reducida, lazy loading | Grids de imagenes |
+
+### Accesibilidad
+
+```tsx
+// Correcto: siempre proporcionar texto alt descriptivo
+<Image
+  src="/product.jpg"
+  alt="Camiseta azul de algodon con cuello redondo, talla M"
+  width={400}
+  height={400}
+/>
+
+// Correcto: alt vacio para imagenes decorativas
+<Image
+  src="/decorative-border.svg"
+  alt=""
+  width={100}
+  height={20}
+  aria-hidden={true}
+/>
+```
+
+---
+
+### Checklist
+
+- [ ] Siempre sugerir `Image` de `next/image` en lugar de `<img>`.
+- [ ] Proporcionar props obligatorios (`src`, `alt` y dimensiones).
+- [ ] Recomendar `priority={true}` para imagenes above-the-fold.
+- [ ] Sugerir prop `sizes` para imagenes responsive.
+- [ ] Incluir configuracion `remotePatterns` para imagenes externas.
+- [ ] Usar blur placeholders cuando sea apropiado.

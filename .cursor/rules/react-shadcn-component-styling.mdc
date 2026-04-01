@@ -1,0 +1,48 @@
+---
+description: Estilizar componentes Shadcn en el origen (CVA), no en el punto de uso
+globs: *tsx
+alwaysApply: false
+---
+# Estilizar componentes Shadcn en el origen, no en el punto de uso
+
+### Contexto
+
+Los componentes Shadcn UI en `@/components/ui` exponen **variants** y **sizes** via `class-variance-authority` (CVA). Esto centraliza las clases Tailwind para que cada instancia sea visualmente consistente y las actualizaciones se propaguen a todas partes. Clases Tailwind ad-hoc anadidas en el punto de uso se convierten en one-offs no rastreados que rompen el sistema de diseno.
+
+### Regla
+
+1. **No anadir** clases Tailwind arbitrarias via `className` al usar componentes de `@/ui`.
+2. Si el estilo deseado ya existe, consumirlo a traves de los props documentados `variant`, `size`, etc.
+3. Si el diseno requiere estilo nuevo:
+   - Extender la declaracion CVA del componente (ej. `buttonVariants`) con un nuevo `variant`/`size`, o
+   - Ajustar el estilo por defecto dentro del archivo fuente.
+4. Los importadores deben permanecer limpios:
+
+   ```tsx
+   // Correcto - usa un variant definido en components/ui/button.tsx
+   <Button variant="outlinePrimary">Save</Button>
+   ```
+
+### Ejemplos
+
+| Incorrecto (estilo inline) | Correcto (centralizado) |
+|----------------------------|-------------------------|
+| ```tsx
+  <Button
+    variant="outline"
+    className="hidden sm:inline-flex bg-white/90 dark:bg-gray-800/80 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+  >
+    ...
+  </Button>
+  ``` | ```tsx
+  // Anadir nuevo variant en components/ui/button.tsx:
+  //   outlineMuted: "hidden sm:inline-flex bg-white/90 ..."
+  // Luego consumirlo uniformemente:
+  <Button variant="outlineMuted">...</Button>
+  ``` |
+
+### Checklist
+
+- [ ] Nunca sugerir clases Tailwind custom via `className` en componentes Shadcn
+- [ ] En su lugar, instruir a extender el mapa CVA del componente (variants/sizes/etc.)
+- [ ] Asegurar que los usos resultantes importen solo los nuevos valores de prop, manteniendo los call-sites minimos

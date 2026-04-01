@@ -1,0 +1,59 @@
+---
+description: Envolver componentes que usen useSearchParams() en un boundary Suspense
+globs: *.tsx
+alwaysApply: false
+---
+# Envolver Client Components con useSearchParams() en Suspense
+
+### Contexto
+
+En Next.js App Router, el hook `useSearchParams()` provoca un **bailout de renderizado del cliente** a menos que el componente que lo llama este dentro de un boundary `<Suspense>`. Omitir el boundary causa fallos en build:
+
+```
+useSearchParams() should be wrapped in a suspense boundary
+```
+
+### Regla
+
+1. Cualquier **Client Component** (archivo con `'use client'`) que llame a `useSearchParams()` **debe** renderizarse dentro de un boundary `<Suspense>`.
+2. El boundary puede estar en un **Server Component** padre u otro Client Component, pero **debe** envolver directamente al componente que usa el hook.
+3. Proporcionar un `fallback` apropiado para evitar saltos de layout.
+
+### Ejemplos
+
+| Incorrecto | Correcto |
+|------------|----------|
+| ```tsx
+  // app/(auth)/reset-password/confirm/page.tsx
+  'use client';
+  import { useSearchParams } from 'next/navigation';
+  export default function Confirm() {
+    const params = useSearchParams();
+    // ...
+  }
+  ``` | ```tsx
+  // app/(auth)/reset-password/confirm/Confirm.tsx (Client Component)
+  'use client';
+  import { useSearchParams } from 'next/navigation';
+  export default function Confirm() {
+    const params = useSearchParams();
+    // ...
+  }
+
+  // app/(auth)/reset-password/confirm/page.tsx (Server Component)
+  import { Suspense } from 'react';
+  import Confirm from './Confirm';
+  export default function ConfirmPage() {
+    return (
+      <Suspense fallback={<p>Loading...</p>}>
+        <Confirm />
+      </Suspense>
+    );
+  }
+  ``` |
+
+### Checklist
+
+- [ ] Cuando un componente usa `useSearchParams()`, asegurar que se envuelve en `<Suspense>` con un `fallback`
+- [ ] Nunca sugerir usar `useSearchParams()` en un Client Component sin boundary Suspense
+- [ ] Verificar que las paginas/layouts compilan sin el error de CSR-bailout

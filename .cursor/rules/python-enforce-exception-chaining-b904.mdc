@@ -1,0 +1,107 @@
+---
+description: Habilitar y aplicar la regla B904 de Ruff para encadenamiento obligatorio de excepciones en Python
+globs: *.py
+alwaysApply: false
+---
+# Encadenamiento de excepciones B904
+
+## Contexto
+
+La regla B904 de Ruff detecta una violacion critica: lanzar excepciones dentro de bloques `except` sin encadenamiento adecuado. Sin encadenamiento, se pierde el contexto de la excepcion original, dificultando la depuracion.
+
+## Regla
+
+Habilitar SIEMPRE B904 en la configuracion de Ruff:
+
+```toml
+[tool.ruff.lint]
+select = [
+    "B904",  # raise exceptions with `raise ... from err`
+]
+```
+
+Validacion:
+```bash
+uv run --group lint ruff check --select B904 .
+```
+
+## Ejemplos
+
+### Incorrecto
+```python
+try:
+    risky_operation()
+except Exception as e:
+    logger.error(f"Operation failed: {e}")
+    # Incorrecto: se pierde el contexto original
+    raise CustomError(f"Operation failed: {e}")
+```
+
+### Correcto (preservar contexto)
+```python
+try:
+    risky_operation()
+except Exception as e:
+    logger.error(f"Operation failed: {e}")
+    # Correcto: contexto original preservado
+    raise CustomError(f"Operation failed: {e}") from e
+```
+
+### Correcto (suprimir contexto intencionalmente)
+```python
+try:
+    risky_operation()
+except Exception as e:
+    logger.error(f"Operation failed: {e}")
+    # Correcto: supresion explicita cuando el contexto original no es util
+    raise CustomError("User-friendly error message") from None
+```
+
+### Patron de capa de servicio
+```python
+class DatabaseService:
+    async def store_data(self, data: dict) -> None:
+        try:
+            await self._internal_store(data)
+        except ConnectionError as e:
+            logger.error("Database connection failed", error=str(e))
+            raise DatabaseServiceError("Storage operation failed") from e
+        except ValidationError as e:
+            logger.error("Data validation failed", error=str(e))
+            raise DatabaseServiceError("Invalid data format") from None
+```
+
+### Patron de API
+```python
+@app.post("/api/process")
+async def process_data(request: ProcessRequest) -> ProcessResponse:
+    try:
+        result = await processing_service.process(request.data)
+        return ProcessResponse(result=result)
+    except ProcessingServiceError as e:
+        logger.error("Processing failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Processing failed") from e
+```
+
+### Errores comunes a evitar
+```toml
+# Incorrecto: nunca deshabilitar B904 globalmente
+[tool.ruff.lint]
+ignore = ["B904"]  # Nunca hacer esto
+```
+
+```python
+# Incorrecto: re-raise redundante
+try:
+    operation()
+except ValueError as e:
+    raise e from e  # Redundante, usar bare 'raise'
+```
+
+## Checklist
+
+- [ ] B904 habilitado en configuracion local de Ruff
+- [ ] Ejecutar `ruff check --select B904` antes de commitear
+- [ ] Nunca usar `# noqa: B904` sin justificacion documentada
+- [ ] Verificar que todos los raises en bloques except usan `from e` o `from None`
+- [ ] Incluir B904 en pipeline CI/CD

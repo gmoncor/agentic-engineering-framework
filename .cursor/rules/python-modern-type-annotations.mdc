@@ -1,0 +1,120 @@
+---
+description: Anotaciones de tipo modernas Python 3.10+ con ejemplos completos y validacion
+globs: *.py
+alwaysApply: false
+---
+# Anotaciones de tipo modernas (Python 3.10+)
+
+## Contexto
+
+Python 3.10+ introdujo sintaxis moderna de anotaciones de tipo que debe usarse en lugar de los equivalentes legacy del modulo `typing`. Esto se alinea con PEP 604 y herramientas como Ruff (UP035, UP006, UP007, UP045) aplican estos estandares.
+
+## Regla
+
+Usar SIEMPRE sintaxis moderna de Python 3.10+ en todo el codigo:
+
+### Reemplazos completos
+
+| Incorrecto (legacy) | Correcto (moderno) |
+|---|---|
+| `typing.Dict[str, int]` | `dict[str, int]` |
+| `typing.List[str]` | `list[str]` |
+| `typing.Set[int]` | `set[int]` |
+| `typing.Tuple[str, ...]` | `tuple[str, ...]` |
+| `typing.Optional[str]` | `str \| None` |
+| `typing.Union[str, int]` | `str \| int` |
+| `Optional[List[str]]` | `list[str] \| None` |
+| `Dict[str, List[str]]` | `dict[str, list[str]]` |
+
+### Estrategia de imports
+```python
+# Correcto: imports minimos modernos
+from typing import Any, Literal, Protocol, TypeVar, Generic
+
+# Incorrecto: imports legacy (NO USAR)
+from typing import Dict, List, Optional, Union, Set, Tuple
+```
+
+## Ejemplos
+
+### Incorrecto (sintaxis legacy mezclada)
+```python
+from typing import Dict, List, Optional, Union, Any
+
+class BadModel(BaseModel):
+    name: Optional[str] = Field(default=None)
+    items: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    tags: Optional[List[str]] = Field(default=None)
+```
+
+### Correcto (sintaxis moderna consistente)
+```python
+from datetime import datetime, timezone
+from typing import Any, Literal
+from pydantic import BaseModel, Field
+
+class GoodModel(BaseModel):
+    name: str | None = Field(default=None)
+    items: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    tags: list[str] | None = Field(default=None)
+    config: dict[str, str | int] = Field(default_factory=dict)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+```
+
+### Anotaciones en funciones
+```python
+def process_data(
+    items: list[str],
+    config: dict[str, Any],
+    optional_filter: str | None = None,
+) -> dict[str, list[str]]:
+    result: dict[str, list[str]] = {}
+    return result
+
+async def fetch_data(
+    ids: list[str],
+    metadata: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    return results
+```
+
+### Atributos de clase
+```python
+class ProcessingService:
+    def __init__(self) -> None:
+        self.items: list[str] = []
+        self.config: dict[str, Any] = {}
+        self.cache: dict[str, str] | None = None
+```
+
+### Configuracion Ruff requerida
+```toml
+[tool.ruff.lint]
+select = [
+    "UP006",  # Usar dict en vez de Dict
+    "UP007",  # Usar X | Y en vez de Union[X, Y]
+    "UP035",  # Import from typing deprecado
+    "UP045",  # Usar X | None en vez de Optional[X]
+    "F401",   # Imports no usados
+]
+fixable = ["UP006", "UP007", "UP035", "UP045", "F401"]
+```
+
+### Validacion
+```bash
+uv run --group dev ruff check --fix .
+uv run --group dev black .
+uv run --group dev mypy .
+```
+
+## Checklist
+
+- [ ] Nunca importar `Dict`, `List`, `Optional`, `Union` de typing
+- [ ] Usar `list[T]`, `dict[K, V]`, `X | None` consistentemente
+- [ ] Anotaciones completas en variables, parametros y retornos
+- [ ] Estilo consistente en todo el codigo
+- [ ] Reglas UP habilitadas en pyproject.toml
+- [ ] Ejecutar validacion ruff + mypy tras cambios

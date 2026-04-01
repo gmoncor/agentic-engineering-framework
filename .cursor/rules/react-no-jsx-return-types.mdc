@@ -1,0 +1,117 @@
+---
+description: No anotar tipos de retorno JSX en componentes React - dejar que TypeScript los infiera
+globs: *.tsx
+alwaysApply: false
+---
+# Los componentes React no necesitan tipos de retorno JSX
+
+### Contexto
+
+En React moderno con TypeScript, las anotaciones explicitas de tipo de retorno como `JSX.Element`, `React.ReactElement` o `React.FC` son **innecesarias y desaconsejadas**. TypeScript infiere automaticamente el tipo de retorno JSX correcto. Esto es una **excepcion especifica** a la regla general de tipos de retorno explicitos: los componentes funcionales React no los necesitan.
+
+### Regla
+
+1. **Nunca anadir tipos de retorno JSX explicitos** a componentes funcionales React.
+2. **Dejar que TypeScript infiera** los tipos de retorno JSX automaticamente.
+3. **Eliminar anotaciones existentes** de tipo de retorno JSX cuando se encuentren.
+4. **Centrar el tipado explicito en las interfaces de props**, no en tipos de retorno.
+5. **Esta regla sobreescribe** la regla general de tipos de retorno explicitos para componentes React.
+
+### Ejemplos
+
+### Correcto - Sin anotacion de tipo de retorno
+
+```typescript
+// Correcto - TypeScript infiere el tipo de retorno JSX
+function HeroSection() {
+  return (
+    <div>
+      <h1>Welcome</h1>
+    </div>
+  );
+}
+
+// Correcto - Con props, tampoco necesita tipo de retorno
+interface Props {
+  title: string;
+  subtitle?: string;
+}
+
+function HeroSection({ title, subtitle }: Props) {
+  return (
+    <div>
+      <h1>{title}</h1>
+      {subtitle && <p>{subtitle}</p>}
+    </div>
+  );
+}
+
+// Correcto - Arrow function sin tipo de retorno
+const HeroSection = ({ title }: { title: string }) => {
+  return <div><h1>{title}</h1></div>;
+};
+
+// Correcto - Componente async (Server Component)
+async function ServerComponent() {
+  const data = await fetchData();
+  return <div>{data.title}</div>;
+}
+```
+
+### Incorrecto - Anotaciones innecesarias
+
+```typescript
+// Incorrecto - JSX.Element innecesario
+function HeroSection(): JSX.Element {
+  return <div><h1>Welcome</h1></div>;
+}
+
+// Incorrecto - React.ReactElement innecesario
+function HeroSection(): React.ReactElement {
+  return <div><h1>Welcome</h1></div>;
+}
+
+// Incorrecto - React.FC tambien innecesario
+const HeroSection: React.FC = () => {
+  return <div><h1>Welcome</h1></div>;
+};
+
+// Incorrecto - Promise<JSX.Element> innecesario en async
+async function ServerComponent(): Promise<JSX.Element> {
+  const data = await getData();
+  return <div>{data.title}</div>;
+}
+```
+
+### Casos especificos
+
+```typescript
+// Correcto - TypeScript maneja retornos condicionales automaticamente
+function ConditionalComponent({ show }: { show: boolean }) {
+  if (!show) return null; // TypeScript sabe que retorna JSX.Element | null
+  return <div>Content</div>;
+}
+
+// Correcto - La inferencia generica funciona bien en HOCs
+function withLoading<T extends object>(Component: React.ComponentType<T>) {
+  return function LoadingWrapper(props: T & { isLoading?: boolean }) {
+    if (props.isLoading) return <div>Loading...</div>;
+    return <Component {...props} />;
+  };
+}
+```
+
+### Integracion con otras reglas
+
+- **Funciones generales**: siguen requiriendo tipos de retorno explicitos
+- **API handlers**: siguen requiriendo tipos de retorno explicitos
+- **Funciones utilitarias**: siguen requiriendo tipos de retorno explicitos
+- **Componentes React**: NO requieren anotaciones de tipo de retorno (esta regla)
+
+### Checklist
+
+- [ ] Nunca sugerir anadir JSX.Element, React.ReactElement o React.FC como tipo de retorno
+- [ ] Eliminar tipos de retorno JSX explicitos al editar componentes React
+- [ ] Centrar las sugerencias de TypeScript en interfaces de props
+- [ ] Dejar que TypeScript infiera automaticamente los tipos de retorno JSX
+- [ ] Seguir aplicando tipos de retorno explicitos a funciones no-React en el mismo archivo

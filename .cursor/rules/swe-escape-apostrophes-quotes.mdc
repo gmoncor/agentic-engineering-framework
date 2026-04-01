@@ -1,0 +1,51 @@
+---
+description: Escapar apóstrofos y comillas en nodos de texto JSX/HTML
+globs: *.tsx
+alwaysApply: false
+---
+
+# Escapar Apóstrofos y Comillas en JSX/HTML
+
+## Contexto
+
+El linter marca apóstrofos (`'`) y comillas (`"`) sin escapar que aparecen **dentro de nodos de texto JSX/HTML**. Por ejemplo:
+
+```tsx
+<h2>AI Power Users' Biggest Frustration—<span>Solved</span></h2>
+```
+
+genera el aviso:
+
+```
+' can be escaped with &apos;, &lsquo;, &#39;, &rsquo;.
+```
+
+## Regla
+
+Al generar JSX/HTML (incluido Markdown que se renderiza como HTML), **nunca coloques apóstrofos o comillas sin escapar directamente dentro de un nodo de texto**. Usa una de estas estrategias:
+
+1. **Usar la entidad HTML correspondiente**
+   - Apóstrofo: `&rsquo;`, `&apos;` o `&#39;`
+   - Comilla doble: `&quot;`, `&ldquo;` o `&#34;`
+
+2. **Envolver el texto en una expresión JavaScript**:
+
+```tsx
+<h2>{"AI Power Users' Biggest Frustration—"}<span>Solved</span></h2>
+```
+
+3. **Reformular la frase** para evitar el carácter problemático, si no cambia el significado.
+
+## Ejemplos
+
+| Incorrecto | Correcto |
+|------------|----------|
+| `<p>Sarah's workflow</p>` | `<p>Sarah&rsquo;s workflow</p>` |
+| `<blockquote>"Time-saving" tools.</blockquote>` | `<blockquote>&ldquo;Time-saving&rdquo; tools.</blockquote>` |
+| `<h2>AI Power Users' Biggest Frustration—</h2>` | `{"AI Power Users' Biggest Frustration—"}` |
+
+## Checklist
+
+- [ ] Revisar todos los nodos de texto JSX/HTML en busca de `'` y `"`
+- [ ] Aplicar una de las estrategias de escapado indicadas
+- [ ] Verificar que el linter no muestra avisos de escape de literales

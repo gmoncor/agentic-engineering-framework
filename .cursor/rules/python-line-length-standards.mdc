@@ -1,0 +1,78 @@
+---
+description: Limite de longitud de linea de 88 caracteres para codigo Python (estandar Black/Ruff)
+globs: *.py
+alwaysApply: false
+---
+# Longitud de linea: 88 caracteres
+
+## Contexto
+
+El desarrollo moderno de Python ha migrado del limite obsoleto de 79 caracteres a **88 caracteres** como estandar. Es el valor por defecto de Black y Ruff, ampliamente adoptado por la comunidad Python.
+
+## Regla
+
+Usar SIEMPRE 88 caracteres como limite de longitud de linea. Configurar todas las herramientas de forma consistente.
+
+### Configuracion pyproject.toml
+```toml
+[tool.black]
+line-length = 88
+target-version = ['py310']
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "N"]
+ignore = ["E501"]  # Black gestiona la longitud de linea
+```
+
+## Ejemplos
+
+### Firmas de funcion
+```python
+# Correcto: encaja naturalmente en 88 caracteres
+async def store_multimodal_chunks(
+    chunks: list[ChunkData], user_id: str, document_id: str
+) -> None:
+    """Almacenar chunks multimodales en la base de datos."""
+    pass
+
+# Correcto: saltos razonables para firmas largas
+async def process_file_with_advanced_options(
+    file_path: str,
+    processing_options: dict[str, str | int],
+    callback: Callable[[ProcessingResult], None] | None = None,
+) -> ProcessingResult:
+    pass
+```
+
+### Validacion
+```bash
+# Comprobar longitud con Ruff
+uv run --group lint ruff check --select E501 .
+
+# Formatear con Black (88 chars por defecto)
+uv run --group lint black .
+
+# Comprobar formato
+uv run --group lint black --check .
+```
+
+### Configuracion IDE (VS Code)
+```json
+{
+  "python.formatting.provider": "black",
+  "python.linting.ruffEnabled": true,
+  "editor.rulers": [88]
+}
+```
+
+## Checklist
+
+- [ ] Todas las herramientas Python configuradas a 88 caracteres
+- [ ] Black con su configuracion por defecto de 88 chars
+- [ ] Ruff ignora E501 (delegado a Black)
+- [ ] Guias del editor a 88 caracteres
+- [ ] No romper lineas artificialmente antes de 88 caracteres

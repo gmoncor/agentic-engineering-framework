@@ -1,0 +1,90 @@
+---
+description: Usar valores constantes como defaults para tipos Literal en Python, evitando errores de asignacion de mypy
+globs: *.py
+alwaysApply: false
+---
+# Tipos Literal con valores por defecto correctos
+
+## Contexto
+
+Al usar tipos `Literal` en parametros de funcion o campos Pydantic, los valores por defecto deben coincidir exactamente con los valores literales. Usar constantes de cadena en lugar de los valores literales causa errores de asignacion en mypy.
+
+## Regla
+
+Usar SIEMPRE valores constantes como defaults, no cadenas literales directas:
+
+1. Definir clases de constantes para valores literales.
+2. Crear alias de tipo para reutilizacion.
+3. Usar constantes en valores por defecto.
+
+## Ejemplos
+
+### Incorrecto
+```python
+from typing import Literal
+
+class ContentTypes:
+    VIDEO = "video"
+    AUDIO = "audio"
+
+# Incorrecto: cadena literal como default - error mypy
+def create_metadata(
+    content_type: Literal["video", "audio"] = "video"
+) -> None:
+    pass
+```
+
+### Correcto
+```python
+from typing import Literal
+
+class ContentTypes:
+    VIDEO = "video"
+    AUDIO = "audio"
+
+ContentType = Literal["video", "audio"]
+
+# Correcto: constante como default
+def create_metadata(
+    content_type: ContentType = ContentTypes.VIDEO
+) -> None:
+    pass
+```
+
+### Patron con Pydantic
+```python
+class VideoChunkMetadata(BaseModel):
+    content_type: Literal["video"] = Field(
+        default=ContentTypes.VIDEO,
+        description="Discriminador de tipo de contenido"
+    )
+    embedding_type: EmbeddingType = Field(
+        default=EmbeddingTypes.MULTIMODAL,
+        description="Tipo de embedding"
+    )
+```
+
+### Alternativa con Enum
+```python
+from enum import Enum
+
+class ContentType(str, Enum):
+    VIDEO = "video"
+    AUDIO = "audio"
+    IMAGE = "image"
+    DOCUMENT = "document"
+
+def process_content(
+    content_type: ContentType = ContentType.DOCUMENT
+) -> ProcessingResult:
+    pass
+```
+
+## Checklist
+
+- [ ] Todos los parametros `Literal` usan constantes como defaults
+- [ ] Sin cadenas literales directas como defaults para tipos `Literal`
+- [ ] Clases de constantes definidas para literales de cadena
+- [ ] Alias de tipo creados para tipos `Literal` complejos
+- [ ] Campos Pydantic usan `Field()` con defaults constantes
+- [ ] Considerar Enums para valores literales relacionados

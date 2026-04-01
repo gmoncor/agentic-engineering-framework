@@ -1,0 +1,36 @@
+---
+description: Usar siempre npx shadcn@latest add para instalar componentes Shadcn
+globs:
+alwaysApply: true
+---
+# Instalar componentes Shadcn usando npx
+
+### Contexto
+
+La CLI de Shadcn UI genera componentes React tipados e integrados con el tema del proyecto. Usar la version `@latest` asegura obtener siempre el markup, estilo y definiciones TypeScript mas actualizados. Variantes como `npx shadcn-ui` o `pnpm dlx shadcn` estan **deprecadas o son inconsistentes**.
+
+### Regla
+
+1. Al instruir como anadir un componente Shadcn, **siempre** usar el formato exacto:
+
+   ```bash
+   npx shadcn@latest add <component>
+   ```
+
+2. Reemplazar `<component>` con el nombre del componente (ej. `button`, `card`).
+3. **No sugerir** instaladores alternativos (`pnpm dlx`, `yarn dlx`, instalaciones globales, etc.).
+4. Para multiples componentes, invocar el comando una vez por componente o pasarlos como lista separada por espacios despues de `add`.
+
+### Ejemplos
+
+| Incorrecto | Correcto |
+|------------|----------|
+| `npx shadcn-ui add button` | `npx shadcn@latest add button` |
+| `pnpm dlx shadcn add card` | `npx shadcn@latest add card` |
+| `yarn dlx shadcn@latest add alert` | `npx shadcn@latest add alert` |
+
+### Checklist
+
+- [ ] Al dar instrucciones de instalacion de componentes Shadcn, siempre empezar con `npx shadcn@latest add`
+- [ ] Nunca usar gestores de paquetes alternativos ni nombres de comando antiguos
+- [ ] Asegurar que el placeholder `<component>` se reemplace con el nombre real en ejemplos concretos

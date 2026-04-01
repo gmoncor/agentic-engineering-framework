@@ -1,0 +1,115 @@
+---
+description: Usar operadores type-safe de Drizzle ORM en lugar de SQL crudo para evitar inyecciones y mantener seguridad de tipos
+globs: *.ts,*.tsx
+alwaysApply: false
+---
+# Operadores Type-Safe de Drizzle ORM - Evitar SQL Crudo
+
+### Contexto
+
+Drizzle ORM proporciona operadores type-safe (`eq`, `inArray`, `and`, `or`, etc.) que deben preferirse sobre SQL construido manualmente con el template `sql`. Construir SQL a mano introduce riesgos de inyeccion, pierde seguridad de tipos y reduce la mantenibilidad.
+
+El template `sql` solo debe usarse para funcionalidad especifica de base de datos que no tenga operador equivalente en Drizzle.
+
+### Regla
+
+1. **Usar siempre operadores Drizzle** para operaciones basicas en lugar de SQL manual.
+2. **Nunca usar el template `sql`** para operaciones que tienen operador dedicado.
+3. **Importar los operadores necesarios** desde `drizzle-orm`.
+4. **Solo usar SQL crudo** cuando no exista operador Drizzle para la funcionalidad requerida.
+5. **Usar `sql<T>`** para indicar tipos cuando sea necesario SQL crudo.
+
+### Ejemplos
+
+**Mapeo de operadores comunes:**
+
+| Incorrecto (SQL crudo) | Correcto (Operadores Drizzle) |
+|---|---|
+| `sql\`\${column} = ANY(\${array})\`` | `inArray(column, array)` |
+| `sql\`\${column} = \${value}\`` | `eq(column, value)` |
+| `sql\`\${col1} > \${val} AND \${col2} < \${val2}\`` | `and(gt(col1, val), lt(col2, val2))` |
+| `sql\`\${column} IN (\${values.join(',')})\`` | `inArray(column, values)` |
+| `sql\`\${column} IS NULL\`` | `isNull(column)` |
+| `sql\`\${column} LIKE \${pattern}\`` | `like(column, pattern)` |
+
+**Operadores disponibles:**
+
+- **Comparacion:** `eq`, `ne`, `gt`, `gte`, `lt`, `lte`
+- **Arrays:** `inArray`, `notInArray`, `arrayContains`, `arrayContained`, `arrayOverlaps`
+- **Nulos:** `isNull`, `isNotNull`
+- **Patrones:** `like`, `ilike`, `notIlike`
+- **Rangos:** `between`, `notBetween`
+- **Logicos:** `and`, `or`, `not`
+- **Existencia:** `exists`, `notExists`
+
+**Cuando SQL crudo es apropiado:**
+
+```ts
+// Correcto - Funcion especifica de base de datos
+sql<string>`to_tsvector('simple', ${posts.content})`
+
+// Correcto - Funcion personalizada compleja
+sql<number>`calculate_distance(${lat1}, ${lng1}, ${lat2}, ${lng2})`
+```
+
+**Consultas dinamicas con condiciones:**
+
+```ts
+// Correcto - Condiciones dinamicas
+const conditions = [];
+if (userId) conditions.push(eq(table.userId, userId));
+if (status) conditions.push(eq(table.status, status));
+if (tags.length > 0) conditions.push(inArray(table.tags, tags));
+
+const result = await db
+  .select()
+  .from(table)
+  .where(and(...conditions));
+```
+
+**Prevencion de inyeccion SQL:**
+
+```ts
+// Incorrecto - Riesgo de inyeccion SQL
+const userInput = "'; DROP TABLE users; --";
+sql`SELECT * FROM users WHERE name = '${userInput}'`
+
+// Correcto - Parametrizado con operador Drizzle
+eq(users.name, userInput)
+
+// Correcto - SQL crudo parametrizado cuando sea necesario
+sql`SELECT * FROM users WHERE name = ${userInput}`
+```
+
+**Seguridad de tipos:**
+
+```ts
+// Incorrecto - Sin informacion de tipo
+const result = sql`lower(${users.name})`;
+
+// Correcto - Con indicacion de tipo
+const result = sql<string>`lower(${users.name})`;
+```
+
+**Imports necesarios:**
+
+```ts
+import {
+  eq, ne, gt, gte, lt, lte,
+  inArray, notInArray,
+  and, or, not,
+  isNull, isNotNull,
+  like, ilike,
+  between, exists
+} from "drizzle-orm";
+```
+
+### Checklist
+
+- [ ] Verificar si la operacion tiene operador Drizzle antes de usar `sql`.
+- [ ] Importar operadores necesarios desde `drizzle-orm`.
+- [ ] Usar `inArray()` en lugar de clausulas `IN` o `ANY()` manuales.
+- [ ] Usar `and()`, `or()` para combinar condiciones.
+- [ ] Solo sugerir `sql` para funciones sin equivalente Drizzle.
+- [ ] Anadir `sql<T>` cuando sea necesario SQL crudo.
+- [ ] Asegurar que las entradas de usuario estan parametrizadas, nunca interpoladas en SQL.

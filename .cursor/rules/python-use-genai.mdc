@@ -1,0 +1,116 @@
+---
+description: Usar google-genai como paquete principal de IA, vertexai solo para embeddings multimodales
+globs: *.py
+alwaysApply: false
+---
+# Usar Google GenAI como paquete principal de IA
+
+## Contexto
+
+Google ha modernizado su plataforma de IA con el paquete `google-genai` como interfaz principal. Proporciona API unificada, gestion de archivos, acceso a modelos como Gemini 2.5 Flash y autenticacion simplificada. El paquete `vertexai` solo debe usarse para embeddings multimodales.
+
+## Regla
+
+Prioridad de uso:
+1. **PRINCIPAL: `google-genai`** - Usar para TODAS las operaciones de IA cuando sea posible.
+2. **ALTERNATIVA: `vertexai`** - SOLO para embeddings multimodales.
+3. **PROHIBIDO: `google-cloud-aiplatform`** - Completamente deprecado.
+
+### Dependencias en pyproject.toml
+```toml
+[project.dependencies]
+"google-genai>=1.24.0"  # Paquete principal de Google AI
+# Solo incluir vertexai si se necesitan embeddings multimodales
+"vertexai>=1.38.0"      # SOLO para embeddings multimodales
+```
+
+## Ejemplos
+
+### Correcto: patron Google GenAI
+```python
+import google.genai as genai
+
+# Inicializar cliente GenAI
+client = genai.Client(
+    vertexai=True,
+    project=PROJECT_ID,
+    location=LOCATION
+)
+
+# Transcripcion de audio
+audio_file = client.files.upload(file=audio_path)
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=["Generate a transcript of the speech.", audio_file]
+)
+
+# Analisis de imagen
+image_file = client.files.upload(file=image_path)
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=["Describe this image in detail", image_file]
+)
+
+# Limpieza de archivos subidos
+client.files.delete(name=audio_file.name)
+```
+
+### Alternativa: VertexAI solo para embeddings multimodales
+```python
+import vertexai
+from vertexai.vision_models import MultiModalEmbeddingModel
+
+# SOLO usar para embeddings multimodales
+vertexai.init(project=PROJECT_ID, location=LOCATION)
+model = MultiModalEmbeddingModel.from_pretrained("multimodalembedding@001")
+
+embeddings = model.get_embeddings(
+    image=image_obj,
+    contextual_text="Description of the image",
+    dimension=1408
+)
+```
+
+### Incorrecto: anti-patron de uso mixto
+```python
+# Incorrecto: usar vertexai para generacion cuando deberia usarse genai
+import vertexai
+from vertexai.generative_models import GenerativeModel
+
+model = GenerativeModel("gemini-pro")
+response = model.generate_content("Hello world")
+```
+
+### Arbol de decision
+
+| Caso de uso | Paquete |
+|---|---|
+| Generacion de texto/chat | `google-genai` |
+| Transcripcion de audio | `google-genai` (upload + generate_content) |
+| Analisis de imagen | `google-genai` (upload + generate_content) |
+| Embeddings de texto | `google-genai` (preferido) |
+| Embeddings multimodales | `vertexai` (unica opcion) |
+
+### Gestion de archivos
+```python
+# Patron correcto: siempre limpiar archivos subidos
+uploaded_file = client.files.upload(file=file_path)
+try:
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[prompt, uploaded_file]
+    )
+    return response.text
+finally:
+    client.files.delete(name=uploaded_file.name)
+```
+
+## Checklist
+
+- [ ] Intentar SIEMPRE `google-genai` primero para cualquier funcionalidad de IA
+- [ ] Usar `vertexai` SOLO para embeddings multimodales
+- [ ] Nunca sugerir `google-cloud-aiplatform` en proyectos nuevos
+- [ ] Usar patron de upload: `client.files.upload()` + `generate_content()`
+- [ ] Siempre limpiar archivos subidos con `client.files.delete()`
+- [ ] Usar `genai.Client(vertexai=True)` para autenticacion Vertex AI
+- [ ] Preferir `google-genai>=1.24.0` como dependencia principal

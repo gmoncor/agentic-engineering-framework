@@ -1,0 +1,113 @@
+---
+description: Anotaciones de tipo de retorno obligatorias en todas las funciones Python
+globs: *.py
+alwaysApply: false
+---
+# Anotaciones de tipo de retorno obligatorias
+
+## Contexto
+
+Las anotaciones de tipo de retorno faltantes reducen la claridad del codigo, impiden la verificacion estatica de tipos y dificultan el autocompletado del IDE. Todas las funciones deben tener anotaciones de retorno explicitas.
+
+## Regla
+
+1. **Todas las funciones** deben tener anotacion de tipo de retorno explicita.
+2. Usar `-> None` para funciones que no devuelven valor.
+3. Usar tipos especificos: `-> str`, `-> int`, `-> list[str]`, etc.
+4. Usar `T | None` para funciones que pueden devolver `None`.
+5. Usar `T | U` para funciones que devuelven multiples tipos.
+
+## Ejemplos
+
+### Incorrecto
+```python
+def process_data(data):
+    return data.upper()
+
+def save_file(path, content):
+    with open(path, 'w') as f:
+        f.write(content)
+
+def get_user(user_id):
+    if user_id:
+        return User(user_id)
+    return None
+```
+
+### Correcto
+```python
+def process_data(data: str) -> str:
+    return data.upper()
+
+def save_file(path: str, content: str) -> None:
+    with open(path, 'w') as f:
+        f.write(content)
+
+async def fetch_data() -> dict[str, str]:
+    return await api_call()
+
+def get_user(user_id: str | None) -> User | None:
+    if user_id:
+        return User(user_id)
+    return None
+```
+
+### Tipos de retorno comunes
+
+| Tipo de funcion | Anotacion |
+|---|---|
+| Sin retorno | `-> None` |
+| Cadena | `-> str` |
+| Entero | `-> int` |
+| Booleano | `-> bool` |
+| Lista | `-> list[str]` |
+| Diccionario | `-> dict[str, int]` |
+| Retorno opcional | `-> str \| None` |
+| Generador | `-> Iterator[str]` |
+
+### Funciones async
+```python
+async def fetch_user(user_id: str) -> User:
+    return await database.get_user(user_id)
+```
+
+### Generadores
+```python
+def generate_numbers(n: int) -> Iterator[int]:
+    for i in range(n):
+        yield i
+```
+
+### Metodos de clase
+```python
+class DataProcessor:
+    def __init__(self, config: Config) -> None:
+        self.config = config
+
+    def process(self, data: str) -> ProcessingResult:
+        return ProcessingResult(processed=data.upper())
+
+    @classmethod
+    def from_config(cls, config_path: str) -> 'DataProcessor':
+        return cls(Config.load(config_path))
+
+    @staticmethod
+    def validate_input(data: str) -> bool:
+        return len(data) > 0
+```
+
+### Imports necesarios
+```python
+from typing import Any, Iterator, Generator, Coroutine
+# list, dict, tuple, set son built-in - no necesitan import
+# Usar str | None en vez de Optional, str | int en vez de Union
+```
+
+## Checklist
+
+- [ ] Anotacion de retorno en todas las funciones
+- [ ] `-> None` en funciones sin valor de retorno
+- [ ] Tipos especificos para valores de retorno
+- [ ] `T | None` para retornos opcionales
+- [ ] Imports correctos para tipos complejos
+- [ ] Anotaciones en funciones async y metodos de clase

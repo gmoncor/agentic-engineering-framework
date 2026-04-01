@@ -1,0 +1,122 @@
+---
+description: Usar @field_validator de Pydantic V2 en vez del deprecado @validator de V1
+globs: *.py
+alwaysApply: false
+---
+# Pydantic V2: @field_validator obligatorio
+
+## Contexto
+
+Pydantic V2 depreco el decorador `@validator` en favor de `@field_validator`. Usar el decorador deprecado genera avisos y problemas de compatibilidad. El nuevo `@field_validator` ofrece mejor rendimiento y sintaxis mas limpia.
+
+## Regla
+
+1. **Nunca usar** `@validator` de Pydantic V1.
+2. **Siempre usar** `@field_validator` de Pydantic V2.
+3. **Siempre anadir** `@classmethod` a metodos validadores.
+4. **Importar** `field_validator` en vez de `validator`.
+
+### Cambios de import
+
+| Incorrecto | Correcto |
+|---|---|
+| `from pydantic import validator` | `from pydantic import field_validator` |
+| `from pydantic import root_validator` | `from pydantic import model_validator` |
+
+### Cambios de decorador
+
+| Incorrecto | Correcto |
+|---|---|
+| `@validator("field_name")` | `@field_validator("field_name")` + `@classmethod` |
+| `@root_validator` | `@model_validator(mode='before')` o `@model_validator(mode='after')` |
+
+## Ejemplos
+
+### Incorrecto (Pydantic V1)
+```python
+from pydantic import BaseModel, Field, validator
+
+class MyModel(BaseModel):
+    name: str = Field(..., description="Campo nombre")
+
+    @validator("name")
+    def validate_name(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Name cannot be empty")
+        return v.strip()
+```
+
+### Correcto (Pydantic V2)
+```python
+from pydantic import BaseModel, Field, field_validator
+
+class MyModel(BaseModel):
+    name: str = Field(..., description="Campo nombre")
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Name cannot be empty")
+        return v.strip()
+```
+
+### Validacion de multiples campos
+```python
+class UserModel(BaseModel):
+    username: str = Field(..., description="Nombre de usuario")
+    password: str = Field(..., description="Contrasena")
+
+    @field_validator("username", "password")
+    @classmethod
+    def validate_required_fields(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Field cannot be empty")
+        return v.strip()
+```
+
+### Validacion a nivel de modelo
+```python
+from pydantic import model_validator
+
+class OrderModel(BaseModel):
+    item_count: int = Field(..., ge=1)
+    total_price: float = Field(..., ge=0)
+
+    @model_validator(mode='after')
+    @classmethod
+    def validate_order_consistency(cls, model) -> 'OrderModel':
+        if model.total_price < model.item_count * 0.01:
+            raise ValueError("Total price too low for item count")
+        return model
+```
+
+### Validacion con parametro info
+```python
+class ConfigModel(BaseModel):
+    debug: bool = Field(default=False)
+    log_level: str = Field(..., description="Nivel de logging")
+
+    @field_validator("log_level")
+    @classmethod
+    def validate_log_level(cls, v: str, info) -> str:
+        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR"]
+        if v.upper() not in valid_levels:
+            raise ValueError(f"Invalid log level: {v}")
+        return v.upper()
+```
+
+### Buscar patrones deprecados
+```bash
+grep -r "@validator" . --include="*.py"
+grep -r "from pydantic import.*validator" . --include="*.py"
+```
+
+## Checklist
+
+- [ ] Nunca sugerir `@validator` en modelos Pydantic
+- [ ] Siempre usar `@field_validator` para validacion de campos
+- [ ] Siempre anadir `@classmethod` a metodos validadores
+- [ ] Importar `field_validator` en vez de `validator`
+- [ ] Usar `@model_validator` en vez de `@root_validator`
+- [ ] Proporcionar type hints en metodos validadores

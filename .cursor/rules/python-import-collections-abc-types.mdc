@@ -1,0 +1,96 @@
+---
+description: Importar tipos genericos desde collections.abc en vez de typing (PEP 585, Python 3.9+)
+globs: *.py
+alwaysApply: false
+---
+# Importar desde collections.abc en vez de typing
+
+## Contexto
+
+Python 3.9+ (PEP 585) depreco muchos tipos genericos del modulo `typing`. El codigo moderno debe importar tipos como `AsyncGenerator`, `Iterator`, `Callable` desde `collections.abc`. Ruff (UP035) aplica esta regla.
+
+## Regla
+
+1. Usar `collections.abc` para clases base abstractas y generadores.
+2. Usar `typing` SOLO para tipos no disponibles en otro lugar (`Any`, `Literal`, `Protocol`, `TypeVar`, `Generic`).
+3. Actualizar imports legacy cuando se encuentren en codigo existente.
+
+### Tabla de migracion
+
+| Incorrecto (typing) | Correcto (collections.abc) |
+|---|---|
+| `from typing import AsyncGenerator` | `from collections.abc import AsyncGenerator` |
+| `from typing import Generator` | `from collections.abc import Generator` |
+| `from typing import Iterator` | `from collections.abc import Iterator` |
+| `from typing import Iterable` | `from collections.abc import Iterable` |
+| `from typing import Coroutine` | `from collections.abc import Coroutine` |
+| `from typing import Callable` | `from collections.abc import Callable` |
+| `from typing import Mapping` | `from collections.abc import Mapping` |
+| `from typing import Sequence` | `from collections.abc import Sequence` |
+
+### Mantener en typing
+- `Any`, `Literal`, `Protocol`, `TypeVar`, `Generic`
+- `Union` (aunque preferir `|` en Python 3.10+)
+- `Optional` (aunque preferir `| None` en Python 3.10+)
+
+## Ejemplos
+
+### Incorrecto
+```python
+from typing import Any, AsyncGenerator, Generator, Iterator, Callable
+
+async def process_data() -> AsyncGenerator[str, None]:
+    yield "data"
+
+def transform_items(items: Iterator[str]) -> Generator[str, None, None]:
+    for item in items:
+        yield item.upper()
+```
+
+### Correcto
+```python
+from collections.abc import AsyncGenerator, Generator, Iterator, Callable
+from typing import Any
+
+async def process_data() -> AsyncGenerator[str, None]:
+    yield "data"
+
+def transform_items(items: Iterator[str]) -> Generator[str, None, None]:
+    for item in items:
+        yield item.upper()
+```
+
+### Imports mixtos correctos
+```python
+# Correcto: mezcla de collections.abc y typing segun corresponda
+from collections.abc import AsyncGenerator, Callable, Iterator
+from typing import Any, Literal, Protocol
+
+ContentType = Literal["text", "image", "audio"]
+
+class ProcessorProtocol(Protocol):
+    def process(self, data: Any) -> str: ...
+
+async def stream_process(
+    items: Iterator[str],
+    processor: ProcessorProtocol,
+    content_type: ContentType = "text"
+) -> AsyncGenerator[str, None]:
+    for item in items:
+        result = processor.process(item)
+        yield f"{content_type}: {result}"
+```
+
+### Validacion con Ruff
+```bash
+uv run --group lint ruff check --select UP035 .
+uv run --group lint ruff check --fix --select UP035 .
+```
+
+## Checklist
+
+- [ ] Nunca importar `AsyncGenerator`, `Generator`, `Iterator` desde `typing`
+- [ ] Importar tipos de coleccion genericos desde `collections.abc`
+- [ ] Mantener `Any`, `Literal`, `Protocol`, `TypeVar` en `typing`
+- [ ] Actualizar imports legacy cuando se encuentren
+- [ ] Separar imports: `collections.abc` primero, luego `typing`

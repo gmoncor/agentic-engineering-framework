@@ -1,0 +1,95 @@
+---
+description: Anotaciones de tipo explicitas obligatorias en variables, parametros y retornos de funciones Python
+globs: *.py
+alwaysApply: false
+---
+# Anotaciones de tipo obligatorias
+
+## Contexto
+
+El codigo Python debe tener anotaciones de tipo explicitas en todas las variables, parametros de funcion y tipos de retorno. Esto previene errores de mypy y mejora la claridad y mantenibilidad del codigo. Anotaciones faltantes causan errores como `[var-annotated]`.
+
+## Regla
+
+Proporcionar SIEMPRE anotaciones de tipo explicitas para:
+
+1. **Todas las variables** - especialmente colecciones (listas, dicts, sets).
+2. **Parametros de funcion** - con imports de tipado adecuados.
+3. **Tipos de retorno** - incluso si devuelven None.
+4. **Atributos de clase** - en definiciones de clase.
+
+### Evitar `Any` - usar tipos concretos
+
+**CRITICO:** Nunca usar `Any` cuando el tipo real esta disponible.
+
+En su lugar:
+- **Tipos de libreria**: Importar tipos de las librerias (ej: `from google.genai.types import File`).
+- **Tipos built-in**: `str`, `int`, `bool`, `list[str]`, `dict[str, int]`.
+- **Tipos union**: `str | None` en vez de `Any` cuando hay multiples tipos validos.
+- **Protocol/ABC**: Crear interfaces adecuadas para objetos complejos.
+
+`Any` puede ser aceptable en: integraciones legacy, procesamiento JSON dinamico (preferir TypedDict), temporal durante migracion (con TODO).
+
+## Ejemplos
+
+### Incorrecto
+```python
+from typing import Any
+
+# Sin anotacion de variable
+warnings = []
+data = {}
+
+# Usando Any en vez de tipos concretos
+uploaded_file: Any = client.files.upload(file=f)
+
+# Sin anotaciones de funcion
+def process_file(path, options):
+    return None
+
+# Sin anotacion de atributo de clase
+class Config:
+    def __init__(self):
+        self.settings = {}
+```
+
+### Correcto
+```python
+from google.genai.types import File as GenAIFile, GenerateContentResponse
+
+# Anotaciones correctas con tipos especificos
+warnings: list[str] = []
+data: dict[str, str] = {}
+
+# Tipos de libreria en vez de Any
+uploaded_file: GenAIFile = await client.aio.files.upload(file=f)
+response: GenerateContentResponse = await client.generate_content(prompt)
+
+# Anotaciones de funcion completas
+def process_file(path: str, options: dict[str, str]) -> ProcessingResult | None:
+    return None
+
+# Atributos de clase tipados
+class Config:
+    def __init__(self) -> None:
+        self.settings: dict[str, str] = {}
+```
+
+### Imports requeridos
+```python
+from typing import Any, Literal, Callable
+# list, dict, tuple, set son built-in - no necesitan import
+# Usar str | None en vez de Optional, str | int en vez de Union
+```
+
+Para la sintaxis especifica a usar, ver la regla complementaria: `python-modern-type-annotations.mdc`.
+
+## Checklist
+
+- [ ] Todas las variables con anotaciones de tipo explicitas
+- [ ] Todos los parametros de funcion con anotaciones
+- [ ] Todos los tipos de retorno anotados (incluyendo `-> None`)
+- [ ] Todos los atributos de clase tipados
+- [ ] **Sin uso de `Any`** - usar tipos concretos de librerias/built-ins
+- [ ] Importar tipos especificos de librerias de terceros
+- [ ] Sintaxis moderna Python 3.10+ (ver `python-modern-type-annotations.mdc`)

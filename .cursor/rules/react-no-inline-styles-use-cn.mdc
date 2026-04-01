@@ -1,0 +1,67 @@
+---
+description: Usar cn() con clases condicionales de Tailwind en lugar de estilos inline
+globs: *.tsx
+alwaysApply: false
+---
+# No usar estilos inline - Usar cn() con clases condicionales de Tailwind
+
+### Contexto
+
+Mezclar `className` y `style` crea enfoques de estilo inconsistentes y dificulta el mantenimiento. Los estilos inline no aprovechan breakpoints responsive, variantes de dark mode ni otras utilidades de Tailwind.
+
+### Regla
+
+1. **Nunca usar** atributos `style` inline junto con `className` en componentes React.
+2. Para **valores estaticos**, usar la sintaxis de valores arbitrarios de Tailwind (ej. `pb-[calc(9rem+2vh)]`).
+3. Para **valores dinamicos/condicionales**, usar la utilidad `cn()` con clases condicionales.
+4. Importar `cn` desde `@/lib/utils` cuando sea necesario.
+
+### Ejemplos
+
+| Incorrecto (className + style mezclados) | Correcto (cn con clases condicionales) |
+|------------------------------------------|----------------------------------------|
+| ```tsx
+<div
+  className="fixed bottom-0 right-0 z-50"
+  style={{ left: leftPosition }}
+>
+``` | ```tsx
+<div
+  className={cn(
+    "fixed bottom-0 right-0 z-50",
+    isMobile ? "left-0" : state === "collapsed" ? "left-16" : "left-64"
+  )}
+>
+``` |
+| ```tsx
+<div
+  className="h-full w-full overflow-y-auto"
+  style={{ paddingBottom: "calc(9rem + 2vh)" }}
+>
+``` | ```tsx
+<div className="h-full w-full overflow-y-auto pb-[calc(9rem+2vh)]">
+``` |
+
+### Patron de posicionamiento dinamico
+
+```tsx
+// Incorrecto - usando estilos inline
+const leftPosition = isMobile ? "0" : state === "collapsed" ? "4rem" : "16rem";
+<div style={{ left: leftPosition }} />
+
+// Correcto - usando cn con clases condicionales
+<div
+  className={cn(
+    "base-classes",
+    isMobile ? "left-0" : state === "collapsed" ? "left-16" : "left-64"
+  )}
+/>
+```
+
+### Checklist
+
+- [ ] Nunca sugerir `style` inline junto con `className`
+- [ ] Usar sintaxis de valores arbitrarios de Tailwind para valores estaticos calculados
+- [ ] Usar `cn()` con clases condicionales para valores dinamicos
+- [ ] Importar `cn` desde `@/lib/utils` al anadir estilo condicional
+- [ ] Convertir patrones mixtos className/style existentes a enfoques puros de Tailwind

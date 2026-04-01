@@ -1,0 +1,163 @@
+---
+description: Prohibido usar comentarios type ignore en Python - corregir los problemas de tipo en su origen
+globs: *.py
+alwaysApply: false
+---
+# Prohibido usar comentarios type: ignore
+
+## Regla
+
+Patrones de supresion PROHIBIDOS:
+- `# type: ignore`
+- `# type: ignore[attr-defined]`
+- `# type: ignore[import-untyped]`
+- Cualquier variante de comentarios type ignore
+
+Corregir SIEMPRE el problema de tipo subyacente en lugar de suprimir avisos del verificador de tipos.
+
+## Contexto
+
+Los comentarios type ignore enmascaran problemas reales de seguridad de tipos. Ocultan errores, reducen la mantenibilidad, enmascaran cambios de ruptura durante refactorizaciones y anulan los beneficios de la verificacion estatica de tipos.
+
+## Ejemplos
+
+### Problemas de importacion
+
+Incorrecto:
+```python
+from google.cloud import storage  # type: ignore[import-untyped]
+import requests  # type: ignore[import-untyped]
+```
+
+Correcto:
+```python
+# Instalar type stubs: pip install types-google-cloud-storage types-requests
+from google.cloud.storage import Client as StorageClient
+import requests
+
+# Para imports solo de tipo
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from complex_lib import ComplexType
+
+def process_data(data: "ComplexType") -> None:
+    pass
+```
+
+### Acceso a atributos
+
+Incorrecto:
+```python
+obj.dynamic_attr  # type: ignore[attr-defined]
+config.unknown_key  # type: ignore[attr-defined]
+```
+
+Correcto:
+```python
+# Acceso seguro a atributos
+dynamic_value = getattr(obj, 'dynamic_attr', default_value)
+config_value = config.get('unknown_key')
+
+# O usar TypedDict
+from typing import TypedDict
+
+class Config(TypedDict):
+    database_url: str
+    api_key: str
+
+config: Config = load_config()
+```
+
+### Anotaciones faltantes
+
+Incorrecto:
+```python
+def process(data):  # type: ignore
+    return data.someProperty
+```
+
+Correcto:
+```python
+def process(data: dict[str, Any]) -> str:
+    return data['someProperty']
+
+# O usar casting explicito
+from typing import cast
+result = cast(ApiResponse, api_call())
+```
+
+### Librerias de terceros sin stubs
+
+Incorrecto:
+```python
+from pgvector.psycopg2 import register_vector  # type: ignore[import-untyped]
+```
+
+Correcto:
+```python
+from typing import TYPE_CHECKING, Any, Callable
+
+try:
+    from pgvector.psycopg2 import register_vector
+except ImportError:
+    register_vector = None
+
+if TYPE_CHECKING:
+    register_vector: Callable[[Any], None]
+
+def setup_database(conn: Any) -> None:
+    if register_vector is not None:
+        register_vector(conn)
+```
+
+### Soluciones con Protocol
+```python
+from typing import Protocol, Any
+
+class VectorRegistrar(Protocol):
+    def __call__(self, conn: Any) -> None: ...
+
+def get_register_vector_func() -> VectorRegistrar | None:
+    try:
+        from pgvector.psycopg2 import register_vector
+        return register_vector
+    except ImportError:
+        return None
+```
+
+### Type stubs comunes
+```bash
+pip install types-google-cloud-storage
+pip install types-requests
+pip install types-redis
+pip install types-psycopg2-binary
+```
+
+### Soluciones de tipo correctas
+
+- **TYPE_CHECKING**: imports condicionales para verificacion estatica
+- **cast()**: cuando se conoce el tipo pero el verificador no
+- **TypedDict**: para diccionarios con estructura conocida
+- **Protocol**: para tipado estructural de librerias sin stubs
+- **Imports especificos**: `from google.cloud.storage import Client` en vez de imports amplios
+- **getattr/hasattr**: acceso seguro a atributos dinamicos
+
+### Excepciones (muy raras)
+
+Supresion de tipos aceptable solo en:
+1. Bug en stubs de terceros que no se puede corregir
+2. Workaround temporal durante migracion (con plan documentado)
+3. Codigo especifico de plataforma con tipos diferentes
+
+Incluso en estos casos: documentar el motivo, crear issue de seguimiento, usar la supresion mas especifica posible.
+
+## Checklist
+
+- [ ] Nunca sugerir `# type: ignore` en ninguna forma
+- [ ] Investigar y corregir la causa raiz de avisos del verificador de tipos
+- [ ] Comprobar type stubs disponibles antes de importar
+- [ ] Instalar stubs apropiados para librerias de terceros
+- [ ] Usar imports condicionales con `TYPE_CHECKING` cuando sea necesario
+- [ ] Usar `typing.cast()` para estrechamiento de tipos legitimo
+- [ ] Crear tipos y protocolos personalizados para estructuras complejas
+- [ ] Usar acceso seguro a atributos (getattr, hasattr, dict.get)

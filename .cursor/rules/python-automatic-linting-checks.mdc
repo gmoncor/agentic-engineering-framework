@@ -1,0 +1,114 @@
+---
+description: Verificacion obligatoria de linting tras crear o editar archivos Python con Ruff, Black y Mypy
+globs: *.py
+alwaysApply: false
+---
+# Verificacion automatica de linting en Python
+
+## Contexto
+
+Los proyectos Python de este repositorio usan estandares estrictos de linting con Ruff, Black y Mypy. Corregir errores de linting despues de escribir codigo provoca reescrituras masivas e ineficiencia.
+
+## Regla
+
+1. **Ejecutar verificacion de linting INMEDIATAMENTE** despues de crear o editar CUALQUIER archivo Python.
+2. **No considerar la tarea completa** sin pasar todas las herramientas de linting.
+3. **Verificar proactivamente** - no esperar a que el usuario lo solicite.
+4. **Usar correcciones automaticas** cuando sea posible.
+
+### Flujo de verificacion obligatorio
+
+```bash
+# 1. Comprobar errores de sintaxis/linting
+uv run --group lint ruff check filename.py
+
+# 2. Corregir automaticamente lo posible
+uv run --group lint ruff check --fix filename.py
+
+# 3. Formatear consistentemente
+uv run --group lint black filename.py
+
+# 4. Verificar anotaciones de tipo
+uv run --group lint mypy filename.py
+```
+
+Para proyecto completo:
+```bash
+uv run --group lint ruff check --fix .
+uv run --group lint black .
+uv run --group lint mypy .
+```
+
+## Ejemplos
+
+### Prevencion de errores comunes
+
+| Categoria | Codigos Ruff | Prevencion |
+|---|---|---|
+| Imports no usados | F401 | Eliminar imports sin uso |
+| Anotaciones legacy | UP035, UP006, UP045 | Usar `dict[str, str]` en vez de `Dict[str, str]` |
+| Except desnudo | E722 | Usar `except Exception:` en vez de `except:` |
+| Encadenamiento de excepciones | B904 | Usar `raise Exception(...) from e` |
+| F-strings innecesarios | F541 | Eliminar `f""` sin placeholders |
+
+### Incorrecto (multiples violaciones)
+```python
+import json  # F401 - import no usado
+from typing import Dict, Optional  # UP035 - typing legacy
+
+def process_data(data: Dict[str, str], options: Optional[str] = None) -> str:
+    try:
+        with open("file.txt", "r") as f:  # UP015 - modo innecesario
+            result = f"processed"  # F541 - f-string innecesario
+    except:  # E722 - except desnudo
+        raise Exception("Failed")  # B904 - falta encadenamiento
+    return result
+```
+
+### Correcto (cumple linting)
+```python
+from pathlib import Path
+
+def process_data(data: dict[str, str], options: str | None = None) -> str:
+    try:
+        with open("file.txt") as f:
+            content = f.read()
+            result = "processed"
+    except Exception as e:
+        raise Exception("Failed to process data") from e
+    return result
+```
+
+### Correcciones automaticas con `ruff check --fix`
+- Eliminacion de imports no usados
+- Conversion a anotaciones de tipo modernas
+- Eliminacion de f-strings innecesarios
+
+### Requieren correccion manual
+- Except desnudo
+- Encadenamiento de excepciones
+- Anotaciones de tipo faltantes
+
+### Configuracion Ruff requerida
+```toml
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+]
+```
+
+## Checklist
+
+- [ ] Ejecutar `ruff check` sobre cada archivo Python creado/editado
+- [ ] Corregir automaticamente con `ruff check --fix`
+- [ ] Formatear con `black`
+- [ ] Verificar tipos con `mypy`
+- [ ] Asegurar que TODAS las comprobaciones pasan antes de dar la tarea por terminada
+- [ ] Verificar anotaciones modernas (no `typing.Dict`, `typing.Optional`)
+- [ ] Encadenamiento correcto de excepciones con `from e`
+- [ ] Sin clausulas `except:` desnudas

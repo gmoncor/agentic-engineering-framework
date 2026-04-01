@@ -1,0 +1,50 @@
+---
+description: En Next.js 15, redirect() lanza un error NEXT_REDIRECT y debe usarse fuera de bloques try/catch
+globs: *.tsx
+alwaysApply: false
+---
+# Next.js 15 App Router - redirect() fuera de try/catch
+
+### Contexto
+
+`redirect()` en Next.js lanza internamente un error `NEXT_REDIRECT` para terminar el renderizado. Si se usa dentro de un try/catch, el catch captura ese error y el redirect falla silenciosamente. Esto aplica a Server Components, Server Actions, Route Handlers y layouts con logica de autenticacion/sesion.
+
+---
+
+### Regla
+
+Nunca usar `redirect()` dentro de bloques try/catch. Separar la logica de negocio (que puede fallar) del flujo de control (redirect).
+
+---
+
+### Ejemplos
+
+```javascript
+// Incorrecto: redirect dentro de try/catch
+try {
+  const session = await createSession();
+  redirect(`/chat/${session.id}`); // El catch captura el error de redirect
+} catch (error) {
+  // Manejo de error
+}
+
+// Correcto: separar logica de negocio del flujo de control
+let session;
+try {
+  session = await createSession();
+} catch (error) {
+  return <ErrorComponent />;
+}
+
+// Redirect fuera de try/catch
+redirect(`/chat/${session.id}`);
+```
+
+---
+
+### Checklist
+
+- [ ] Colocar operaciones que pueden fallar (API, base de datos) dentro de try/catch.
+- [ ] Colocar `redirect()` fuera de try/catch como mecanismo de flujo de control.
+- [ ] Devolver componentes de error cuando la logica de negocio falla.
+- [ ] Dejar que los errores de redirect se propaguen naturalmente -- Next.js los maneja internamente.

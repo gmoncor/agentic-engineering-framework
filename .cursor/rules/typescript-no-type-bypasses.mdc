@@ -1,0 +1,191 @@
+---
+description: Nunca usar any, @ts-expect-error ni @ts-ignore — usar tipos TypeScript adecuados
+globs: *.ts,*.tsx
+alwaysApply: false
+---
+
+# Nunca Eludir la Seguridad de Tipos en TypeScript
+
+### Contexto
+
+El tipo `any` y las directivas de supresión de errores de TypeScript desactivan la comprobación de tipos y anulan el propósito de usar TypeScript. Ocultan problemas reales de tipos que pueden causar errores en tiempo de ejecución. Los errores de tipos deben resolverse definiendo interfaces correctas, no suprimiéndolos.
+
+### Regla
+
+Directivas y tipos PROHIBIDOS:
+- Anotaciones explícitas de tipo `any`
+- Directivas `@ts-expect-error`
+- Directivas `@ts-ignore`
+- Directivas `// @ts-nocheck`
+
+SIEMPRE usar tipos TypeScript adecuados en su lugar.
+
+**No hay excepciones aceptables** para usar `any` o supresión de errores TypeScript en el código. Si se encuentran errores de tipos: entender la causa raíz, corregir los tipos definiendo interfaces adecuadas, refactorizar el código si es necesario, crear componentes wrapper para limitaciones de terceros.
+
+### Ejemplos
+
+**Alternativas seguras a `any`**
+
+1. `unknown` — para datos verdaderamente desconocidos (requiere type guards)
+2. Tipos unión — `string | number | boolean` para posibilidades conocidas
+3. Tipos genéricos — `<T>` para funciones/componentes reutilizables
+4. Extensiones de interfaces — extender tipos existentes con propiedades faltantes
+5. Type assertions — `as TipoEspecífico` con interfaces definidas
+
+**Tipado de datos**
+
+Incorrecto:
+```typescript
+function handleData(data: any) {
+  return data.someProperty;
+}
+
+const subscription: any = stripeSubscription;
+const result: any[] = await apiCall();
+
+function process(data: any): any {
+  // ...
+}
+```
+
+Correcto:
+```typescript
+interface DataType {
+  someProperty: string;
+}
+function handleData(data: DataType) {
+  return data.someProperty;
+}
+
+interface StripeSubscriptionWithPeriod extends Stripe.Subscription {
+  current_period_start: number;
+  current_period_end: number;
+}
+const subscription = stripeSubscription as StripeSubscriptionWithPeriod;
+
+interface ApiResult {
+  id: string;
+  name: string;
+}
+const result: ApiResult[] = await apiCall();
+
+function process<T>(data: T): T {
+  // ...
+}
+// O bien
+function process(data: unknown): ProcessedData {
+  // ...
+}
+```
+
+**Extensión de tipos para bibliotecas externas**
+
+Incorrecto:
+```typescript
+const stripeObject: any = subscription;
+```
+
+Correcto:
+```typescript
+interface ExtendedStripeSubscription extends Stripe.Subscription {
+  current_period_start: number;
+  current_period_end: number;
+}
+
+const stripeObject = subscription as ExtendedStripeSubscription;
+```
+
+**Supresión de errores en componentes**
+
+Incorrecto:
+```typescript
+// @ts-expect-error - DialogContent tiene problemas de tipos
+<DialogContent className="max-w-lg">
+  <div>Content</div>
+</DialogContent>
+```
+
+Correcto:
+```typescript
+// Opción 1: Composición de componentes
+<DialogContent>
+  <div className="max-w-lg">
+    <div>Content</div>
+  </div>
+</DialogContent>
+
+// Opción 2: Wrapper con tipos adecuados
+interface StyledDialogProps {
+  className?: string;
+  children: React.ReactNode;
+}
+
+const StyledDialog: React.FC<StyledDialogProps> = ({ className, children }) => (
+  <DialogContent>
+    <div className={className}>
+      {children}
+    </div>
+  </DialogContent>
+);
+
+// Opción 3: Type assertion con interfaz definida
+<DialogContent {...({className: "max-w-lg"} as ComponentProps<typeof DialogContent>)}>
+  <div>Content</div>
+</DialogContent>
+```
+
+**Type assertions con interfaces**
+
+Incorrecto:
+```typescript
+// @ts-ignore - faltan tipos de la biblioteca
+library.someMethod(data);
+```
+
+Correcto:
+```typescript
+interface LibraryMethod {
+  someMethod: (data: DataType) => ReturnType;
+}
+(library as LibraryMethod).someMethod(data);
+```
+
+**Uso de `unknown` para datos verdaderamente desconocidos**
+
+Incorrecto:
+```typescript
+// @ts-expect-error
+function processData(data: any) {
+  return data.someProperty;
+}
+```
+
+Correcto:
+```typescript
+function processData(data: unknown) {
+  if (typeof data === 'object' && data !== null && 'someProperty' in data) {
+    return (data as { someProperty: unknown }).someProperty;
+  }
+  throw new Error('Invalid data format');
+}
+```
+
+### Resumen de soluciones adecuadas
+
+**Para problemas de tipos en componentes:** composición de componentes (wrapper divs), crear wrapper components tipados, type assertions con interfaces definidas, tipo utilitario ComponentProps.
+
+**Para parámetros de funciones:** definir interfaces específicas para estructuras conocidas, usar `unknown` con type guards para datos desconocidos, usar tipos genéricos para código reutilizable, extender tipos existentes cuando sea necesario.
+
+**Para carencias en bibliotecas externas:** crear extensiones de interfaces, definir declaraciones de tipos faltantes, usar type assertions con interfaces adecuadas.
+
+### Checklist
+
+- [ ] Nunca sugerir anotaciones de tipo `any`
+- [ ] Nunca sugerir `@ts-expect-error` ni `@ts-ignore` en ningún contexto
+- [ ] Siempre definir interfaces adecuadas para estructuras de objetos
+- [ ] Usar `unknown` en lugar de `any` para datos verdaderamente desconocidos
+- [ ] Crear extensiones de tipos para bibliotecas externas con propiedades faltantes
+- [ ] Usar tipos genéricos para funciones y componentes reutilizables
+- [ ] Preferir tipos unión sobre `any` para posibilidades conocidas
+- [ ] Crear componentes wrapper cuando sea necesario para seguridad de tipos
+- [ ] Usar type assertions adecuadas con interfaces definidas

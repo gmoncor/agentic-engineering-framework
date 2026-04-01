@@ -1,0 +1,232 @@
+---
+globs: *.py,*.ts,*.tsx
+alwaysApply: false
+description: Buenas prácticas de comentarios - comentar el porqué, no el qué
+---
+
+# Buenas Prácticas de Comentarios
+
+## Contexto
+
+Los comentarios deben mejorar la legibilidad y aportar contexto que no sea evidente en el propio código. El objetivo es escribir código autodocumentado con comentarios estratégicos y de alto valor.
+
+**Principio clave**: Los comentarios explican el _porqué_, no el _qué_. El código ya muestra lo que hace.
+
+## Regla
+
+1. **Escribe comentarios que aporten valor** - explica lógica de negocio, decisiones y comportamiento no evidente.
+2. **NUNCA escribas comentarios de historial de migración** - se quedan obsoletos rápidamente.
+3. **Evita comentarios obvios** - si el código se explica solo, no lo comentes.
+4. **Mantén los comentarios concisos y actualizados** - un comentario desactualizado es peor que ninguno.
+5. **Usa patrones de código autodocumentado** primero, comentarios después.
+6. **Céntrate en el "porqué" y el "cómo"**, no en el "qué".
+
+## Ejemplos
+
+### Comentarios a evitar
+
+**Historial de migración**
+
+```typescript
+// Incorrecto - Historial de migración innecesario
+// =============================================================================
+// IMAGE UTILITIES - MOVED TO chat-utils-client.ts
+// =============================================================================
+export { validateImageFiles } from "./chat-utils-client";
+```
+
+```python
+# Incorrecto - Historial de migración innecesario
+# =============================================================================
+# DATABASE UTILITIES - MOVED FROM old_db_utils.py
+# =============================================================================
+from .new_db_utils import get_user_data
+```
+
+```typescript
+// Correcto - Limpio y autoexplicativo
+export { validateImageFiles } from "./chat-utils-client";
+```
+
+```python
+# Correcto - Limpio y autoexplicativo
+from .new_db_utils import get_user_data
+```
+
+**Comentarios obvios/redundantes**
+
+```typescript
+// Incorrecto - Dice lo que ya se ve
+user.name = name; // Establece el nombre del usuario
+counter++; // Incrementa el contador en 1
+return result; // Devuelve el resultado
+```
+
+```python
+# Incorrecto - Dice lo que ya se ve
+user.name = name    # Establece el nombre del usuario
+counter += 1        # Incrementa el contador en 1
+return result       # Devuelve el resultado
+```
+
+**Comentarios desactualizados**
+
+```typescript
+// Incorrecto - El comentario no coincide con el código
+// Calcula el total con 15% de impuesto
+const total = price * 1.08; // En realidad es 8%
+```
+
+### Comentarios recomendados
+
+**Lógica de negocio y requisitos**
+
+```typescript
+function calculateDiscount(orderTotal: number, customerTier: string): number {
+  // Los clientes premium obtienen 15% de descuento en pedidos > 100$
+  // para incentivar compras mayores y recompensar la fidelidad
+  if (customerTier === "premium" && orderTotal > 100) {
+    return orderTotal * 0.15;
+  }
+  return 0;
+}
+```
+
+```python
+def calculate_discount(order_total: float, customer_tier: str) -> float:
+    # Los clientes premium obtienen 15% de descuento en pedidos > 100$
+    # para incentivar compras mayores y recompensar la fidelidad
+    if customer_tier == 'premium' and order_total > 100:
+        return order_total * 0.15
+    return 0.0
+```
+
+**Decisiones técnicas no evidentes**
+
+```typescript
+async function uploadFile(file: File): Promise<UploadResult> {
+  // Subida por trozos para ficheros > 10MB para evitar timeout
+  // y mejorar la experiencia con indicador de progreso
+  if (file.size > 10 * 1024 * 1024) {
+    return uploadFileChunked(file);
+  }
+  return uploadFileDirect(file);
+}
+```
+
+**Algoritmos o cálculos complejos**
+
+```typescript
+function calculateShippingCost(weight: number, distance: number): number {
+  // Fórmula de envío: tarifa base + (factor peso x factor distancia)
+  // La tarifa base cubre manipulación, el peso la capacidad, la distancia el combustible
+  const baseRate = 5.99;
+  const weightFactor = weight * 0.1;
+  const distanceFactor = distance * 0.05;
+  return baseRate + weightFactor * distanceFactor;
+}
+```
+
+**Avisos importantes y rendimiento**
+
+```typescript
+async function deleteUser(userId: string): Promise<void> {
+  // CRÍTICO: Elimina permanentemente los datos del usuario sin posibilidad de recuperación.
+  // Todos los registros relacionados se eliminan por restricciones de cascade.
+  await db.users.delete({ where: { id: userId } });
+}
+```
+
+### Código autodocumentado
+
+```typescript
+// Incorrecto - Necesita comentarios
+const d = new Date();
+const ms = d.getTime();
+const s = ms / 1000;
+
+// Correcto - Autodocumentado
+const currentDate = new Date();
+const milliseconds = currentDate.getTime();
+const seconds = milliseconds / 1000;
+```
+
+### Extraer métodos con nombres claros
+
+```typescript
+// Incorrecto - Lógica compleja requiere explicación
+function processOrder(order: Order): void {
+  if (!order.items || order.items.length === 0) {
+    throw new Error("Order must have items");
+  }
+}
+
+// Correcto - Los métodos extraídos se autodocumentan
+function processOrder(order: Order): void {
+  validateOrderItems(order);
+  order.total = calculateTotalWithTax(order.items);
+  order.freeShipping = qualifiesForFreeShipping(order);
+}
+```
+
+### Documentación de APIs públicas
+
+TypeScript - JSDoc:
+```typescript
+/**
+ * Sube un fichero con reintentos automáticos y seguimiento de progreso
+ *
+ * @param file - El fichero a subir
+ * @param options - Opciones de configuración de subida
+ * @returns Promise con el resultado de subida incluyendo la URL
+ * @throws {UploadError} Si el fichero excede el límite o la subida falla
+ */
+async function uploadFile(
+  file: File,
+  options: UploadOptions = {}
+): Promise<UploadResult> {}
+```
+
+Python - Docstrings:
+```python
+async def upload_file(file: File, options: UploadOptions = None) -> UploadResult:
+    """Sube un fichero con reintentos automáticos y seguimiento de progreso.
+
+    Args:
+        file: El fichero a subir
+        options: Opciones de configuración de subida
+
+    Returns:
+        UploadResult: Resultado de subida con la URL del fichero
+
+    Raises:
+        UploadError: Si el fichero excede el límite o la subida falla
+    """
+```
+
+### TODOs y regex complejas
+
+```typescript
+// Correcto - TODO accionable con contexto
+// TODO: Añadir validación de entrada cuando se definan los requisitos (Sprint 3)
+function processUserInput(input: string): void {}
+
+// Incorrecto - TODO vago
+// TODO: Fix this
+```
+
+```typescript
+// Correcto - Explica regex compleja
+// Valida formato email: local@dominio.tld con validación básica
+const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+```
+
+## Checklist
+
+- [ ] Los comentarios explican el "porqué" y la lógica de negocio, no el "qué"
+- [ ] Sin comentarios de historial de migración ni "MOVED TO"
+- [ ] Sin comentarios obvios que repitan lo que el código ya muestra
+- [ ] Nombres descriptivos de variables y funciones antes que comentarios
+- [ ] Comentarios en algoritmos complejos, reglas de negocio y decisiones técnicas no evidentes
+- [ ] JSDoc/docstrings en APIs públicas y funciones exportadas
+- [ ] Comentarios eliminados o actualizados al refactorizar

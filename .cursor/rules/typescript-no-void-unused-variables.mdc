@@ -1,0 +1,132 @@
+---
+description: Nunca usar void para suprimir avisos de variables no utilizadas — eliminar o refactorizar
+globs: *.ts,*.tsx
+alwaysApply: false
+---
+
+# Nunca Usar `void` para Suprimir Avisos de Variables No Utilizadas
+
+### Contexto
+
+Usar sentencias `void` para suprimir avisos de variables no utilizadas en TypeScript es un anti-patrón peligroso que enmascara problemas reales de calidad del código. Este truco evita el análisis adecuado del código y crea deuda técnica en lugar de abordar la causa raíz.
+
+```typescript
+// PROHIBIDO - Usar void para suprimir avisos
+const unusedVariable = getValue();
+void unusedVariable;
+
+// PROHIBIDO - Con comentarios intentando justificarlo
+const isInputFocused = useState(false);
+void isInputFocused;
+```
+
+Problemas de este enfoque:
+- **Oculta problemas reales** que deberían abordarse correctamente
+- **Crea deuda técnica** dejando código no utilizado
+- **Elude el análisis de TypeScript** disenado para detectar código muerto
+- **Dificulta el mantenimiento** al ocultar los patrones de uso reales
+
+### Regla
+
+1. **NUNCA usar sentencias `void`** para suprimir avisos de variables no utilizadas
+2. **NUNCA usar `void` con variables** para eludir reglas de linting
+3. **Siempre corregir la causa raíz** en lugar de suprimir el aviso
+4. **Eliminar las variables no utilizadas** completamente si no son necesarias
+5. **Refactorizar el código** para eliminar la variable no utilizada correctamente
+
+### Ejemplos
+
+**Solución 1: Eliminar variables no utilizadas**
+
+| Incorrecto (supresión con void) | Correcto (eliminar la variable) |
+|---|---|
+| `const [isInputFocused, setIsInputFocused] = useState(false); void isInputFocused;` | `const [, setIsInputFocused] = useState(false);` |
+
+**Solución 2: Prefijo underscore para variables intencionalmente no utilizadas**
+
+| Incorrecto | Correcto |
+|---|---|
+| `const unusedParam = getParam(); void unusedParam;` | `const _unusedParam = getParam();` |
+
+**Solución 3: Refactorizar para usar realmente la variable**
+
+```typescript
+// Incorrecto
+const isInputFocused = useState(false);
+void isInputFocused;
+
+// Correcto - si se necesita, usarla correctamente
+const [isInputFocused, setIsInputFocused] = useState(false);
+
+<ChatInput
+  onFocus={() => setIsInputFocused(true)}
+  onBlur={() => setIsInputFocused(false)}
+/>
+```
+
+**Solución 4: Extraer solo lo necesario**
+
+```typescript
+// Incorrecto
+const result = useComplexHook();
+void result.unusedProperty;
+return result.neededProperty;
+
+// Correcto
+const { neededProperty } = useComplexHook();
+return neededProperty;
+```
+
+### Alternativas aceptables
+
+**Para parámetros de funciones**
+```typescript
+// Correcto - Underscore para parámetros intencionalmente no utilizados
+function handleEvent(_event: Event, data: string): void {
+  console.log(data);
+}
+
+// Correcto - Omitir nombre del parámetro si no se usa
+function handleClick(_: React.MouseEvent): void {
+  // Manejar clic sin usar el evento
+}
+```
+
+**Para desestructuración**
+```typescript
+// Correcto - Operador rest para ignorar propiedades no utilizadas
+const { neededProp, ..._ } = complexObject;
+
+// Correcto - Omitir elementos de array no utilizados
+const [first, , third] = arrayValues;
+```
+
+**Para retornos de hooks**
+```typescript
+// Correcto - Desestructurar solo lo necesario
+const { data } = useQuery();
+
+// Correcto - Underscore para partes no utilizadas
+const [value, _setValue] = useState(initialValue);
+```
+
+### Configuración ESLint
+
+```json
+{
+  "rules": {
+    "@typescript-eslint/no-unused-vars": "error",
+    "no-void": "error",
+    "@typescript-eslint/no-unused-expressions": "error"
+  }
+}
+```
+
+### Checklist
+
+- [ ] Nunca sugerir `void` para suprimir avisos de variables no utilizadas
+- [ ] Siempre identificar por qué una variable no se usa y abordar la causa raíz
+- [ ] Sugerir eliminar variables no utilizadas completamente cuando sea posible
+- [ ] Recomendar prefijo underscore para variables intencionalmente no utilizadas
+- [ ] Proponer refactorización para eliminar la necesidad de variables no utilizadas
+- [ ] Asegurar desestructuración adecuada para evitar asignaciones no utilizadas

@@ -1,0 +1,47 @@
+---
+description: Usar scripts de package.json para operaciones Drizzle en lugar de comandos npx directos
+globs:
+alwaysApply: true
+---
+# Usar Scripts de package.json para Operaciones Drizzle
+
+### Contexto
+
+Los proyectos con Drizzle ORM suelen tener scripts en `package.json` configurados con carga correcta de variables de entorno via `dotenv-cli`. Usar `npx drizzle-kit` directamente omite esta configuracion y puede causar problemas de conexion a base de datos o usar variables incorrectas.
+
+### Regla
+
+1. **Nunca usar** comandos `npx drizzle-kit` directos en terminal.
+2. **Siempre usar** los scripts correspondientes de `package.json`.
+3. Los scripts aseguran que `.env.local` se carga correctamente via `dotenv-cli`.
+
+### Ejemplos
+
+**Mapeo de comandos:**
+
+| Incorrecto (comandos directos) | Correcto (scripts de package.json) |
+|---|---|
+| `npx drizzle-kit generate` | `npm run db:generate` |
+| `npx drizzle-kit generate --custom` | `npm run db:generate:custom` |
+| `npx drizzle-kit studio` | `npm run db:studio` |
+| Scripts de migracion directos | `npm run db:migrate` |
+| Scripts de rollback directos | `npm run db:rollback` |
+
+**Scripts disponibles (tipicos):**
+
+- `npm run db:generate` - Generar migraciones desde cambios en schema
+- `npm run db:generate:custom` - Generar migraciones personalizadas
+- `npm run db:migrate` - Ejecutar migraciones pendientes
+- `npm run db:rollback` - Revertir ultima migracion
+- `npm run db:status` - Verificar estado de migraciones
+- `npm run db:check` - Verificar conflictos de migraciones
+- `npm run db:studio` - Abrir Drizzle Studio
+- `npm run db:seed` - Ejecutar seeding de base de datos
+
+### Checklist
+
+- [ ] Nunca sugerir comandos `npx drizzle-kit` directos.
+- [ ] Usar siempre scripts `npm run db:*` para operaciones de base de datos.
+- [ ] Para generar migraciones, usar `npm run db:generate`.
+- [ ] Para ejecutar migraciones, usar `npm run db:migrate`.
+- [ ] Consultar la seccion `scripts` de `package.json` para comandos disponibles.
