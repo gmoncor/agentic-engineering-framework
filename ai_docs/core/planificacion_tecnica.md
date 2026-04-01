@@ -20,8 +20,8 @@
 ### Contenido publico (lo que se distribuye)
 - **README.md:** Punto de entrada — explica que es, como usar, estructura, quick start
 - **LICENSE:** CC-BY 4.0
-- **ai_docs/dev_templates/:** 6 plantillas operativas + README
-- **ai_docs/dev_templates/core_templates/:** 4 plantillas de planificacion inicial + README
+- **ai_docs/dev_templates/:** 8 plantillas operativas + README
+- **ai_docs/core_templates/:** 4 plantillas de planificacion inicial + README
 
 ### Contenido del usuario (lo que genera al usarlo)
 - **ai_docs/core/:** Documentos de vision, planificacion y roadmap de su proyecto
@@ -82,7 +82,7 @@ Usuario
   │     ├─ tasks/   (documentos de tarea)
   │     └─ refs/    (documentacion externa)
   │
-  └─ Usa hacer_commit.md y revision_pr.md para gestionar git
+  └─ Usa commit.md y revision_pr.md para gestionar git
 ```
 
 ### Seguridad

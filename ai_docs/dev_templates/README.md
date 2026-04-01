@@ -36,16 +36,18 @@ Tu equipo ya tiene codigo, repositorio y arquitectura definida. No necesitas pla
 
 ```
 1. Lee el codigo existente y entiende la estructura del proyecto
-2. Cuando te asignen una tarea  →  documento_de_tarea.md
-3. Implementa con tu asistente de IA
-4. Revisa la calidad           →  limpieza_de_codigo.md
-5. Si no hay tests             →  core_templates/04_setup_testing.md (una sola vez)
-6. Escribe tests               →  testing_basico.md
-7. Haz commit                  →  hacer_commit.md
-8. Crea la PR                  →  revision_pr.md
+2. Cuando te asignen una tarea  →  crear_tarea.md
+3. Revisa el plan               →  revisar_tarea.md
+4. Implementa con tu asistente de IA
+5. Revisa la calidad            →  limpieza_de_codigo.md
+6. Si no hay tests              →  ../core_templates/04_setup_testing.md (una sola vez)
+7. Si no hay CI local           →  ci_local.md (una sola vez)
+8. Escribe tests                →  unit_testing.md
+9. Haz commit                   →  commit.md
+10. Crea la PR                  →  revision_pr.md
 ```
 
-**Plantilla mas importante para ti:** `documento_de_tarea.md` — usala ANTES de cada tarea para planificar que vas a hacer. Parece un paso extra, pero te ahorrara tiempo y errores.
+**Plantilla mas importante para ti:** `crear_tarea.md` — usala ANTES de cada tarea para planificar que vas a hacer. Parece un paso extra, pero te ahorrara tiempo y errores.
 
 ### Si arrancas un proyecto nuevo
 
@@ -56,19 +58,20 @@ Necesitas definir la idea, la estructura y el plan antes de escribir codigo. Usa
 2. 02 Planificacion Tecnica      →  Definir COMO se construye (datos, paginas, arquitectura)
 3. 03 Roadmap de Desarrollo      →  Definir EN QUE ORDEN se construye
 4. 04 Setup de Testing           →  Configurar el entorno de tests
-5. Documento de Tarea            →  Crear tarea para la primera fase del roadmap
-6. Implementar + Testear + Commit + PR (flujo diario)
+5. CI Local                      →  Configurar verificaciones automaticas (ci_local.md)
+6. Documento de Tarea            →  Crear tarea para la primera fase del roadmap
+7. Implementar + Testear + Commit + PR (flujo diario)
 ```
 
-Las plantillas core estan en la carpeta `core_templates/`. Consulta su README para mas detalle.
+Las plantillas core estan en la carpeta `../core_templates/`. Consulta su README para mas detalle.
 
 ---
 
 ## Plantillas disponibles
 
-### Documentacion Core del Proyecto (`core_templates/`)
+### Documentacion Core del Proyecto (`../core_templates/`)
 
-Plantillas para definir y planificar un proyecto. Cada una genera un documento de referencia. Ver `core_templates/README.md` para instrucciones detalladas.
+Plantillas para definir y planificar un proyecto. **Requisito antes de usar las plantillas operativas.** Cada una genera un documento de referencia. Ver `../core_templates/README.md` para instrucciones detalladas.
 
 | Plantilla | Cuando usarla |
 |-----------|---------------|
@@ -83,12 +86,14 @@ Plantillas que usaras regularmente durante el desarrollo.
 
 | Plantilla | Cuando usarla | Cuando NO usarla |
 |-----------|---------------|------------------|
-| **Documento de Tarea** | Antes de empezar cualquier trabajo: planificar, analizar alternativas y definir criterios de exito | Para bugs simples (usa correccion_de_bugs) o cambios de una linea |
+| **Crear Tarea** | Antes de empezar cualquier trabajo: planificar, analizar alternativas y definir criterios de exito | Para bugs simples (usa fix_bugs) o cambios de una linea |
+| **Revisar Tarea** | Despues de planificar: validar alcance minimo, dependencias, edge cases y enfoque TDD | Si la tarea es trivial (1 archivo, sin riesgos) |
 | **Limpieza de Codigo** | Despues de implementar, para revisar calidad: redundancias, nombres, comentarios, DRY, KISS | Para anadir funcionalidad nueva (eso es una tarea) |
-| **Correccion de Bugs** | Cuando algo no funciona o tiene comportamiento inesperado | Para mejoras o features nuevos (eso es una tarea) |
-| **Testing** | Para escribir tests de calidad o mejorar tests existentes | Si no hay framework de testing (primero usa 04_setup_testing) |
-| **Hacer Commit** | Cada vez que quieras guardar cambios en Git | Para crear PRs (usa revision_pr) |
+| **Fix Bugs** | Cuando algo no funciona o tiene comportamiento inesperado | Para mejoras o features nuevos (eso es una tarea) |
+| **Unit Testing** | Para escribir tests de calidad o mejorar tests existentes | Si no hay framework de testing (primero usa 04_setup_testing) |
+| **Commit** | Cada vez que quieras guardar cambios en Git | Para crear PRs (usa revision_pr) |
 | **Revision de PR** | Para crear una PR nueva o revisar una existente antes de mergear | Para revision de codigo sin PR (usa limpieza_de_codigo) |
+| **CI Local** | Una vez por proyecto: configurar git hooks que verifican codigo antes de commit y push | Si ya tienes hooks configurados y funcionando |
 
 ---
 
@@ -97,27 +102,32 @@ Plantillas que usaras regularmente durante el desarrollo.
 Este es el ciclo que seguiras para cada tarea:
 
 ```
-1. PLANIFICAR    →  documento_de_tarea.md
+1. PLANIFICAR    →  crear_tarea.md
    Antes de tocar codigo. Define que vas a hacer, por que, y como.
 
-2. IMPLEMENTAR   →  Tu asistente de IA con el documento de tarea como guia.
+2. REVISAR PLAN  →  revisar_tarea.md
+   Valida alcance minimo, dependencias, edge cases y enfoque TDD.
 
-3. REVISAR       →  limpieza_de_codigo.md
+3. IMPLEMENTAR   →  Tu asistente de IA con el documento de tarea revisado como guia.
+
+4. REVISAR       →  limpieza_de_codigo.md
    Busca codigo muerto, redundancias, nombres poco claros, duplicaciones.
 
-4. TESTEAR       →  testing_basico.md
+5. TESTEAR       →  unit_testing.md
    Escribe tests para lo que has implementado. No para todo el proyecto.
 
-5. COMMITEAR     →  hacer_commit.md
+6. COMMITEAR     →  commit.md
    Guarda los cambios con un mensaje claro y sin archivos sensibles.
 
-6. PULL REQUEST  →  revision_pr.md
+7. PULL REQUEST  →  revision_pr.md
    Crea o revisa la PR antes de mergear.
 ```
 
-**Si encuentras un bug** durante la implementacion: usa `correccion_de_bugs.md`.
+**Si encuentras un bug** durante la implementacion: usa `fix_bugs.md`.
 
-**Si el proyecto no tiene tests configurados:** usa `core_templates/04_setup_testing.md` una sola vez antes de escribir tests.
+**Si el proyecto no tiene tests configurados:** usa `../core_templates/04_setup_testing.md` una sola vez antes de escribir tests.
+
+**Si el proyecto no tiene verificaciones automaticas:** usa `ci_local.md` una sola vez para configurar git hooks que verifican formato, lint y tests antes de cada commit y push.
 
 ---
 
