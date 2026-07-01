@@ -24,6 +24,9 @@
 | `/implementar` | 6 | Implementa una task especifica |
 | `/revision` | 7 | Revision adversarial de la implementacion completa |
 | `/estado` | — | Muestra el estado del proyecto (specs, tasks, progreso) |
+| `/bugfix` | — | Diagnostica y corrige un bug con causa raiz |
+| `/commit` | — | Crea un commit limpio con mensaje descriptivo |
+| `/pr` | — | Crea o revisa una Pull Request |
 
 ## Agentes
 
@@ -49,8 +52,8 @@
 proyecto/
 ├── .claude/
 │   ├── agents/         # planificador, revisor, implementador
-│   ├── commands/       # /spec, /tareas, /auditar, /implementar, /revision, /estado
-│   ├── skills/         # revisar-tarea, revision-adversarial
+│   ├── commands/       # 9 comandos SDD + utilidad
+│   ├── skills/         # 8 skills (auto-activacion + utilidad)
 │   └── settings.json   # permisos + hooks wiring
 ├── hooks/              # enforcement del pipeline SDD (advisory)
 ├── ai_docs/

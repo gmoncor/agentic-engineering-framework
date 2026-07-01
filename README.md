@@ -104,6 +104,22 @@ Comandos disponibles tras instalar:
 | `/implementar` | 6 | Implementa una task especifica |
 | `/revision` | 7 | Revision adversarial post-implementacion |
 | `/estado` | -- | Muestra el estado del proyecto |
+| `/bugfix` | -- | Diagnostica y corrige un bug con causa raiz |
+| `/commit` | -- | Crea un commit limpio con mensaje descriptivo |
+| `/pr` | -- | Crea o revisa una Pull Request |
+
+Skills (se activan automaticamente segun contexto):
+
+| Skill | Cuando se activa |
+|-------|-----------------|
+| `revisar-tarea` | Al crear o modificar una task en ai_docs/tasks/ |
+| `revision-adversarial` | Al completar la implementacion de todas las tasks |
+| `bugfix` | Ante errores, fallos, excepciones, "no funciona" |
+| `commit` | Cuando el usuario quiere hacer commit |
+| `pr` | Cuando el usuario pide crear o revisar una PR |
+| `cleanup` | Al pedir limpiar, refactorizar o revisar calidad |
+| `testing` | Al pedir escribir tests o mejorar cobertura |
+| `diff` | Al preguntar "que cambie" o "resumen de cambios" |
 
 ### Gemini CLI
 
@@ -207,12 +223,12 @@ agentic-engineering-framework/
 ├── .claude/                     # Configuracion Claude Code
 │   ├── settings.json            #   permisos + hooks wiring
 │   ├── agents/                  #   planificador, revisor, implementador
-│   ├── commands/                #   /spec, /tareas, /auditar, /implementar, /revision, /estado
-│   └── skills/                  #   revisar-tarea, revision-adversarial
+│   ├── commands/                #   9 comandos SDD + utilidad
+│   └── skills/                  #   8 skills (auto-activacion + utilidad)
 │
 ├── agents/                      # Agentes Gemini CLI
-├── commands/                    # Comandos Gemini CLI (.toml)
-├── skills/                      # Skills Gemini CLI
+├── commands/                    # 9 comandos Gemini CLI (.toml)
+├── skills/                      # 8 skills Gemini CLI
 ├── hooks/                       # Enforcement SDD (compartido ambas CLIs)
 ├── gemini-extension.json        # Manifest extension Gemini
 │
