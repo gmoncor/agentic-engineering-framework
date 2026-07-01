@@ -1,4 +1,5 @@
 {
+  "model": "sonnet",
   "permissions": {
     "allow": [
       "Read",
@@ -18,7 +19,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node hooks/sdd-pipeline-guard.js"
+            "command": "node \"$CLAUDE_PROJECT_DIR/hooks/sdd-pipeline-guard.js\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/hooks/sdd-commit-guard.js\""
           }
         ]
       }

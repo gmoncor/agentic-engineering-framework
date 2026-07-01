@@ -20,7 +20,7 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 **Instrucciones adicionales para esta plantilla:**
 - NUNCA uses `git add .` ni `git add -A` sin revisar que se esta incluyendo.
 - NUNCA incluyas archivos sensibles (.env, credenciales, tokens, claves API).
-- NUNCA incluyas archivos de configuracion de IA o scaffolding (ai_docs/) en el commit.
+- NUNCA incluyas archivos de configuracion de IDE (.cursor/) en el commit.
 - SIEMPRE presenta el mensaje de commit para aprobacion antes de ejecutar.
 - En el flujo SDD, cada commit debe corresponder a una task o sub-tarea logica. No mezclar cambios de tasks distintas en un mismo commit.
 
@@ -34,11 +34,11 @@ Ejecuta `git status` y analiza los cambios:
 2. **Archivos nuevos:** Son necesarios? Faltan en .gitignore?
 3. **Archivos que NO deben incluirse:**
    - `.env`, `.env.local` o cualquier archivo con secretos
-   - `ai_docs/` (plantillas y documentacion de IA)
+   - `.cursor/` (configuracion de IDE)
    - Archivos temporales, logs, caches
    - `node_modules/`, `__pycache__/`, `vendor/` (dependencias)
 
-**Si detectas archivos sensibles o de IA:** excluyelos y avisa al usuario.
+**Si detectas archivos sensibles o de IDE:** excluyelos y avisa al usuario.
 
 ---
 
