@@ -34,6 +34,14 @@ __pycache__/
 venv/
 
 # ===========================================
+# Claude Code (local configs, no versionar)
+# ===========================================
+.claude/settings.local.json
+.claude/projects/
+.claude/todos/
+.claude/credits.json
+
+# ===========================================
 # IDEs y herramientas
 # ===========================================
 .idea/

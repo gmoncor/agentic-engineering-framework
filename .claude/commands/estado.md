@@ -1,0 +1,37 @@
+---
+description: "Muestra el estado del proyecto SDD: specs, tasks y progreso"
+---
+
+Muestra el estado actual del proyecto SDD.
+
+## Instrucciones
+
+1. Lee todos los archivos en `ai_docs/tasks/`
+2. Clasifica cada archivo:
+   - **Specs:** archivos con prefijo `spec_` — indica estado (BORRADOR / APROBADA)
+   - **Tasks:** archivos con prefijo numerico `NNN_` — indica estado y spec madre
+3. Presenta un resumen con este formato:
+
+```
+## Estado del proyecto SDD
+
+### Specs
+| Spec | Estado | Tasks derivadas |
+|------|--------|-----------------|
+| ... | ... | ... |
+
+### Tasks
+| # | Titulo | Spec madre | Estado | Paralelizable |
+|---|--------|------------|--------|---------------|
+| ... | ... | ... | ... | ... |
+
+### Resumen
+- Specs activas: N
+- Tasks pendientes: N
+- Tasks completadas: N
+- Tasks en progreso: N
+```
+
+4. Si `ai_docs/tasks/` esta vacio, indica que no hay specs ni tasks creadas y sugiere empezar con `/spec`
+5. Si hay specs sin tasks, sugiere usar `/tareas` para derivarlas
+6. Si hay tasks completadas sin revision, sugiere usar `/revision`

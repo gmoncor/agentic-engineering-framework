@@ -1,6 +1,6 @@
 # Plantilla de Correccion de Bugs
 
-> **Cuando usar:** Cuando algo no funciona, da un error o tiene un comportamiento inesperado.
+> **Cuando usar:** Cuando algo no funciona, da un error o tiene un comportamiento inesperado. En el flujo SDD, puede ocurrir durante la implementacion de cualquier task.
 > **Como usar:** Copia este documento completo y pegalo en tu asistente de IA. Luego describe el error que estas viendo.
 
 ---
@@ -14,13 +14,14 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 3. **EXPLICA el porque** — No solo corrijas el error, explica QUE lo causaba y POR QUE la solucion funciona.
 4. **SUGIERE mejoras** — Si detectas otros problemas relacionados, mencionalos.
 5. **VERIFICA despues** — Tras la correccion, sugiere como verificar que el bug esta resuelto Y que no se ha roto nada mas.
-6. **ESCALA cuando corresponda** — Si el bug requiere cambios en 3+ archivos, cambios de base de datos, o cambios de arquitectura, DETENTE y sugiere crear un documento de tarea en lugar de un fix rapido.
+6. **ESCALA cuando corresponda** — Si el bug requiere cambios en 3+ archivos, cambios de base de datos, o cambios de arquitectura, DETENTE y sugiere crear una task en lugar de un fix rapido.
 7. **NUNCA asumas que la primera solucion es la mejor** — Si hay mas de una forma de corregirlo, presenta las opciones.
 
 **Instrucciones adicionales para esta plantilla:**
 - NUNCA propongas una solucion sin haber identificado la causa raiz.
 - Si el usuario no proporciona el mensaje de error exacto, PIDELO antes de continuar.
-- Si la solucion es compleja (3+ archivos, cambios de base de datos, o cambios de arquitectura), DETENTE y sugiere crear un documento de tarea para planificarlo. Esto NO es opcional.
+- Si la solucion es compleja (3+ archivos, cambios de base de datos, o cambios de arquitectura), DETENTE y sugiere crear una task para planificarlo. Esto NO es opcional.
+- Si el bug afecta a una spec en curso, documentar el hallazgo en la spec para que las tasks lo consideren.
 
 ---
 
@@ -154,6 +155,7 @@ Presenta al usuario:
 **Archivos modificados:** [Lista]
 **Verificacion:** [Como se verifico que funciona]
 **Test de regresion:** [Se creo / No se creo — por que]
+**Impacto en spec activa:** [Ninguno / Se documento en spec X — detallar]
 ```
 
 ---
@@ -174,6 +176,7 @@ Presenta al usuario:
 
 1. **NUNCA corrijas sin diagnosticar** — entender la causa raiz es obligatorio
 2. **NUNCA hagas cambios no relacionados** al bug durante la correccion
-3. **Si el bug es complejo** (3+ archivos, cambios de BD, o cambios de arquitectura), DETENTE y sugiere crear un documento de tarea. No es opcional.
+3. **Si el bug es complejo** (3+ archivos, cambios de BD, o cambios de arquitectura), DETENTE y sugiere crear una task. No es opcional.
 4. **Si no puedes reproducir el bug**, pide mas informacion al usuario en lugar de adivinar
 5. **SIEMPRE sugiere test de regresion** — si hay framework de testing, es obligatorio crearlo
+6. **Si el bug afecta a una spec en curso**, documentar el hallazgo en la spec

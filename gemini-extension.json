@@ -1,0 +1,6 @@
+{
+  "name": "sdd-framework",
+  "version": "2.0.0",
+  "description": "Framework SDD (Spec-Driven Development) — metodologia lineal para desarrollo asistido por IA",
+  "contextFileName": "GEMINI.md"
+}

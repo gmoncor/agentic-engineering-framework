@@ -1,0 +1,25 @@
+description = "Implementa una task especifica siguiendo TDD"
+
+prompt = """
+Actua como el agente implementador. El usuario quiere implementar:
+
+{{args}}
+
+## Instrucciones
+
+1. Localiza la task indicada en `ai_docs/tasks/`
+2. Lee el documento de task completo
+3. Lee la spec madre referenciada en la task
+4. Verifica que las dependencias de la task estan resueltas
+5. Si falta algo, DETENTE y reporta — no intentes resolverlo
+6. Implementa siguiendo TDD:
+   - **Red:** escribe tests basados en criterios de exito y edge cases
+   - **Green:** escribe el codigo minimo para que pasen
+   - **Refactor:** limpia sin cambiar comportamiento
+7. Ejecuta el test suite completo para verificar que no hay regresiones
+8. Verifica cada criterio de exito de la task
+9. Confirma con `git diff` que solo se tocaron archivos listados en la task
+10. Actualiza el estado de la task a COMPLETADA
+
+Sigue la task al pie de la letra. No tomes decisiones de alcance.
+"""

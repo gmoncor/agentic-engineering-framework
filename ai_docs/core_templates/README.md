@@ -76,28 +76,28 @@
 
 **Archivo:** `03_roadmap_de_desarrollo.md`
 
-**Que hace:** Define EN QUE ORDEN se construye todo. Organiza las funcionalidades en fases secuenciales donde cada fase es una feature completa (no una capa tecnica). Incluye analisis de dependencias y 3 rondas de refinamiento obligatorias.
+**Que hace:** Define EN QUE ORDEN se construye todo. Organiza las funcionalidades en fases lineales donde cada fase agrupa specs relacionadas. Cada spec se descompone en tasks atomicas y paralelizables. Sin sprints — roadmap lineal con prioridades, dependencias y estimaciones de alto nivel.
 
 **Cuando usarla:**
 - Despues de tener la planificacion tecnica (02_planificacion_tecnica)
-- Cuando hay multiples features por construir y no esta claro por donde empezar
-- Cuando necesitas un plan de ejecucion que puedas seguir fase a fase
+- Cuando hay multiples funcionalidades por construir y no esta claro por donde empezar
+- Cuando necesitas un plan de ejecucion organizado en fases con specs claras
 
 **Cuando NO usarla:**
-- Para tareas individuales — eso es crear_tarea.md
+- Para tareas individuales — las tasks se derivan de specs, no del roadmap directamente
 - Si el proyecto ya tiene un roadmap actualizado y el equipo lo sigue
 
 **Que necesitas antes:** El documento de planificacion tecnica (02_planificacion_tecnica) o equivalente.
 
-**Que genera:** Un roadmap con fases secuenciales feature-first, cada una con tareas concretas y checkboxes.
+**Que genera:** Un roadmap con fases secuenciales, cada una agrupando specs con alcance, criterios de aceptacion y dependencias explicitas.
 
 **Como usarla:**
 1. Copia el contenido completo y pegalo en tu asistente de IA
 2. Adjunta o referencia los documentos de vision y planificacion tecnica
-3. El asistente analizara features, dependencias y propondra una secuencia
-4. Habra 3 rondas de refinamiento — no te saltes ninguna, la calidad viene de la iteracion
+3. El asistente analizara funcionalidades, las agrupara en specs y propondra una secuencia de fases
+4. Revisa la autocritica y refina antes de dar por bueno el roadmap
 
-**Importante:** Las fases deben ser features completas para el usuario ("Gestion de Productos con Catalogo"), NO capas tecnicas ("Migracion de Base de Datos"). Si el asistente propone fases tecnicas, pidele que las reorganice por funcionalidad.
+**Importante:** Las fases deben ser funcionalidades completas para el usuario ("Gestion de Productos con Catalogo"), NO capas tecnicas ("Migracion de Base de Datos"). Si el asistente propone fases tecnicas, pidele que las reorganice por funcionalidad.
 
 ---
 
@@ -139,8 +139,8 @@
 02  →  Define paginas, datos y arquitectura
        Resultado: documento de planificacion tecnica
 
-03  →  Define el orden de construccion por fases
-       Resultado: roadmap con tareas y checkboxes
+03  →  Define el orden de construccion por fases y specs
+       Resultado: roadmap lineal con fases, specs y dependencias
 
 04  →  Configura el entorno de testing
        Resultado: framework de tests listo para usar

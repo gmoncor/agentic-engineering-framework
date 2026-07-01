@@ -1,6 +1,6 @@
 # Plantilla de Testing
 
-> **Cuando usar:** Cuando quieras escribir tests para verificar que tu codigo funciona, o mejorar tests existentes.
+> **Cuando usar:** Cuando quieras escribir tests para verificar que tu codigo funciona, o mejorar tests existentes. En el flujo SDD, los tests se escriben durante la implementacion de cada task.
 > **Como usar:** Copia este documento completo y pegalo en tu asistente de IA. Luego indica que modulo o funcion quieres testear.
 
 ---
@@ -23,6 +23,7 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 - Si se corrige un bug, SIEMPRE incluir un test de regresion que lo reproduzca.
 - RESPETA el framework de testing existente. Si el proyecto usa Jest, no propongas migrar a Vitest.
 - Solo escribe tests para el codigo que se esta modificando o creando. NO crees suites de tests masivas para codigo que ya existe y no se ha tocado.
+- En el flujo SDD, cada task debe tener sus tests. No dejes los tests para el final de todas las tasks.
 
 ---
 
@@ -118,7 +119,7 @@ No pierdas tiempo con tests que no aportan valor:
 
 - Getters/setters triviales que solo leen o asignan un valor
 - Configuracion de frameworks (verificar que Express arranca no es tu responsabilidad)
-- Codigo de librerias externas (si usas `dayjs.format()`, confía en que funciona)
+- Codigo de librerias externas (si usas `dayjs.format()`, confia en que funciona)
 - Constantes y enums (no cambian)
 
 ---
@@ -232,3 +233,4 @@ Esto garantiza que:
 5. **Si se corrige un bug**, el test de regresion (RED-GREEN) es OBLIGATORIO
 6. **Si no hay framework de testing**, sugerir configurarlo con `core_templates/04_setup_testing.md` antes de escribir tests
 7. **Solo testear lo que se modifica** — no crear suites masivas para codigo intacto
+8. **En el flujo SDD**, cada task incluye sus tests — no dejar testing para despues de todas las tasks

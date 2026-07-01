@@ -1,7 +1,7 @@
-# Revision de Tarea Pre-Implementacion
+# Revision de Task Pre-Implementacion
 
-> **Cuando usar:** Despues de crear el documento de tarea y ANTES de implementar. Valida que el plan es solido.
-> **Como usar:** Copia este documento completo y pegalo en tu asistente de IA junto con el documento de tarea que quieres revisar.
+> **Cuando usar:** Despues de derivar las tasks de una spec aprobada y ANTES de implementar. Valida que cada task individual es solida.
+> **Como usar:** Copia este documento completo y pegalo en tu asistente de IA junto con la task que quieres revisar y su spec madre.
 
 ---
 
@@ -13,7 +13,9 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 2. **MUESTRA antes de ejecutar** — Presenta tu analisis al usuario y espera confirmacion ANTES de modificar nada.
 3. **EXPLICA el porque** — No solo digas QUE cambiar en el plan, explica POR QUE.
 4. **SUGIERE mejoras** — Si detectas oportunidades de mejora (seguridad, rendimiento, legibilidad), PROPONLAS activamente.
-5. **NUNCA asumas que la primera solucion es la mejor** — Si detectas que el plan tiene una alternativa mas simple, proponla.
+5. **VERIFICA despues** — Tras aplicar ajustes, confirma que la task sigue siendo coherente con la spec madre.
+6. **ESCALA cuando corresponda** — Si la task necesita rehacerse, comunica que debe volver a `tareas.md` para reestructurar.
+7. **NUNCA asumas que la primera solucion es la mejor** — Si detectas que el plan tiene una alternativa mas simple, proponla.
 
 **Instrucciones adicionales para esta plantilla:**
 - Esta plantilla es de REVISION. NO implementes nada. Solo analiza, cuestiona y propone ajustes al plan.
@@ -22,15 +24,30 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 
 ---
 
+## Paso 0: Verificar coherencia con la spec madre
+
+Antes de revisar la task, verificar que es coherente con la spec aprobada:
+
+| Verificacion | Estado |
+|-------------|--------|
+| La task tiene spec madre referenciada | SI / NO — si NO, pedir al usuario |
+| El objetivo de la task contribuye a un criterio de aceptacion de la spec | SI / NO |
+| La task no implementa nada excluido en "No incluye" de la spec | SI / NO |
+| Los archivos afectados son coherentes con el alcance de la spec | SI / NO |
+
+**Si alguna verificacion falla:** DETENTE y comunica el problema. La task puede estar desalineada con la spec.
+
+---
+
 ## Paso 1: Verificar alcance minimo (KISS)
 
-Revisa los cambios planificados en el documento de tarea y responde:
+Revisa los cambios planificados en el documento de task y responde:
 
 - **Cada cambio es realmente necesario** para cumplir el objetivo? Hay alguno que se pueda eliminar?
 - **Se esta tocando mas de lo necesario?** Cambios cosmeticos, refactors "de paso", mejoras no solicitadas?
 - **Existe una forma mas simple** de conseguir el mismo resultado con menos archivos afectados?
 
-**Regla:** Si un cambio no contribuye directamente al objetivo de la tarea, debe eliminarse del plan.
+**Regla:** Si un cambio no contribuye directamente al objetivo de la task, debe eliminarse del plan.
 
 ---
 
@@ -38,6 +55,7 @@ Revisa los cambios planificados en el documento de tarea y responde:
 
 Antes de implementar, comprueba que todo lo necesario esta en su sitio:
 
+- **Dependencias de otras tasks:** Si esta task depende de otra, esa otra task esta completada?
 - **Dependencias tecnicas:** Hay librerias, servicios o configuraciones que deben existir antes?
 - **Dependencias de datos:** Hay migraciones de base de datos, seeds o fixtures necesarios?
 - **Dependencias de codigo:** Hay funciones, modulos o APIs de las que depende este cambio? Existen y funcionan?
@@ -57,7 +75,7 @@ Revisa el plan buscando escenarios que no se hayan contemplado:
 - **Permisos:** Todos los roles de usuario tienen el acceso correcto? Hay rutas sin proteger?
 - **Limites:** Hay paginacion, rate limits o timeouts que deban considerarse?
 
-**Regla:** No es necesario cubrir TODOS los edge cases, pero los que puedan causar perdida de datos o errores silenciosos deben estar en el plan.
+**Regla:** La task debe listar minimo 3 edge cases. Si no los tiene, es una senal de que el plan no esta completo.
 
 ---
 
@@ -104,8 +122,9 @@ Para cada cambio planificado, evalua:
 - **Que puede salir mal?** (errores en produccion, perdida de datos, downtime)
 - **Es reversible?** Si algo falla, se puede volver atras sin consecuencias?
 - **Afecta a otros modulos?** El cambio puede romper algo que no se esta tocando directamente?
+- **Afecta a otras tasks de la misma spec?** El cambio puede invalidar o complicar la implementacion de otra task?
 
-Si el riesgo es alto y no hay plan de rollback, anadirlo al documento de tarea.
+Si el riesgo es alto y no hay plan de rollback, anadirlo al documento de task.
 
 ---
 
@@ -116,6 +135,10 @@ Presenta al usuario un resumen de la revision:
 ```
 ## Resultado de la revision
 
+**Task:** [Titulo de la task]
+**Spec madre:** [Titulo de la spec]
+
+**Coherencia con spec:** [OK / Desalineada — detallar]
 **Alcance:** [OK / Necesita ajustes — detallar]
 **Dependencias:** [OK / Faltan pre-requisitos — detallar]
 **Edge cases:** [OK / Hay N casos no contemplados — detallar]
@@ -123,7 +146,7 @@ Presenta al usuario un resumen de la revision:
 **Tests:** [N tests planificados]
 **Riesgos:** [Bajo / Medio / Alto — detallar si medio o alto]
 
-### Ajustes propuestos al documento de tarea
+### Ajustes propuestos al documento de task
 - [Ajuste 1 — que cambiar y por que]
 - [Ajuste 2 — que cambiar y por que]
 
@@ -134,7 +157,7 @@ Presenta al usuario un resumen de la revision:
 **PUNTO DE ESPERA OBLIGATORIO:**
 - DETENTE aqui y espera la respuesta del usuario
 - Si el veredicto es "NECESITA REPLANTEAMIENTO", NO continues hasta que el usuario decida como proceder
-- Si el usuario aprueba los ajustes, actualiza el documento de tarea y pasa a implementacion
+- Si el usuario aprueba los ajustes, actualiza el documento de task. Si quedan tasks por revisar, continuar con la siguiente. Cuando todas esten revisadas, proceder a auditoria con `auditar_spec.md`
 
 ---
 
@@ -143,4 +166,5 @@ Presenta al usuario un resumen de la revision:
 1. **NUNCA implementes durante la revision** — esta plantilla es solo para analizar y proponer ajustes
 2. **NUNCA ignores dependencias faltantes** — si algo no existe y se necesita, detenerlo ahora cuesta minutos; descubrirlo durante implementacion cuesta horas
 3. **NUNCA aceptes un plan sin cuestionar** — tu trabajo es encontrar lo que se paso por alto, no confirmar que todo esta bien
-4. **Si la tarea es demasiado grande**, propone dividirla antes de aprobar la implementacion
+4. **Si la task es demasiado grande**, propone dividirla antes de aprobar la implementacion
+5. **SIEMPRE verifica coherencia con la spec madre** — una task desalineada con la spec es peor que no tener task

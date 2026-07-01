@@ -1,6 +1,6 @@
 # Plantilla de Commit Git
 
-> **Cuando usar:** Cuando quieras guardar tus cambios en Git con un commit limpio y ordenado.
+> **Cuando usar:** Cuando quieras guardar tus cambios en Git con un commit limpio y ordenado. En el flujo SDD, cada task genera al menos un commit.
 > **Como usar:** Copia este documento completo y pegalo en tu asistente de IA. Luego dile que quieres hacer commit.
 
 ---
@@ -14,13 +14,15 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 3. **EXPLICA el porque** — Si excluyes algun archivo o sugieres dividir el commit, explica por que.
 4. **SUGIERE mejoras** — Si ves que los cambios deberian ir en commits separados, proponlo.
 5. **VERIFICA despues** — Tras el commit, muestra el resultado para confirmar que se hizo correctamente.
-6. **NUNCA hagas push automaticamente** — El commit es local. Solo hacer push si el usuario lo pide explicitamente.
+6. **ESCALA cuando corresponda** — Si los cambios son demasiado grandes para un solo commit, sugiere dividir.
+7. **NUNCA hagas push automaticamente** — El commit es local. Solo hacer push si el usuario lo pide explicitamente.
 
 **Instrucciones adicionales para esta plantilla:**
 - NUNCA uses `git add .` ni `git add -A` sin revisar que se esta incluyendo.
 - NUNCA incluyas archivos sensibles (.env, credenciales, tokens, claves API).
 - NUNCA incluyas archivos de configuracion de IA o scaffolding (ai_docs/) en el commit.
 - SIEMPRE presenta el mensaje de commit para aprobacion antes de ejecutar.
+- En el flujo SDD, cada commit debe corresponder a una task o sub-tarea logica. No mezclar cambios de tasks distintas en un mismo commit.
 
 ---
 
@@ -44,7 +46,7 @@ Ejecuta `git status` y analiza los cambios:
 
 **Regla: solo incluir archivos relacionados con el mismo cambio logico.**
 
-Si hay cambios que pertenecen a funcionalidades diferentes, propone dividirlos en commits separados:
+Si hay cambios que pertenecen a funcionalidades diferentes (o a tasks distintas), propone dividirlos en commits separados:
 
 ```
 He detectado 2 grupos de cambios:
@@ -136,3 +138,4 @@ Proceder? (S/n)
 4. **NUNCA push sin confirmacion** explicita del usuario
 5. **NUNCA `--amend`** sin pedido explicito — siempre commits nuevos
 6. **SIEMPRE presentar el mensaje** para aprobacion antes de ejecutar
+7. **En el flujo SDD**, un commit = una task o sub-tarea logica
