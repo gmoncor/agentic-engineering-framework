@@ -10,5 +10,18 @@
       "Bash(git diff:*)",
       "Bash(git status:*)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/sdd-pipeline-guard.js"
+          }
+        ]
+      }
+    ]
   }
 }

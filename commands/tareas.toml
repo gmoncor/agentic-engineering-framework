@@ -1,21 +1,11 @@
-description = "Parte una spec aprobada en tasks granulares y paralelizables"
+description = "Parte una spec aprobada en tasks granulares"
 
 prompt = """
-Actua como el agente planificador. El usuario quiere derivar tasks de una spec:
+Lee y sigue el proceso completo de `ai_docs/dev_templates/tareas.md`.
+
+Contexto del proyecto: lee `ai_docs/core/` para entender vision, planificacion y roadmap.
+
+Solicitud del usuario:
 
 {{args}}
-
-## Instrucciones
-
-1. Lee `ai_docs/dev_templates/tareas.md` para conocer el formato y proceso completo
-2. Localiza la spec indicada en `ai_docs/tasks/`. Verifica que su estado es APROBADA
-3. Si la spec NO esta aprobada, DETENTE e informa al usuario que debe aprobarla primero con `/spec`
-4. Sigue el proceso de la plantilla paso a paso:
-   - Identifica modulos independientes
-   - Crea tasks atomicas con el formato de la plantilla
-   - Marca paralelizacion y dependencias
-   - Construye el mapa de grupos de ejecucion
-   - Presenta el resumen al usuario y ESPERA aprobacion
-5. Tras aprobacion, crea cada task como archivo en `ai_docs/tasks/NNN_descriptor.md`
-6. Verifica la numeracion existente en `ai_docs/tasks/` para no pisar archivos
 """

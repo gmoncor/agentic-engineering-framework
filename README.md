@@ -205,14 +205,15 @@ agentic-engineering-framework/
 ├── LICENSE                      # CC BY 4.0
 │
 ├── .claude/                     # Configuracion Claude Code
-│   ├── settings.json
-│   ├── agents/                  # planificador, revisor, implementador
-│   ├── commands/                # /spec, /tareas, /auditar, /implementar, /revision, /estado
-│   └── skills/                  # revisar-tarea, revision-adversarial
+│   ├── settings.json            #   permisos + hooks wiring
+│   ├── agents/                  #   planificador, revisor, implementador
+│   ├── commands/                #   /spec, /tareas, /auditar, /implementar, /revision, /estado
+│   └── skills/                  #   revisar-tarea, revision-adversarial
 │
 ├── agents/                      # Agentes Gemini CLI
 ├── commands/                    # Comandos Gemini CLI (.toml)
 ├── skills/                      # Skills Gemini CLI
+├── hooks/                       # Enforcement SDD (compartido ambas CLIs)
 ├── gemini-extension.json        # Manifest extension Gemini
 │
 ├── ai_docs/
@@ -267,6 +268,16 @@ Un archivo por task: `NNN_descriptor.md`. Numeracion secuencial. Empieza vacio.
 Documentacion de APIs, guias de estilo, specs de terceros. Lo que el LLM necesite consultar. Empieza vacio.
 
 ---
+
+## Hooks (enforcement del pipeline)
+
+El directorio `hooks/` contiene un hook compartido entre ambas CLIs que refuerza la regla "toda solicitud empieza con una spec":
+
+| Hook | Que hace | Modo |
+|------|----------|------|
+| `sdd-pipeline-guard.js` | Avisa si escribes codigo sin spec aprobada en `ai_docs/tasks/` | Advisory (warn, no bloquea) |
+
+El hook se activa automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`). No requiere configuracion manual.
 
 ## Cursor IDE
 

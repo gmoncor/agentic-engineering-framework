@@ -51,7 +51,8 @@ proyecto/
 │   ├── agents/         # planificador, revisor, implementador
 │   ├── commands/       # /spec, /tareas, /auditar, /implementar, /revision, /estado
 │   ├── skills/         # revisar-tarea, revision-adversarial
-│   └── settings.json   # permisos base
+│   └── settings.json   # permisos + hooks wiring
+├── hooks/              # enforcement del pipeline SDD (advisory)
 ├── ai_docs/
 │   ├── core/           # vision, planificacion, roadmap (fuente de verdad)
 │   ├── tasks/          # NNN_descriptor.md (una task por archivo)
@@ -61,19 +62,13 @@ proyecto/
 
 ## Specs
 
-- Ubicacion: `ai_docs/tasks/` con prefijo `spec_` (ej: `spec_autenticacion.md`)
-- Define QUE se quiere lograr, NO como implementarlo
-- Secciones obligatorias: Objetivo, Alcance (Incluye/No incluye), Restricciones, Criterios de aceptacion
-- Estado: BORRADOR -> APROBADA. Solo se derivan tasks de specs APROBADAS
-- Formato completo en `ai_docs/dev_templates/spec.md`
+Ubicacion: `ai_docs/tasks/spec_<descriptor>.md`. Estado: BORRADOR -> APROBADA.
+Formato y proceso completo en `ai_docs/dev_templates/spec.md`.
 
 ## Tasks
 
-- Ubicacion: `ai_docs/tasks/NNN_descriptor.md` (numeracion secuencial 3 digitos)
-- Cada task referencia su spec madre
-- Campos obligatorios: Dependencias, Paralelizable (SI/NO), Tamano estimado, Edge cases (min 3)
-- Tamano maximo: 400 lineas. Si supera, dividir
-- Formato completo en `ai_docs/dev_templates/tareas.md`
+Ubicacion: `ai_docs/tasks/NNN_descriptor.md`. Cada task referencia su spec madre.
+Formato y proceso completo en `ai_docs/dev_templates/tareas.md`.
 
 ## Plantillas de referencia
 
