@@ -35,8 +35,8 @@ Criterios de aceptacion: [N]
 Restricciones: [N]
 
 Tasks:
-  - Task NNN: [Titulo] — [Paralelizable: SI/NO] — [Dependencias: lista o ninguna]
-  - Task NNN: [Titulo] — [Paralelizable: SI/NO] — [Dependencias: lista o ninguna]
+  - Task NNN: [Titulo] — [Independiente: SI/NO] — [Dependencias: lista o ninguna]
+  - Task NNN: [Titulo] — [Independiente: SI/NO] — [Dependencias: lista o ninguna]
   ...
 Total tasks: [N]
 ```
@@ -106,7 +106,7 @@ Para cada task con dependencias declaradas:
 
 **Buscar dependencias no declaradas:**
 - Task que usa un tipo/modelo/API creado por otra task sin declarar la dependencia
-- Tasks paralelizables que en realidad comparten archivos
+- Tasks marcadas como independientes que en realidad comparten archivos
 
 ---
 

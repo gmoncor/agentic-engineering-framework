@@ -148,7 +148,7 @@ Fase 2: [Nombre descriptivo]
 - Cada fase agrupa 1-4 specs relacionadas
 - Cada spec tiene alcance y criterios de aceptacion claros
 - Las dependencias entre fases son explicitas
-- Specs independientes dentro de una fase se marcan como paralelizables
+- Specs independientes dentro de una fase se marcan como independientes
 - Si una fase tiene mas de 4 specs, dividirla
 - Estimaciones de alto nivel (dias/semanas), no al detalle de horas
 

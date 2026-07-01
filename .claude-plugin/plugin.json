@@ -1,0 +1,13 @@
+{
+  "name": "agentic-engineering-framework",
+  "displayName": "Agentic Engineering Framework",
+  "version": "2.1.0",
+  "description": "Framework SDD (Spec-Driven Development) — metodologia lineal para desarrollo asistido por IA. Planificacion exhaustiva, implementacion lineal, revision adversarial.",
+  "author": {
+    "name": "Guillermo Montero",
+    "url": "https://github.com/gmoncor"
+  },
+  "repository": "https://github.com/gmoncor/agentic-engineering-framework",
+  "license": "CC-BY-4.0",
+  "keywords": ["sdd", "spec-driven-development", "ai-coding", "framework", "templates"]
+}

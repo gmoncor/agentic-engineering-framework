@@ -71,18 +71,22 @@ Quieres hacer un solo commit o dividirlos?
 Formato recomendado:
 
 ```
-<tipo>: <descripcion breve — maximo 50 caracteres>
+<tipo>: <descripcion breve — maximo 72 caracteres>
 
 <cuerpo: que cambio y por que — wrap a 72 caracteres por linea>
 ```
 
-**Tipos comunes:**
+**Tipos validos:**
 | Tipo | Cuando usarlo |
 |------|---------------|
 | `feat` | Nueva funcionalidad |
 | `fix` | Correccion de bug |
 | `update` | Mejora de funcionalidad existente |
 | `refactor` | Reestructurar codigo sin cambiar comportamiento |
+| `create` | Crear archivo o recurso nuevo |
+| `optimize` | Mejora de rendimiento |
+| `remove` | Eliminar codigo, archivo o recurso |
+| `rename` | Renombrar archivo, variable o recurso |
 | `docs` | Cambios en documentacion |
 | `test` | Anadir o mejorar tests |
 | `style` | Cambios de formato (espacios, comas, etc.) |

@@ -65,56 +65,46 @@ Principios del flujo:
 
 ---
 
+## Prerequisitos
+
+- **Node.js >= 20** — requerido por los hooks de enforcement (`sdd-pipeline-guard.js`, `sdd-commit-guard.js`). Sin Node.js, los hooks fallan silenciosamente y no hay enforcement del pipeline SDD. Verificar con `node --version`
+
 ## Instalacion
 
 ### Claude Code
 
-**Opcion 1 — Proyecto nuevo:**
+**Opcion 1 — Proyecto nuevo (clonar y empezar):**
 
 ```bash
 git clone https://github.com/gmoncor/agentic-engineering-framework.git mi-proyecto
 cd mi-proyecto
-claude
+rm -rf .git && git init   # tu propio repo, no un fork
+claude                     # abre Claude Code — los comandos estan listos
 ```
 
-**Opcion 2 — Proyecto existente:**
+Al abrir Claude Code dentro del proyecto, se carga automaticamente:
+- `CLAUDE.md` como instrucciones del sistema
+- `.claude/settings.json` con el modelo y los hooks
+- Los 11 comandos, 4 agentes, 8 skills y el workflow de planificacion
 
-Copia estas carpetas a la raiz de tu proyecto:
+**Opcion 2 — Proyecto existente (copiar lo necesario):**
+
+Copia estas carpetas y archivos a la raiz de tu proyecto:
 
 ```
-.claude/          # agentes, comandos, skills, settings
-ai_docs/          # plantillas + docs de tu proyecto
-CLAUDE.md         # instrucciones sistema
+.claude/          # agentes, comandos, skills, workflows, settings
+hooks/            # 2 hooks advisory (pipeline-guard + commit-guard)
+ai_docs/          # plantillas + carpetas para tus docs
+CLAUDE.md         # instrucciones del sistema
 ```
 
-Comandos disponibles tras instalar:
+> **Importante:** Copia tambien `hooks/` — sin el, los hooks de `.claude/settings.json` apuntaran a archivos que no existen y Claude Code mostrara errores al inicio.
+>
+> **Nota:** `ai_docs/core/` incluye 3 documentos de ejemplo (dogfooding del framework). Borralos y crea los tuyos usando las plantillas de `ai_docs/core_templates/`.
 
-| Comando | Paso | Que hace |
-|---------|------|----------|
-| `/planificar` | 2 | **Workflow completo**: spec + tasks + revision paralela + auditoria |
-| `/spec` | — | Crea una spec individual (paso aislado) |
-| `/tareas` | — | Deriva tasks de una spec (paso aislado) |
-| `/auditar` | — | Audita coherencia spec + tasks (paso aislado) |
-| `/implementar` | 4 | Implementa UNA task (lineal, con gate de planificacion) |
-| `/revision` | 5 | Revision adversarial post-implementacion |
-| `/estado` | — | Muestra estado del proyecto |
-| `/bugfix` | — | Diagnostica y corrige un bug con causa raiz |
-| `/commit` | — | Crea un commit limpio con mensaje descriptivo |
-| `/pr` | — | Crea o revisa una Pull Request |
-| `/asesor` | — | Analiza un problema y recomienda la mejor solucion |
+**Opcion 3 — Solo plantillas (sin integracion):**
 
-Skills (se activan automaticamente segun contexto):
-
-| Skill | Cuando se activa |
-|-------|-----------------|
-| `revisar-tarea` | Al crear o modificar una task en ai_docs/tasks/ |
-| `revision-adversarial` | Al completar la implementacion de todas las tasks |
-| `bugfix` | Ante errores, fallos, excepciones, "no funciona" |
-| `commit` | Cuando el usuario quiere hacer commit |
-| `pr` | Cuando el usuario pide crear o revisar una PR |
-| `cleanup` | Al pedir limpiar, refactorizar o revisar calidad |
-| `testing` | Al pedir escribir tests o mejorar cobertura |
-| `diff` | Al preguntar "que cambie" o "resumen de cambios" |
+Si no usas Claude Code, copia solo `ai_docs/` y usa las plantillas por copy-paste en cualquier LLM.
 
 ### Gemini CLI
 
@@ -124,14 +114,17 @@ Skills (se activan automaticamente segun contexto):
 gemini extensions install https://github.com/gmoncor/agentic-engineering-framework
 ```
 
+Esto instala los 11 comandos, 4 agentes, 8 skills y los hooks automaticamente. Comprueba con `gemini extensions list`.
+
 **Opcion 2 — Manual:**
 
 Copia a la raiz de tu proyecto:
 
 ```
-agents/               # agentes Gemini
-commands/              # comandos Gemini (.toml)
-skills/                # skills Gemini
+agents/               # agentes Gemini (4)
+commands/              # comandos Gemini (.toml, 11)
+skills/                # skills Gemini (8)
+hooks/                 # hooks advisory (2)
 GEMINI.md              # instrucciones sistema
 gemini-extension.json  # manifest
 ai_docs/               # plantillas + docs de tu proyecto
@@ -146,39 +139,91 @@ Funciona con cualquier LLM: ChatGPT, Copilot, Cursor, Windsurf, o cualquier otro
 3. Copia su contenido completo y pegalo en tu LLM
 4. Describe tu tarea a continuacion del texto pegado
 
-No requiere configuracion, plugins ni integraciones.
+No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` para entender que hay en cada carpeta.
+
+### Que se instala
+
+| Componente | Cantidad | Donde (Claude) | Donde (Gemini) |
+|------------|----------|-----------------|-----------------|
+| Comandos | 11 | `.claude/commands/` | `commands/` |
+| Agentes | 4 | `.claude/agents/` | `agents/` |
+| Skills | 8 | `.claude/skills/` | `skills/` |
+| Hooks | 2 | `hooks/` (wired en settings) | `hooks/` (wired en hooks.json) |
+| Workflow | 1 | `.claude/workflows/` | — (secuencial via comando) |
+| Templates | 12 | `ai_docs/dev_templates/` | `ai_docs/dev_templates/` |
+| Core templates | 4 | `ai_docs/core_templates/` | `ai_docs/core_templates/` |
 
 ---
 
 ## Quick Start
 
-### Proyecto nuevo
+### Paso 0: Verificar la instalacion
 
-Usa las plantillas de `ai_docs/core_templates/` en orden para definir la base del proyecto:
+Abre tu CLI dentro del proyecto y prueba:
 
 ```
-1. 01_vision_del_proyecto.md    → Definir QUE se construye y PARA QUIEN
-2. 02_planificacion_tecnica.md  → Definir COMO se construye (datos, paginas, arquitectura)
-3. 03_roadmap_de_desarrollo.md  → Definir EN QUE ORDEN se construye
-4. 04_setup_testing.md          → Configurar el entorno de tests (una sola vez)
+/estado
 ```
 
-Cada plantilla genera un documento en `ai_docs/core/`. Estos documentos alimentan a todo el flujo SDD.
+Si ves "No hay specs ni tasks creadas", la instalacion funciona. Si da error, revisa que las carpetas se copiaron correctamente.
 
-Despues: ejecuta `/planificar` con tu primera solicitud y sigue el flujo.
+### Proyecto nuevo — Configurar `ai_docs/core/`
+
+**Este paso es CRITICO.** Sin documentacion en `ai_docs/core/`, las plantillas SDD trabajan a ciegas — el LLM no conoce tu proyecto y tomara decisiones arbitrarias.
+
+Usa las plantillas de `ai_docs/core_templates/` **en orden**:
+
+```
+1. 01_vision_del_proyecto.md    → QUE construyes, PARA QUIEN y POR QUE
+2. 02_planificacion_tecnica.md  → COMO se construye (datos, paginas, arquitectura)
+3. 03_roadmap_de_desarrollo.md  → EN QUE ORDEN se construye todo
+4. 04_setup_testing.md          → Configurar el entorno de tests (una vez)
+```
+
+Cada plantilla genera un documento en `ai_docs/core/`. El repo incluye 3 ejemplos (dogfooding) — reemplazalos con los de tu proyecto.
+
+**Recomendaciones para `ai_docs/core/`:**
+
+- **Itera.** La primera version nunca es perfecta. Revisa cada documento, cuestiona las decisiones, pide alternativas. Usa `/asesor` si dudas
+- **Se especifico en la vision.** "Una app de tareas" no es suficiente. "App de tareas para equipos remotos con integracion Slack, modelo freemium" si lo es
+- **El roadmap define el orden del trabajo.** Si las fases estan mal ordenadas o las dependencias son incorrectas, cada `/planificar` posterior arrastrara ese error
+- **Actualiza cuando cambie la realidad.** Si pivotas, si cambias de stack, si un modulo ya no aplica — actualiza `core/`. Los docs obsoletos generan planes obsoletos
+- **No necesitas las 4 plantillas para empezar.** Minimo: `vision_del_proyecto.md`. Ideal: las 3 primeras. `04_setup_testing.md` puede esperar hasta que tengas codigo
+
+**Despues de configurar `core/`:** ejecuta `/planificar` con tu primera solicitud y sigue el flujo.
 
 ### Proyecto existente
 
-Tu equipo ya tiene codigo y arquitectura. Empieza directamente con el flujo SDD:
+Tu equipo ya tiene codigo y arquitectura. Aun asi, **documenta `ai_docs/core/` antes de planificar**:
 
 ```
-1. Describe lo que necesitas  → /planificar (spec + tasks + revision + auditoria)
-2. Revisa el plan             → Aprueba o pide ajustes
-3. Implementa                 → /implementar <task> (una a la vez, en orden)
-4. Revision adversarial       → /revision
+1. Usa 01_vision_del_proyecto.md   → Documenta lo que YA existe (el LLM analiza tu codigo)
+2. Usa 02_planificacion_tecnica.md → Genera la doc tecnica del estado actual
+3. Usa 03_roadmap_de_desarrollo.md → Genera un roadmap con lo que falta por hacer
 ```
 
-Si no tienes tests configurados, usa `ai_docs/core_templates/04_setup_testing.md` antes del paso 3.
+El LLM puede analizar tu codigo existente para generar estos documentos — no tienes que escribirlos tu desde cero. Dile "analiza el proyecto y genera la vision/planificacion/roadmap" junto con la plantilla.
+
+```
+4. Describe lo que necesitas  → /planificar (spec + tasks + revision + auditoria)
+5. Revisa el plan             → Aprueba o pide ajustes
+6. Implementa                 → /implementar <task> (una a la vez, en orden)
+7. Revision adversarial       → /revision
+```
+
+Si no tienes tests configurados, usa `ai_docs/core_templates/04_setup_testing.md` antes del paso 6.
+
+### Generar un buen roadmap
+
+El roadmap (`ai_docs/core/roadmap.md`) es el mapa que guia toda la planificacion posterior. Un roadmap mal hecho genera specs mal acotadas.
+
+**Que debe tener un buen roadmap:**
+- **Fases con objetivo claro** — no "Fase 1: Backend" sino "Fase 1: API de autenticacion con JWT y registro por email"
+- **Dependencias explicitas** — que debe existir ANTES de empezar cada fase
+- **Alcance acotado por fase** — si una fase tiene mas de 5-6 puntos, dividirla
+- **Checkboxes** — para rastrear progreso visualmente
+
+**Como generarlo:** Copia `ai_docs/core_templates/03_roadmap_de_desarrollo.md` en tu LLM junto con la vision y planificacion tecnica. El LLM generara un roadmap basado en las dependencias reales de tu stack. Revisa el orden, cuestiona las fases, y ajusta antes de aprobar
 
 ---
 
@@ -209,6 +254,7 @@ agentic-engineering-framework/
 ├── CLAUDE.md                    # Instrucciones sistema para Claude Code
 ├── GEMINI.md                    # Instrucciones sistema para Gemini CLI
 ├── LICENSE                      # CC BY 4.0
+├── .claude-plugin/plugin.json   # Manifest para plugins Claude Code
 │
 ├── .claude/                     # Configuracion Claude Code
 │   ├── settings.json            #   model: opus-4.8 + hooks wiring
@@ -293,6 +339,36 @@ Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json
 ## Cursor IDE
 
 El directorio `.cursor/rules/` contiene 43 reglas que replican el comportamiento del framework dentro de Cursor. Son opcionales — el framework funciona sin ellas. Si usas Cursor, copia `.cursor/` a tu proyecto.
+
+---
+
+## Actualizacion
+
+Para recibir cambios nuevos del framework:
+
+**Gemini CLI (extension):**
+```
+gemini extensions update sdd-framework
+```
+
+**Claude Code / manual:**
+```bash
+# Desde el repo del framework (si lo clonaste):
+git pull origin main
+
+# Para un proyecto existente:
+# Copia las carpetas actualizadas (.claude/, hooks/, CLAUDE.md, ai_docs/dev_templates/, ai_docs/core_templates/)
+# NO sobrescribas ai_docs/core/, ai_docs/tasks/ ni ai_docs/refs/ — esos son TUS documentos
+```
+
+**Que se actualiza y que no:**
+| Se actualiza (del framework) | NO se toca (tuyo) |
+|------|------|
+| `.claude/` (comandos, agentes, skills, workflows) | `ai_docs/core/` (vision, planificacion, roadmap) |
+| `hooks/` (enforcement) | `ai_docs/tasks/` (specs y tasks) |
+| `ai_docs/dev_templates/` (plantillas operativas) | `ai_docs/refs/` (referencias externas) |
+| `ai_docs/core_templates/` (plantillas de planificacion) | Codigo de tu proyecto |
+| `CLAUDE.md` / `GEMINI.md` (instrucciones sistema) | |
 
 ---
 

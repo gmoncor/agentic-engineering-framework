@@ -199,8 +199,9 @@ Para CADA restriccion de la spec, verificar que se respeta:
 [APROBADO / NECESITA CORRECCIONES]
 
 **Si NECESITA CORRECCIONES:**
-Corregir los hallazgos BLOQUEANTES y volver a ejecutar la revision sobre los
-puntos afectados. No es necesario repetir la revision completa.
+- Para correcciones menores (1-2 archivos, sin cambio de alcance): aplicar directamente usando `implementar.md` y re-ejecutar la revision sobre los puntos afectados
+- Para correcciones mayores (3+ archivos o cambio de alcance): crear nueva task via `tareas.md` referenciando los hallazgos, implementar, y re-ejecutar la revision completa
+- No es necesario repetir la revision completa si solo se corrigen puntos especificos
 ```
 
 **PUNTO DE ESPERA OBLIGATORIO:**

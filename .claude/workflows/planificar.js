@@ -20,10 +20,10 @@ const TASKS_SCHEMA = {
         properties: {
           path: { type: 'string' },
           titulo: { type: 'string' },
-          paralelizable: { type: 'boolean' },
+          independiente: { type: 'boolean' },
           dependencias: { type: 'array', items: { type: 'string' } }
         },
-        required: ['path', 'titulo', 'paralelizable']
+        required: ['path', 'titulo', 'independiente']
       }
     }
   },
@@ -92,6 +92,9 @@ Retorna SOLO el path del archivo creado (ej: ai_docs/tasks/spec_autenticacion.md
 `, { label: 'crear-spec', phase: 'Spec' })
 
 const specPath = (typeof specResult === 'string' ? specResult : '').trim()
+if (!specPath || specPath.length < 5) {
+  return { spec: specPath, tasks: [], reviews: [], audit: null, veredicto: 'ERROR_SPEC', reason: 'El agente no retorno un path valido para la spec' }
+}
 log('Spec creada: ' + specPath)
 
 // ── Phase 2: Tasks ─────────────────────────────────────────────────────────────
@@ -103,13 +106,13 @@ Lee ai_docs/core/ para contexto del proyecto.
 
 IMPORTANTE:
 - NO hagas preguntas ni esperes aprobacion. Trabaja con lo que hay.
-- Identifica modulos independientes, marca paralelizacion, documenta dependencias.
+- Identifica modulos independientes, documenta dependencias y define orden de ejecucion.
 - Cada task debe ser independiente y atomica. Si toca mas de 6 archivos, dividir.
 - Minimo 3 edge cases por task con logica de negocio.
 - Crea cada task como archivo en ai_docs/tasks/NNN_descriptor.md.
 - Verifica numeracion existente para no pisar archivos.
 
-Retorna un JSON con spec_path y la lista de tasks creadas (path, titulo, paralelizable, dependencias).
+Retorna un JSON con spec_path y la lista de tasks creadas (path, titulo, independiente, dependencias).
 `, { label: 'derivar-tasks', phase: 'Tasks', schema: TASKS_SCHEMA })
 
 const taskList = (tasksResult && tasksResult.tasks) ? tasksResult.tasks : []
@@ -155,6 +158,9 @@ Retorna tu veredicto estructurado con problemas y ajustes concretos.
 )
 
 const validReviews = reviews.filter(Boolean)
+if (validReviews.length < taskList.length) {
+  log('ADVERTENCIA: ' + (taskList.length - validReviews.length) + ' de ' + taskList.length + ' revisiones fallaron')
+}
 const listos = validReviews.filter(r => r.veredicto === 'LISTO_PARA_IMPLEMENTAR').length
 const ajustes = validReviews.filter(r => r.veredicto === 'NECESITA_AJUSTES').length
 const replantear = validReviews.filter(r => r.veredicto === 'NECESITA_REPLANTEAMIENTO').length

@@ -21,7 +21,7 @@ Muestra el estado actual del proyecto SDD.
 | ... | ... | ... |
 
 ### Tasks
-| # | Titulo | Spec madre | Estado | Paralelizable |
+| # | Titulo | Spec madre | Estado | Independiente |
 |---|--------|------------|--------|---------------|
 | ... | ... | ... | ... | ... |
 
@@ -32,6 +32,6 @@ Muestra el estado actual del proyecto SDD.
 - Tasks en progreso: N
 ```
 
-4. Si `ai_docs/tasks/` esta vacio, indica que no hay specs ni tasks creadas y sugiere empezar con `/spec`
+4. Si `ai_docs/tasks/` esta vacio, indica que no hay specs ni tasks creadas y sugiere empezar con `/planificar` (o `/spec` si solo necesita crear una spec individual)
 5. Si hay specs sin tasks, sugiere usar `/tareas` para derivarlas
 6. Si hay tasks completadas sin revision, sugiere usar `/revision`

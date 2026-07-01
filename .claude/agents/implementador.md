@@ -1,6 +1,6 @@
 ---
 name: implementador
-description: "Ejecuta tasks individuales. Escribe codigo, tests y ejecuta validaciones. Se activa en el paso 6 del flujo SDD."
+description: "Ejecuta tasks individuales. Escribe codigo, tests y ejecuta validaciones. Se activa en el paso 4 del flujo SDD."
 model: inherit
 tools:
   - Read

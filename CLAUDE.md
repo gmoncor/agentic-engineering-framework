@@ -62,6 +62,7 @@ proyecto/
 ├── hooks/              # 2 hooks advisory (pipeline-guard + commit-guard)
 ├── ai_docs/
 │   ├── core/           # vision, planificacion, roadmap
+│   ├── core_templates/ # 4 plantillas de planificacion inicial (01-04)
 │   ├── dev_templates/  # 12 plantillas SSOT
 │   ├── tasks/          # specs + tasks (NNN_descriptor.md)
 │   └── refs/           # documentacion externa

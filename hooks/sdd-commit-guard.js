@@ -78,15 +78,18 @@ function extractCommitMessage(cmd) {
   if (heredoc) return heredoc[2];
 
   const patterns = [
-    /-m\s+"([^"]+)"/,
-    /-m\s+'([^']+)'/,
-    /--message=["']?([^"'\s]+)["']?/,
+    /-m\s+"([^"]+)"/g,
+    /-m\s+'([^']+)'/g,
+    /--message="([^"]+)"/g,
+    /--message='([^']+)'/g,
+    /--message=(\S+)/g,
   ];
+  const parts = [];
   for (const re of patterns) {
-    const m = cmd.match(re);
-    if (m) return m[1];
+    let m;
+    while ((m = re.exec(cmd)) !== null) parts.push(m[1]);
   }
-  return null;
+  return parts.length > 0 ? parts.join('\n\n') : null;
 }
 
 function extractPrBody(cmd) {
