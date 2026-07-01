@@ -139,6 +139,7 @@ usando la plantilla `tareas.md`.
 - Si el usuario pide cambios, actualiza la spec y vuelve a presentarla
 - Solo marca el estado como APROBADA cuando el usuario de aprobacion explicita
 - Una vez aprobada, cambia `**Estado:** BORRADOR` a `**Estado:** APROBADA`
+- Guarda la spec como `ai_docs/tasks/spec_<descriptor>.md` (snake_case, sin acentos). El prefijo `spec_` es obligatorio para que el pipeline SDD la detecte
 
 ---
 

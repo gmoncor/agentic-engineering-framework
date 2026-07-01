@@ -91,7 +91,7 @@ function findApprovedSpecs(tasksDir) {
       .filter(f => f.startsWith('spec_') && f.endsWith('.md'))
       .filter(f => {
         const content = fs.readFileSync(path.join(tasksDir, f), 'utf8');
-        return content.includes('APROBADA');
+        return /\*?\*?Estado:\*?\*?\s*APROBADA/.test(content);
       });
   } catch {
     return [];

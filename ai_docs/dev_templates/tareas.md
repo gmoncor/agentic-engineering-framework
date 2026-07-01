@@ -67,7 +67,7 @@ Para cada task, usa este formato:
 
 **Spec madre:** [Titulo de la spec]
 **Dependencias:** [Lista de tasks que deben completarse antes, o "Ninguna"]
-**Paralelizable:** [SI / NO — SI si no tiene dependencias de otras tasks]
+**Independiente:** [SI / NO — SI si no tiene dependencias de otras tasks]
 **Tamano estimado:** [min]-[max] lineas en [N] archivos
 
 ## Objetivo
@@ -107,18 +107,20 @@ Para cada task, usa este formato:
 
 ---
 
-## Paso 4: Marcar paralelizacion
+## Paso 4: Definir orden de ejecucion
 
-Despues de crear todas las tasks, construye un mapa de dependencias:
+Despues de crear todas las tasks, construye un mapa de dependencias para determinar el orden secuencial optimo:
 
 ```
-Grupo 1 (paralelo): Task A, Task C, Task E  [sin dependencias mutuas]
-Grupo 2 (paralelo): Task B, Task D           [dependen de Grupo 1]
-Grupo 3 (secuencial): Task F                 [depende de Grupo 2]
+Orden 1: Task A, Task C, Task E  [sin dependencias — independientes entre si]
+Orden 2: Task B, Task D           [dependen de tasks del Orden 1]
+Orden 3: Task F                   [depende de tasks del Orden 2]
 ```
 
-**Reglas de paralelizacion:**
-- Dos tasks son paralelizables SI no comparten archivos Y no tienen dependencia de datos
+La implementacion es siempre lineal (una task a la vez, en orden). Las tasks independientes se pueden ejecutar en cualquier orden dentro de su grupo; las dependientes respetan el orden de sus dependencias.
+
+**Reglas de dependencia:**
+- Dos tasks son independientes SI no comparten archivos Y no tienen dependencia de datos
 - Si dos tasks tocan el mismo archivo, una depende de la otra (indicar cual va primero)
 - Si una task crea algo que otra task consume (API, modelo, tipo), hay dependencia
 
@@ -132,21 +134,21 @@ Presenta al usuario un resumen con este formato:
 ## Tasks derivadas de: [Titulo de la spec]
 
 **Total:** [N] tasks
-**Paralelizables:** [N] tasks sin dependencias mutuas
-**Secuenciales:** [N] tasks con dependencias
+**Independientes:** [N] tasks sin dependencias mutuas
+**Con dependencias:** [N] tasks con dependencias
 
 ### Orden de ejecucion
 
 | Grupo | Tasks | Dependencia |
 |-------|-------|-------------|
-| 1 (paralelo) | Task A, Task C | Ninguna |
-| 2 (paralelo) | Task B, Task D | Grupo 1 |
+| 1 | Task A, Task C | Ninguna (independientes) |
+| 2 | Task B, Task D | Grupo 1 |
 | 3 | Task F | Grupo 2 |
 
 ### Resumen por task
 
-| # | Titulo | Archivos | Tamano | Paralelo |
-|---|--------|----------|--------|----------|
+| # | Titulo | Archivos | Tamano | Independiente |
+|---|--------|----------|--------|---------------|
 | 1 | [Titulo] | [N] | [min-max]L | SI/NO |
 | 2 | [Titulo] | [N] | [min-max]L | SI/NO |
 

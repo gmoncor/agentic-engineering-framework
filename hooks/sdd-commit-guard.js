@@ -80,7 +80,9 @@ function extractCommitMessage(cmd) {
   const patterns = [
     /-m\s+"([^"]+)"/,
     /-m\s+'([^']+)'/,
-    /--message=["']?([^"'\s]+)["']?/,
+    /--message="([^"]+)"/,
+    /--message='([^']+)'/,
+    /--message=(\S+)/,
   ];
   for (const re of patterns) {
     const m = cmd.match(re);

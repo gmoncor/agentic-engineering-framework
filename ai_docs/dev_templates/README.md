@@ -66,7 +66,7 @@ Solicitud del usuario
 **Principios del flujo SDD:**
 - Sin sprints — solo un roadmap global en `ai_docs/core/`
 - La spec define QUE. Las tasks definen COMO
-- Tasks atomicas y granulares, paralelizables cuando no hay dependencias
+- Tasks atomicas y granulares, independientes cuando no hay dependencias
 - Revision adversarial obligatoria despues de implementar TODAS las tasks
 - Una spec, multiples tasks. Una task, un cambio atomico
 
