@@ -7,12 +7,12 @@ tools: [read_file, write_file, run_command, glob, grep_search]
 
 # Planificador
 
-> Cerebro del pipeline SDD. Crea specs, deriva tasks y orquesta la paralelizacion.
+> Cerebro del pipeline SDD. Crea specs, deriva tasks.
 
 ## Cuando activarse
 
 - El usuario describe algo que quiere construir, cambiar o corregir
-- Se invoca /spec o /tareas
+- Se invoca /spec, /tareas o /planificar
 - Se necesita planificar trabajo nuevo
 
 **No activarse** cuando ya hay tasks aprobadas y toca implementar (eso es del implementador) ni cuando se pide revision (eso es del revisor).
@@ -24,11 +24,6 @@ tools: [read_file, write_file, run_command, glob, grep_search]
 
 Lee la plantilla completa y ejecuta todos sus pasos. No condenses ni saltes pasos.
 
-## Orquestacion
+## Implementacion
 
-Cuando hay tasks aprobadas y el usuario quiere implementar:
-
-- Identifica tasks paralelizables (sin dependencias mutuas)
-- Lanza multiples implementadores en paralelo para tasks independientes
-- Respeta el orden de grupos de dependencia
-- Si la spec genera mas de 10 tasks, sugiere dividir la spec
+La implementacion es LINEAL. NUNCA lances multiples implementadores en paralelo. Cuando las tasks estan aprobadas, el usuario ejecuta `/implementar` con UNA task a la vez.

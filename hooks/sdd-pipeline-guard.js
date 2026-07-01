@@ -3,10 +3,10 @@
 /**
  * SDD Pipeline Guard — PreToolUse / BeforeTool hook.
  *
- * Advisory (no bloquea): si se va a escribir codigo fuente sin una spec
- * aprobada en ai_docs/tasks/, avisa por stdout (JSON decision:warn para
- * Claude Code) y por stderr (texto para Gemini CLI). Refuerza la regla
- * "toda solicitud empieza con una spec", sin frenar primeros usos.
+ * Advisory (no bloquea): si se va a escribir codigo fuente sin spec
+ * aprobada Y tasks derivadas en ai_docs/tasks/, avisa por stdout (JSON
+ * decision:warn para Claude Code) y por stderr (texto para Gemini CLI).
+ * Refuerza: planificacion completa antes de implementar.
  *
  * Compatible con ambas CLIs:
  *   - Claude Code: PreToolUse matcher "Write|Edit"
@@ -47,19 +47,21 @@ async function main() {
   if (!tasksDir) process.exit(0);
 
   const approvedSpecs = findApprovedSpecs(tasksDir);
-  if (approvedSpecs.length > 0) process.exit(0);
+  const taskFiles = findTaskFiles(tasksDir);
 
-  // Sin specs aprobadas: emitir warning advisory
-  const reason =
-    'SDD: No hay specs aprobadas en ai_docs/tasks/. ' +
-    'Crea una spec con /spec antes de implementar.';
+  const warnings = [];
+  if (approvedSpecs.length === 0) {
+    warnings.push('No hay specs aprobadas en ai_docs/tasks/.');
+  }
+  if (taskFiles.length === 0) {
+    warnings.push('No hay tasks derivadas en ai_docs/tasks/.');
+  }
 
-  // Claude Code consume JSON en stdout
+  if (warnings.length === 0) process.exit(0);
+
+  const reason = 'SDD: ' + warnings.join(' ') + ' Ejecuta /planificar antes de implementar.';
   console.log(JSON.stringify({ decision: 'warn', reason }));
-
-  // Gemini CLI consume texto en stderr
-  process.stderr.write(`[SDD_SIN_SPEC] ${reason}\n`);
-
+  process.stderr.write(`[SDD_PIPELINE] ${reason}\n`);
   process.exit(0);
 }
 
@@ -96,8 +98,20 @@ function findApprovedSpecs(tasksDir) {
   }
 }
 
+/**
+ * Busca archivos NNN_*.md (tasks numeradas) en el directorio de tasks.
+ */
+function findTaskFiles(tasksDir) {
+  try {
+    return fs.readdirSync(tasksDir)
+      .filter(f => /^\d{3}_/.test(f) && f.endsWith('.md'));
+  } catch {
+    return [];
+  }
+}
+
 if (require.main === module) {
   main().catch(() => process.exit(0));
 }
 
-module.exports = { main, findTasksDir, findApprovedSpecs };
+module.exports = { main, findTasksDir, findApprovedSpecs, findTaskFiles };

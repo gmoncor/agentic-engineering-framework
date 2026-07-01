@@ -1,0 +1,37 @@
+description = "Planificacion exhaustiva: spec + tasks + revision + auditoria"
+
+prompt = """
+Ejecuta el proceso completo de planificacion SDD de forma secuencial y exhaustiva.
+
+Lee ai_docs/core/ para contexto del proyecto.
+
+PASO 1 — SPEC:
+Lee ai_docs/dev_templates/spec.md y sigue todos sus pasos.
+NO hagas preguntas de clarificacion — trabaja con la informacion disponible.
+Crea la spec completa con Estado: APROBADA. Guarda en ai_docs/tasks/spec_<descriptor>.md.
+
+PASO 2 — TASKS:
+Lee ai_docs/dev_templates/tareas.md y sigue todos sus pasos.
+Deriva tasks granulares de la spec. Crea cada una en ai_docs/tasks/NNN_descriptor.md.
+NO esperes aprobacion — continua directamente.
+
+PASO 3 — REVISION DE CADA TASK:
+Para CADA task creada, lee ai_docs/dev_templates/revisar_tarea.md y ejecuta todos los pasos.
+Se esceptico: tu trabajo es encontrar problemas, no confirmar que todo esta bien.
+Para cada task reporta: coherencia, alcance, dependencias, edge cases, DRY, TDD, riesgos.
+
+PASO 4 — AUDITORIA CRUZADA:
+Lee ai_docs/dev_templates/auditar_spec.md y ejecuta todos los pasos.
+Integra los hallazgos de las revisiones individuales del paso 3.
+Verifica: cobertura de criterios, overlaps, huecos, coherencia, dependencias.
+
+PASO 5 — RESUMEN:
+Presenta al usuario el resultado completo con veredicto final:
+- APROBADO: puede implementar con /implementar <task> (una task a la vez, en orden)
+- NECESITA_AJUSTES: detalla problemas y propone como resolverlos
+- NECESITA_REPLANTEAMIENTO: recomienda rehacer con mas detalle
+
+Solicitud del usuario:
+
+{{args}}
+"""
