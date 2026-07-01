@@ -6,9 +6,9 @@
 
 ## Que es esto?
 
-Un sistema de plantillas que estructura como trabaja tu asistente de IA. En lugar de pedirle "haz esto" y esperar lo mejor, el framework impone un flujo lineal: spec, tasks, auditoria, implementacion, revision adversarial.
+Un sistema de plantillas que estructura como trabaja tu asistente de IA. En lugar de pedirle "haz esto" y esperar lo mejor, el framework impone un flujo: **planificacion exhaustiva** (spec + tasks + revision paralela + auditoria cruzada) antes de tocar codigo, seguida de **implementacion lineal** (una task a la vez) y revision adversarial.
 
-Compatible con cualquier LLM via copy-paste. Integracion nativa con Claude Code (comandos + agentes + skills) y Gemini CLI (extension instalable).
+Compatible con cualquier LLM via copy-paste. Integracion nativa con Claude Code (workflows + comandos + agentes + skills) y Gemini CLI (extension instalable).
 
 ---
 
@@ -25,28 +25,23 @@ Las plantillas guian al asistente de IA, pero la calidad del resultado depende d
 
 ## El flujo SDD
 
-Toda solicitud sigue 7 pasos lineales. No hay sprints ni ceremonias — solo un flujo que va de la idea al codigo revisado.
+Toda solicitud sigue un flujo lineal. No hay sprints ni ceremonias — solo planificacion exhaustiva seguida de implementacion controlada.
 
 ```
   [1] Solicitud
       |
       v
-  [2] SPEC ──────────────── Define QUE se quiere lograr
+  [2] /planificar ─────── Workflow: spec + tasks + revision paralela + auditoria
+      |                     (Claude Code: workflow con agentes paralelos)
+      |                     (Gemini/otros: secuencial)
+      v
+  [3] Aprobacion ──────── El usuario revisa el plan completo
       |
       v
-  [3] TAREAS ────────────── Parte la spec en tasks atomicas
-      |
+  [4] /implementar ────── UNA task a la vez (lineal, sin paralelizar)
+      |                     Repetir para cada task en orden
       v
-  [4] REVISION DE TASKS ─── Revisa cada task (alcance, edge cases, TDD)
-      |
-      v
-  [5] AUDITORIA ─────────── Coherencia spec + tasks (huecos, overlap, dependencias)
-      |
-      v
-  [6] IMPLEMENTACION ────── Ejecucion paralela de tasks independientes
-      |
-      v
-  [7] REVISION ADVERSARIAL  Revision esceptica de la implementacion total
+  [5] /revision ──────── Revision adversarial de toda la implementacion
       |
       v
     Codigo revisado
@@ -55,19 +50,17 @@ Toda solicitud sigue 7 pasos lineales. No hay sprints ni ceremonias — solo un 
 | Paso | Que pasa | Quien decide |
 |------|----------|--------------|
 | Solicitud | El usuario describe lo que quiere | Usuario |
-| Spec | Se crea un documento con alcance, criterios y restricciones | LLM + usuario |
-| Tareas | Se parte la spec en tasks granulares y paralelizables | LLM |
-| Revision de tasks | Se revisa cada task individualmente | LLM (revisor) |
-| Auditoria | Se audita coherencia entre spec y tasks | LLM (revisor) |
-| Implementacion | Se ejecutan las tasks (paralelo si son independientes) | LLM (implementador) |
-| Revision adversarial | Revision esceptica de la implementacion completa | LLM (revisor) |
+| Planificar | Spec + tasks + revision paralela + auditoria cruzada | LLM (workflow) |
+| Aprobacion | El usuario revisa veredicto y decide | Usuario |
+| Implementar | Una task a la vez, en orden | LLM (implementador) |
+| Revision | Revision esceptica de la implementacion completa | LLM (revisor) |
 
 Principios del flujo:
 
-- **Una spec, multiples tasks.** La spec define QUE; las tasks definen COMO
+- **Planificacion exhaustiva.** Cada task revisada y auditada ANTES de tocar codigo
+- **Implementacion lineal.** Una task a la vez — sin paralelizar, sin drift
 - **Tasks atomicas.** Una task = un cambio atomico = un commit
-- **Paralelizacion donde sea posible.** Tasks sin dependencias mutuas se ejecutan en paralelo
-- **Revision adversarial obligatoria.** Nunca mergear sin pasar por el paso 7
+- **Revision adversarial obligatoria.** Nunca mergear sin pasar por el paso 5
 - **Sin sprints.** Solo roadmap global en `ai_docs/core/`
 
 ---
@@ -96,17 +89,18 @@ CLAUDE.md         # instrucciones sistema
 
 Comandos disponibles tras instalar:
 
-| Comando | Paso SDD | Que hace |
-|---------|----------|----------|
-| `/spec` | 2 | Crea una especificacion a partir de una solicitud |
-| `/tareas` | 3 | Parte una spec aprobada en tasks granulares |
-| `/auditar` | 5 | Audita coherencia entre spec y tasks |
-| `/implementar` | 6 | Implementa una task especifica |
-| `/revision` | 7 | Revision adversarial post-implementacion |
-| `/estado` | -- | Muestra el estado del proyecto |
-| `/bugfix` | -- | Diagnostica y corrige un bug con causa raiz |
-| `/commit` | -- | Crea un commit limpio con mensaje descriptivo |
-| `/pr` | -- | Crea o revisa una Pull Request |
+| Comando | Paso | Que hace |
+|---------|------|----------|
+| `/planificar` | 2 | **Workflow completo**: spec + tasks + revision paralela + auditoria |
+| `/spec` | — | Crea una spec individual (paso aislado) |
+| `/tareas` | — | Deriva tasks de una spec (paso aislado) |
+| `/auditar` | — | Audita coherencia spec + tasks (paso aislado) |
+| `/implementar` | 4 | Implementa UNA task (lineal, con gate de planificacion) |
+| `/revision` | 5 | Revision adversarial post-implementacion |
+| `/estado` | — | Muestra estado del proyecto |
+| `/bugfix` | — | Diagnostica y corrige un bug con causa raiz |
+| `/commit` | — | Crea un commit limpio con mensaje descriptivo |
+| `/pr` | — | Crea o revisa una Pull Request |
 
 Skills (se activan automaticamente segun contexto):
 
@@ -170,44 +164,38 @@ Usa las plantillas de `core_templates/` en orden para definir la base del proyec
 
 Cada plantilla genera un documento en `ai_docs/core/`. Estos documentos alimentan a todo el flujo SDD.
 
-Despues: crea tu primera spec con `/spec` (o copia `dev_templates/spec.md`) y sigue el flujo.
+Despues: ejecuta `/planificar` con tu primera solicitud y sigue el flujo.
 
 ### Proyecto existente
 
 Tu equipo ya tiene codigo y arquitectura. Empieza directamente con el flujo SDD:
 
 ```
-1. Describe lo que necesitas  → /spec (o dev_templates/spec.md)
-2. Deriva tasks de la spec    → /tareas (o dev_templates/tareas.md)
-3. Revisa cada task            → skill revisar-tarea (o dev_templates/revisar_tarea.md)
-4. Audita spec + tasks         → /auditar (o dev_templates/auditar_spec.md)
-5. Implementa                  → /implementar (o dev_templates/implementar.md)
-6. Revision adversarial        → /revision (o dev_templates/revision_adversarial.md)
+1. Describe lo que necesitas  → /planificar (spec + tasks + revision + auditoria)
+2. Revisa el plan             → Aprueba o pide ajustes
+3. Implementa                 → /implementar <task> (una a la vez, en orden)
+4. Revision adversarial       → /revision
 ```
 
-Si no tienes tests configurados, usa `core_templates/04_setup_testing.md` antes del paso 6.
+Si no tienes tests configurados, usa `core_templates/04_setup_testing.md` antes del paso 3.
 
 ---
 
 ## Flujo de trabajo diario
 
-El dia a dia sigue el flujo SDD. No todos los pasos aplican siempre — usa tu criterio:
+El dia a dia sigue el flujo SDD. Usa `/planificar` como punto de entrada principal:
 
-**2. Spec** — Describe lo que necesitas. El LLM crea la especificacion con alcance, criterios de aceptacion y restricciones. Revisala y apruebala antes de continuar.
+**`/planificar`** — El workflow crea la spec, deriva tasks, revisa cada una en paralelo (esceptico: busca problemas, no confirma) y audita la coherencia cruzada. Recibiras un veredicto: APROBADO, NECESITA_AJUSTES o NECESITA_REPLANTEAMIENTO.
 
-**3. Tareas** — El LLM parte la spec en tasks atomicas. Cada task tiene dependencias, tamano estimado, edge cases y si es paralelizable.
+**Aprobacion** — Revisa el plan completo. Si es APROBADO, procede. Si necesita ajustes, aplicalos y re-evalua.
 
-**4. Revision de tasks** — Cada task se revisa individualmente: alcance minimo, dependencias correctas, edge cases cubiertos, enfoque TDD.
+**`/implementar`** — Una task a la vez, en orden. No paralelizar. Cada task produce codigo + tests.
 
-**5. Auditoria** — Se revisa la coherencia entre spec y tasks como conjunto: huecos de cobertura, overlap entre tasks, dependencias circulares, features no cubiertas.
+**`/revision`** — Revision esceptica de toda la implementacion. Busca: integracion entre tasks, edge cases no cubiertos, regresiones, codigo muerto.
 
-**6. Implementacion** — Se ejecutan las tasks. Tasks sin dependencias mutuas se ejecutan en paralelo. Cada task produce codigo + tests.
-
-**7. Revision adversarial** — Revision esceptica de toda la implementacion. El revisor busca problemas, no confirma que todo esta bien. Busca: integracion entre tasks, edge cases no cubiertos, regresiones, codigo muerto.
-
-**Si encuentras un bug:** usa `correccion_de_bugs.md`.
-**Si el codigo necesita limpieza:** usa `limpieza_de_codigo.md`.
-**Para commit y PR:** usa `hacer_commit.md` y `revision_pr.md`.
+**Si encuentras un bug:** usa `/bugfix`.
+**Si el codigo necesita limpieza:** usa la skill `cleanup`.
+**Para commit y PR:** usa `/commit` y `/pr`.
 
 ---
 
@@ -221,13 +209,14 @@ agentic-engineering-framework/
 ├── LICENSE                      # CC BY 4.0
 │
 ├── .claude/                     # Configuracion Claude Code
-│   ├── settings.json            #   permisos + hooks wiring
+│   ├── settings.json            #   model: opus-4.8 + hooks wiring
 │   ├── agents/                  #   planificador, revisor, implementador
-│   ├── commands/                #   9 comandos SDD + utilidad
-│   └── skills/                  #   8 skills (auto-activacion + utilidad)
+│   ├── commands/                #   10 comandos SDD
+│   ├── skills/                  #   8 skills (auto-activacion)
+│   └── workflows/               #   planificar.js (revision paralela + auditoria)
 │
 ├── agents/                      # Agentes Gemini CLI
-├── commands/                    # 9 comandos Gemini CLI (.toml)
+├── commands/                    # 10 comandos Gemini CLI (.toml)
 ├── skills/                      # 8 skills Gemini CLI
 ├── hooks/                       # Enforcement SDD (compartido ambas CLIs)
 ├── gemini-extension.json        # Manifest extension Gemini
@@ -291,12 +280,12 @@ El directorio `hooks/` contiene hooks compartidos entre ambas CLIs que refuerzan
 
 | Hook | Evento | Que hace | Modo |
 |------|--------|----------|------|
-| `sdd-pipeline-guard.js` | Write/Edit | Avisa si escribes codigo sin spec aprobada | Advisory |
+| `sdd-pipeline-guard.js` | Write/Edit | Avisa si escribes codigo sin spec aprobada Y tasks derivadas | Advisory |
 | `sdd-commit-guard.js` | git commit | Verifica formato de commit (subject ≤72, tipo valido, sin Co-Authored-By IA) | Advisory |
 
 Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`). No requieren configuracion manual.
 
-**Modelo por defecto (Claude Code):** `.claude/settings.json` fija `"model": "sonnet"` para evitar usar modelos mas caros por defecto. Override puntual con `/model opus` dentro de la sesion.
+**Modelo por defecto (Claude Code):** `.claude/settings.json` fija `"model": "claude-opus-4-8"`. Opus 4.8 es el modelo mas capaz para planificacion y revision exhaustiva. Override puntual con `/model sonnet` si necesitas velocidad en tareas mecanicas.
 
 ## Cursor IDE
 

@@ -134,7 +134,7 @@ Proceder? (S/n)
 
 1. **NUNCA `git add .`** sin revisar que se incluye
 2. **NUNCA incluir secretos** (.env, API keys, tokens)
-3. **NUNCA incluir archivos de IA** (ai_docs/)
+3. **NUNCA incluir archivos de IDE** (.cursor/)
 4. **NUNCA push sin confirmacion** explicita del usuario
 5. **NUNCA `--amend`** sin pedido explicito — siempre commits nuevos
 6. **SIEMPRE presentar el mensaje** para aprobacion antes de ejecutar

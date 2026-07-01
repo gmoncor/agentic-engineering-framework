@@ -193,17 +193,6 @@ El cambio esta listo para:
 
 ---
 
-## Nota sobre paralelizacion
-
-Si la spec tiene multiples tasks marcadas como paralelizables (sin dependencias mutuas), se pueden implementar en paralelo:
-
-- **Cada task en su propia rama** o sesion de trabajo
-- **No tocar archivos de otra task** durante la implementacion
-- **Resolver conflictos de merge** despues, antes de la revision adversarial
-- **Si surgen conflictos inesperados**, comunicar al usuario antes de resolver
-
----
-
 ## Reglas inquebrantables
 
 1. **SOLO implementa lo que dice la task** — nada fuera de alcance
