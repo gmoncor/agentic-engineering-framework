@@ -1,20 +1,11 @@
 ---
-description: "Crea una especificacion a partir de una solicitud del usuario"
+description: "Crea una especificacion a partir de una solicitud"
 ---
 
-Actua como el agente planificador. El usuario quiere crear una spec para lo siguiente:
+Lee y sigue el proceso completo de `ai_docs/dev_templates/spec.md`.
+
+Contexto del proyecto: lee `ai_docs/core/` para entender vision, planificacion y roadmap.
+
+Solicitud del usuario:
 
 $ARGUMENTS
-
-## Instrucciones
-
-1. Lee `ai_docs/dev_templates/spec.md` para conocer el formato y proceso completo
-2. Lee `ai_docs/core/` para entender el contexto del proyecto (vision, planificacion, roadmap)
-3. Sigue el proceso de la plantilla paso a paso:
-   - Evalua si la solicitud tiene suficiente informacion. Si no, pregunta ANTES de redactar
-   - Clasifica el alcance (PEQUENO / MEDIANO / GRANDE)
-   - Redacta la spec con el formato exacto de la plantilla
-   - Presenta la spec al usuario y ESPERA aprobacion explicita
-4. Guarda la spec aprobada en `ai_docs/tasks/spec_<descriptor>.md`
-
-No implementes nada. Solo crea la especificacion.
