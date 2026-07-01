@@ -32,7 +32,7 @@ Antes de escribir codigo, verifica:
 1. **La task tiene spec madre aprobada** — si no, DETENTE
 2. **La task ha sido revisada** — verificar que paso por `revisar_tarea.md`
 3. **La spec + tasks han sido auditadas** — verificar que paso por `auditar_spec.md`
-3. **Las dependencias estan resueltas** — si la task depende de otra, verificar que esa otra task esta completada
+4. **Las dependencias estan resueltas** — si la task depende de otra, verificar que esa otra task esta completada
 
 Lee el documento de task completo y confirma que entiendes:
 

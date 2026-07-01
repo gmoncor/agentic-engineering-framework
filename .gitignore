@@ -44,6 +44,9 @@ venv/
 # ===========================================
 # IDEs y herramientas
 # ===========================================
+# .cursor/rules/ se versiona en este repo (43 reglas del framework).
+# El .gitignore previene que TU proyecto suba configs propias de Cursor.
+# Si clonas este repo, las reglas ya estan incluidas (tracked antes del .gitignore).
 .cursor/
 .idea/
 .vscode/

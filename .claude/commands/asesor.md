@@ -1,0 +1,9 @@
+---
+description: "Analiza un problema y recomienda la mejor solucion con opciones y trade-offs"
+---
+
+Lee y sigue el proceso completo de `ai_docs/dev_templates/resolver_problema.md`.
+
+Problema o decision:
+
+$ARGUMENTS

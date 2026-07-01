@@ -49,7 +49,7 @@ Solicitud del usuario
     |                          Verifica coherencia spec + tasks
     v
 [6. IMPLEMENTACION]  ────────  implementar.md
-    |                          Ejecuta cada task (paralelo si es posible)
+    |                          Ejecuta cada task (una a la vez, en orden)
     |   |
     |   +── limpieza_de_codigo.md  (por task)
     |   +── testing_basico.md      (por task)
@@ -94,6 +94,7 @@ Solicitud del usuario
 | **Commit** | `hacer_commit.md` | Despues de implementar y limpiar cada task | Para crear PRs (usa `revision_pr.md`) |
 | **Pull Request** | `revision_pr.md` | Despues de la revision adversarial, para crear la PR final | Para revision de codigo sin PR (usa `limpieza_de_codigo.md`) |
 | **Correccion de bugs** | `correccion_de_bugs.md` | Cuando algo no funciona o tiene comportamiento inesperado | Para mejoras o features nuevos (eso es una spec) |
+| **Resolver problema** | `resolver_problema.md` | Cuando dudas entre opciones o necesitas analisis de trade-offs | Para implementar (usa `implementar.md`) |
 
 ### Documentacion Core del Proyecto (`core_templates/`)
 
@@ -157,7 +158,7 @@ Las plantillas core estan en la carpeta `core_templates/`. Consulta su README pa
 5. AUDITORIA       -->  auditar_spec.md
    Verificar cobertura, overlaps, huecos, coherencia.
 
-6. IMPLEMENTAR     -->  implementar.md (por cada task, paralelo si es posible)
+6. IMPLEMENTAR     -->  implementar.md (por cada task, una a la vez, en orden)
    Implementar + tests + limpieza + commit por task.
 
 7. REVISION ADVERSARIAL  -->  revision_adversarial.md
