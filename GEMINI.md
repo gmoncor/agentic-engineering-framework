@@ -53,7 +53,7 @@ proyecto/
 ├── agents/             # planificador, revisor, implementador
 ├── commands/           # 9 comandos SDD + utilidad
 ├── skills/             # 8 skills (auto-activacion + utilidad)
-├── hooks/              # enforcement del pipeline SDD (advisory)
+├── hooks/              # 2 hooks advisory (pipeline-guard + commit-guard)
 ├── ai_docs/
 │   ├── core/           # vision, planificacion, roadmap (fuente de verdad)
 │   ├── tasks/          # NNN_descriptor.md (una task por archivo)
@@ -87,6 +87,15 @@ Las plantillas detalladas viven en `ai_docs/dev_templates/`. Los comandos y agen
 | `testing_basico.md` | Escritura de tests |
 | `hacer_commit.md` | Proceso de commit |
 | `revision_pr.md` | Creacion y revision de PRs |
+
+## Hooks (enforcement mecanico)
+
+| Hook | Evento | Que enforcea |
+|------|--------|-------------|
+| `sdd-pipeline-guard.js` | write_file/edit_file | Warn si se escribe codigo sin spec aprobada |
+| `sdd-commit-guard.js` | run_command (git commit) | Warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA |
+
+Ambos son advisory (warn, no bloquean). Configurados en `hooks/hooks.json`.
 
 ## Estilo
 

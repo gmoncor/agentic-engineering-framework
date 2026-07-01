@@ -54,8 +54,8 @@ proyecto/
 │   ├── agents/         # planificador, revisor, implementador
 │   ├── commands/       # 9 comandos SDD + utilidad
 │   ├── skills/         # 8 skills (auto-activacion + utilidad)
-│   └── settings.json   # permisos + hooks wiring
-├── hooks/              # enforcement del pipeline SDD (advisory)
+│   └── settings.json   # model: sonnet + permisos + hooks wiring
+├── hooks/              # 2 hooks advisory (pipeline-guard + commit-guard)
 ├── ai_docs/
 │   ├── core/           # vision, planificacion, roadmap (fuente de verdad)
 │   ├── tasks/          # NNN_descriptor.md (una task por archivo)
@@ -88,6 +88,19 @@ Las plantillas detalladas viven en `ai_docs/dev_templates/`. Los comandos y agen
 | `testing_basico.md` | Escritura de tests |
 | `hacer_commit.md` | Proceso de commit |
 | `revision_pr.md` | Creacion y revision de PRs |
+
+## Modelo por defecto
+
+`settings.json` fija `"model": "sonnet"` como default de sesion. Sonnet es el modelo mas eficiente para este flujo de trabajo. Override puntual: `/model opus` dentro de la sesion.
+
+## Hooks (enforcement mecanico)
+
+| Hook | Evento | Que enforcea |
+|------|--------|-------------|
+| `sdd-pipeline-guard.js` | Write/Edit | Warn si se escribe codigo sin spec aprobada |
+| `sdd-commit-guard.js` | Bash (git commit) | Warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA |
+
+Ambos son advisory (warn, no bloquean). Configurados en `.claude/settings.json` y `hooks/hooks.json`.
 
 ## Estilo
 

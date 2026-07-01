@@ -285,15 +285,18 @@ Documentacion de APIs, guias de estilo, specs de terceros. Lo que el LLM necesit
 
 ---
 
-## Hooks (enforcement del pipeline)
+## Hooks (enforcement mecanico)
 
-El directorio `hooks/` contiene un hook compartido entre ambas CLIs que refuerza la regla "toda solicitud empieza con una spec":
+El directorio `hooks/` contiene hooks compartidos entre ambas CLIs que refuerzan reglas del framework:
 
-| Hook | Que hace | Modo |
-|------|----------|------|
-| `sdd-pipeline-guard.js` | Avisa si escribes codigo sin spec aprobada en `ai_docs/tasks/` | Advisory (warn, no bloquea) |
+| Hook | Evento | Que hace | Modo |
+|------|--------|----------|------|
+| `sdd-pipeline-guard.js` | Write/Edit | Avisa si escribes codigo sin spec aprobada | Advisory |
+| `sdd-commit-guard.js` | git commit | Verifica formato de commit (subject ≤72, tipo valido, sin Co-Authored-By IA) | Advisory |
 
-El hook se activa automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`). No requiere configuracion manual.
+Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`). No requieren configuracion manual.
+
+**Modelo por defecto (Claude Code):** `.claude/settings.json` fija `"model": "sonnet"` para evitar usar modelos mas caros por defecto. Override puntual con `/model opus` dentro de la sesion.
 
 ## Cursor IDE
 

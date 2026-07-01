@@ -2,12 +2,22 @@
   "hooks": {
     "BeforeTool": [
       {
-        "_comment": "Advisory: avisa si se escribe codigo fuente sin spec aprobada. No bloquea.",
+        "_comment": "Advisory: avisa si se escribe codigo fuente sin spec aprobada.",
         "matcher": "write_file|edit_file",
         "hooks": [
           {
             "type": "command",
             "command": "node \"${extensionPath}${/}hooks${/}sdd-pipeline-guard.js\""
+          }
+        ]
+      },
+      {
+        "_comment": "Advisory: verifica formato de commit y previene scaffolding leaks.",
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${extensionPath}${/}hooks${/}sdd-commit-guard.js\""
           }
         ]
       }
