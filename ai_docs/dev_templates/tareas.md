@@ -66,6 +66,7 @@ Para cada task, usa este formato:
 # Task: [Titulo descriptivo]
 
 **Spec madre:** [Titulo de la spec]
+**Estado:** PENDIENTE
 **Dependencias:** [Lista de tasks que deben completarse antes, o "Ninguna"]
 **Independiente:** [SI / NO — SI si no tiene dependencias de otras tasks]
 **Tamano estimado:** [min]-[max] lineas en [N] archivos

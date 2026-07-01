@@ -99,6 +99,8 @@ CLAUDE.md         # instrucciones del sistema
 ```
 
 > **Importante:** Copia tambien `hooks/` — sin el, los hooks de `.claude/settings.json` apuntaran a archivos que no existen y Claude Code mostrara errores al inicio.
+>
+> **Nota:** `ai_docs/core/` incluye 3 documentos de ejemplo (dogfooding del framework). Borralos y crea los tuyos usando las plantillas de `ai_docs/core_templates/`.
 
 **Opcion 3 — Solo plantillas (sin integracion):**
 
