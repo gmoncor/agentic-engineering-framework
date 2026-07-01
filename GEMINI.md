@@ -28,6 +28,7 @@
 | `/bugfix` | — | Diagnostica y corrige un bug con causa raiz |
 | `/commit` | — | Crea un commit limpio con mensaje descriptivo |
 | `/pr` | — | Crea o revisa una Pull Request |
+| `/asesor` | — | Analiza un problema y recomienda la mejor solucion |
 
 ## Agentes
 
@@ -36,6 +37,7 @@
 | `planificador` | Crea specs, deriva tasks | Pasos 1-2 |
 | `revisor` | Revisa tasks y hace revision adversarial (esceptico) | Pasos 2, 5 |
 | `implementador` | Ejecuta UNA task individual (codigo + tests) | Paso 4 |
+| `asesor` | Analiza problemas, evalua opciones, recomienda (read-only) | Cualquier momento |
 
 ## Reglas clave
 
@@ -51,13 +53,13 @@
 
 ```
 proyecto/
-├── agents/             # planificador, revisor, implementador
-├── commands/           # 10 comandos SDD (.toml)
+├── agents/             # planificador, revisor, implementador, asesor
+├── commands/           # 11 comandos SDD (.toml)
 ├── skills/             # 8 skills (auto-activacion)
 ├── hooks/              # 2 hooks advisory (pipeline-guard + commit-guard)
 ├── ai_docs/
 │   ├── core/           # vision, planificacion, roadmap
-│   ├── dev_templates/  # 11 plantillas SSOT
+│   ├── dev_templates/  # 12 plantillas SSOT
 │   ├── tasks/          # specs + tasks (NNN_descriptor.md)
 │   └── refs/           # documentacion externa
 ├── GEMINI.md           # este archivo
@@ -85,6 +87,7 @@ Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
 | `testing_basico.md` | Escritura de tests |
 | `hacer_commit.md` | Proceso de commit |
 | `revision_pr.md` | Creacion de PRs |
+| `resolver_problema.md` | Analisis de problemas y recomendaciones |
 
 ## Hooks (enforcement mecanico)
 
@@ -99,7 +102,7 @@ Ambos advisory (warn, no bloquean). Configurados en `hooks/hooks.json`.
 
 - Idioma: espanol sin acentos
 - Comunicacion: clara, directa, sin hedging
-- Commits: `<tipo>: <descripcion>` (tipos: feat, fix, update, refactor, create, test, docs)
+- Commits: `<tipo>: <descripcion>` (tipos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore)
 - Nombres de archivos: snake_case, sin acentos, descriptivos
 
 ## Prohibiciones

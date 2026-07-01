@@ -70,6 +70,10 @@ const AUDIT_SCHEMA = {
 }
 
 // ── Phase 1: Spec ──────────────────────────────────────────────────────────────
+// NOTA DE DISENO: spec.md dice "PREGUNTA antes de asumir" (modo interactivo).
+// En workflow automatizado las preguntas bloquean el pipeline, asi que los
+// agentes trabajan con la informacion disponible. El PUNTO DE ESPERA del
+// usuario ocurre al final, cuando revisa el plan completo (fase Aprobacion).
 phase('Spec')
 const specResult = await agent(`
 Lee ai_docs/dev_templates/spec.md y sigue su proceso completo para crear una especificacion.

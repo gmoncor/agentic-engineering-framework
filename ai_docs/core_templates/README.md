@@ -16,7 +16,7 @@
 | No esta claro como esta organizado tecnicamente (datos, paginas, arquitectura) | 02_planificacion_tecnica — analiza el proyecto existente y genera la documentacion tecnica |
 | Hay features pendientes pero no hay un plan de en que orden hacerlos | 03_roadmap_de_desarrollo — genera un roadmap basado en dependencias y prioridades |
 | No hay framework de testing configurado | 04_setup_testing — configura tests, coverage y scripts en una sola sesion |
-| El proyecto ya tiene todo esto documentado y configurado | No necesitas estas plantillas. Ve directamente a las operativas (crear_tarea, etc.) |
+| El proyecto ya tiene todo esto documentado y configurado | No necesitas estas plantillas. Ve directamente al pipeline SDD (spec.md, tareas.md, etc.) |
 
 ---
 
@@ -110,11 +110,11 @@
 **Cuando usarla:**
 - Una vez por proyecto, cuando no hay framework de testing configurado
 - Cuando hay framework pero le falta coverage o scripts de ejecucion
-- ANTES de usar `unit_testing.md` por primera vez
+- ANTES de usar `testing_basico.md` por primera vez
 
 **Cuando NO usarla:**
 - Si el proyecto ya tiene testing completo (framework + coverage + scripts)
-- Para escribir tests — eso es `unit_testing.md`
+- Para escribir tests — eso es `testing_basico.md`
 
 **Que necesitas antes:** Un proyecto con codigo y archivo de configuracion (package.json, pyproject.toml, composer.json, etc.).
 
@@ -145,14 +145,14 @@
 04  →  Configura el entorno de testing
        Resultado: framework de tests listo para usar
 
-Despues de las core templates, configura la proteccion del proyecto:
-  ci_local.md            →  Configurar verificaciones automaticas (git hooks)
-
-Luego usa las plantillas operativas (en ../dev_templates/) para el dia a dia:
-  crear_tarea.md         →  Planificar cada tarea del roadmap
-  revisar_tarea.md       →  Validar el plan antes de implementar
-  unit_testing.md        →  Escribir tests
-  commit.md              →  Guardar cambios
+Luego usa el pipeline SDD (en ../dev_templates/) para el dia a dia:
+  spec.md                →  Crear especificacion de lo que quieres construir
+  tareas.md              →  Derivar tasks granulares de la spec
+  revisar_tarea.md       →  Validar cada task antes de implementar
+  auditar_spec.md        →  Verificar coherencia spec + tasks
+  implementar.md         →  Implementar una task a la vez
+  revision_adversarial.md → Revision esceptica post-implementacion
+  hacer_commit.md        →  Guardar cambios
   revision_pr.md         →  Crear/revisar PRs
 ```
 
@@ -166,7 +166,5 @@ Luego usa las plantillas operativas (en ../dev_templates/) para el dia a dia:
    - No hay documentacion tecnica? →  Usa 02_planificacion_tecnica
    - No hay plan de trabajo?       →  Usa 03_roadmap_de_desarrollo
    - No hay tests configurados?    →  Usa 04_setup_testing
-   - No hay verificaciones automaticas? →  Usa ci_local.md (en dev_templates/)
-
-3. Completa solo lo que falta y pasa a las plantillas operativas (en ../dev_templates/)
+3. Completa solo lo que falta y pasa al pipeline SDD (en ../dev_templates/)
 ```

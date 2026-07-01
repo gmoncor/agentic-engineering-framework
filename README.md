@@ -101,6 +101,7 @@ Comandos disponibles tras instalar:
 | `/bugfix` | — | Diagnostica y corrige un bug con causa raiz |
 | `/commit` | — | Crea un commit limpio con mensaje descriptivo |
 | `/pr` | — | Crea o revisa una Pull Request |
+| `/asesor` | — | Analiza un problema y recomienda la mejor solucion |
 
 Skills (se activan automaticamente segun contexto):
 
@@ -153,7 +154,7 @@ No requiere configuracion, plugins ni integraciones.
 
 ### Proyecto nuevo
 
-Usa las plantillas de `core_templates/` en orden para definir la base del proyecto:
+Usa las plantillas de `ai_docs/core_templates/` en orden para definir la base del proyecto:
 
 ```
 1. 01_vision_del_proyecto.md    → Definir QUE se construye y PARA QUIEN
@@ -177,7 +178,7 @@ Tu equipo ya tiene codigo y arquitectura. Empieza directamente con el flujo SDD:
 4. Revision adversarial       → /revision
 ```
 
-Si no tienes tests configurados, usa `core_templates/04_setup_testing.md` antes del paso 3.
+Si no tienes tests configurados, usa `ai_docs/core_templates/04_setup_testing.md` antes del paso 3.
 
 ---
 
@@ -194,6 +195,7 @@ El dia a dia sigue el flujo SDD. Usa `/planificar` como punto de entrada princip
 **`/revision`** — Revision esceptica de toda la implementacion. Busca: integracion entre tasks, edge cases no cubiertos, regresiones, codigo muerto.
 
 **Si encuentras un bug:** usa `/bugfix`.
+**Si tienes dudas o necesitas decidir:** usa `/asesor`.
 **Si el codigo necesita limpieza:** usa la skill `cleanup`.
 **Para commit y PR:** usa `/commit` y `/pr`.
 
@@ -210,13 +212,13 @@ agentic-engineering-framework/
 │
 ├── .claude/                     # Configuracion Claude Code
 │   ├── settings.json            #   model: opus-4.8 + hooks wiring
-│   ├── agents/                  #   planificador, revisor, implementador
-│   ├── commands/                #   10 comandos SDD
+│   ├── agents/                  #   planificador, revisor, implementador, asesor
+│   ├── commands/                #   11 comandos SDD
 │   ├── skills/                  #   8 skills (auto-activacion)
 │   └── workflows/               #   planificar.js (revision paralela + auditoria)
 │
-├── agents/                      # Agentes Gemini CLI
-├── commands/                    # 10 comandos Gemini CLI (.toml)
+├── agents/                      # Agentes Gemini CLI (4)
+├── commands/                    # 11 comandos Gemini CLI (.toml)
 ├── skills/                      # 8 skills Gemini CLI
 ├── hooks/                       # Enforcement SDD (compartido ambas CLIs)
 ├── gemini-extension.json        # Manifest extension Gemini
@@ -248,17 +250,18 @@ Son las instrucciones que le das al LLM. Se copian tal cual — no se modifican.
 
 | Plantilla | Paso SDD | Para que |
 |-----------|----------|---------|
-| `spec.md` | 2 | Crear una especificacion |
-| `tareas.md` | 3 | Derivar tasks de una spec |
-| `revisar_tarea.md` | 4 | Revisar una task individual |
-| `auditar_spec.md` | 5 | Auditar coherencia spec + tasks |
-| `implementar.md` | 6 | Implementar una task |
-| `revision_adversarial.md` | 7 | Revision adversarial post-implementacion |
-| `correccion_de_bugs.md` | -- | Diagnosticar y corregir bugs |
-| `limpieza_de_codigo.md` | -- | Revisar calidad de codigo |
-| `testing_basico.md` | -- | Escribir tests |
-| `hacer_commit.md` | -- | Commit limpio |
-| `revision_pr.md` | -- | Crear o revisar una PR |
+| `spec.md` | /planificar | Crear una especificacion |
+| `tareas.md` | /planificar | Derivar tasks de una spec |
+| `revisar_tarea.md` | /planificar | Revisar una task individual |
+| `auditar_spec.md` | /planificar | Auditar coherencia spec + tasks |
+| `implementar.md` | /implementar | Implementar una task |
+| `revision_adversarial.md` | /revision | Revision adversarial post-implementacion |
+| `correccion_de_bugs.md` | /bugfix | Diagnosticar y corregir bugs |
+| `limpieza_de_codigo.md` | — | Revisar calidad de codigo |
+| `testing_basico.md` | — | Escribir tests |
+| `hacer_commit.md` | /commit | Commit limpio |
+| `revision_pr.md` | /pr | Crear o revisar una PR |
+| `resolver_problema.md` | /asesor | Analizar problemas y recomendar soluciones |
 
 ### `core/` — Documentacion de tu proyecto
 
@@ -281,7 +284,7 @@ El directorio `hooks/` contiene hooks compartidos entre ambas CLIs que refuerzan
 | Hook | Evento | Que hace | Modo |
 |------|--------|----------|------|
 | `sdd-pipeline-guard.js` | Write/Edit | Avisa si escribes codigo sin spec aprobada Y tasks derivadas | Advisory |
-| `sdd-commit-guard.js` | git commit | Verifica formato de commit (subject ≤72, tipo valido, sin Co-Authored-By IA) | Advisory |
+| `sdd-commit-guard.js` | git commit | Verifica formato de commit (subject ≤72, tipo valido entre 12 tipos, sin Co-Authored-By IA) | Advisory |
 
 Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`). No requieren configuracion manual.
 

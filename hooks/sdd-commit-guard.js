@@ -5,7 +5,7 @@
 // Verifica formato de commits y previene scaffolding leaks en git commit/gh pr create.
 // Compatible con Claude Code y Gemini CLI.
 
-const { execSync, spawnSync } = require('child_process');
+const { spawnSync } = require('child_process');
 
 const VALID_TYPES = ['feat', 'fix', 'update', 'refactor', 'create', 'optimize', 'remove', 'rename', 'docs', 'test', 'style', 'chore'];
 const SUBJECT_MAX_LEN = 72;
