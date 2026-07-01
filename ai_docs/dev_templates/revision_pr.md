@@ -1,6 +1,6 @@
 # Plantilla de Revision y Creacion de Pull Requests
 
-> **Cuando usar:** Cuando quieras crear una Pull Request o revisar una existente antes de mergear.
+> **Cuando usar:** Cuando quieras crear una Pull Request o revisar una existente antes de mergear. En el flujo SDD, la PR cierra una o mas tasks de una spec.
 > **Como usar:** Copia este documento completo y pegalo en tu asistente de IA. Luego indica si quieres crear o revisar una PR.
 
 ---
@@ -21,6 +21,7 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 - NUNCA crees o apruebes una PR que incluya archivos sensibles (.env, credenciales) o de scaffolding (ai_docs/).
 - Si la PR tiene mas de 500 lineas cambiadas, SUGIERE dividirla en PRs mas pequenas.
 - SIEMPRE revisa la PR completa antes de crear o aprobar.
+- En el flujo SDD, la descripcion de la PR debe referenciar la spec y las tasks que cierra.
 
 ---
 
@@ -63,6 +64,8 @@ Revisar TODOS los archivos cambiados buscando:
 ## Resultado de la revision
 
 **Tamano:** [Pequeno/Mediano/Grande/Muy grande] ([N] lineas)
+**Spec asociada:** [Titulo de la spec, si aplica]
+**Tasks cerradas:** [Lista de tasks que esta PR cierra, si aplica]
 
 **BLOQUEANTES** (corregir antes de mergear):
 - [Problema 1]: [Archivo:linea] — [Descripcion y como corregir]
@@ -86,7 +89,7 @@ Revisar TODOS los archivos cambiados buscando:
 
 1. Ejecutar `git diff` contra la rama base (normalmente `main` o `develop`)
 2. Listar todos los commits que se incluiran
-3. Verificar que todos los cambios estan relacionados con la misma tarea/funcionalidad
+3. Verificar que todos los cambios estan relacionados con la misma tarea/funcionalidad o spec
 
 ### Paso 3: Escaneo de calidad (mismo que Modo A, Paso 3)
 
@@ -97,6 +100,13 @@ Revisar TODOS los archivos cambiados buscando:
 [tipo]: [descripcion breve — maximo 70 caracteres]
 
 ## Descripcion
+### Spec
+[Titulo de la spec que origina estos cambios, si aplica]
+
+### Tasks cerradas
+- [Task NNN: titulo]
+- [Task NNN: titulo]
+
 ### Resumen
 - [Que se hizo y por que — en bullet points]
 
@@ -122,6 +132,8 @@ Titulo: [titulo]
 Rama: [rama actual] -> [rama destino]
 Commits: [cantidad]
 Archivos: [cantidad] ([N] lineas cambiadas)
+Spec: [titulo de la spec, si aplica]
+Tasks: [lista de tasks cerradas, si aplica]
 
 Revisar la descripcion arriba. Creo la PR? (S/n)
 ```
@@ -138,3 +150,4 @@ Revisar la descripcion arriba. Creo la PR? (S/n)
 4. **Si hay problemas BLOQUEANTES**, no aprobar bajo ninguna circunstancia
 5. **Si la PR es muy grande** (500+ lineas), recomendar dividirla
 6. **SIEMPRE presentar la revision/PR** al usuario antes de aprobar o crear
+7. **En el flujo SDD**, la PR referencia la spec y las tasks que cierra

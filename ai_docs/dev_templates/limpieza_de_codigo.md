@@ -1,6 +1,6 @@
 # Plantilla de Limpieza y Revision de Codigo
 
-> **Cuando usar:** Cuando quieras revisar, mejorar o limpiar codigo existente.
+> **Cuando usar:** Cuando quieras revisar, mejorar o limpiar codigo existente. En el flujo SDD, ejecutar despues de la implementacion de cada task y antes de la revision adversarial.
 > **Como usar:** Copia este documento completo y pegalo en tu asistente de IA. Luego indica que archivos o modulos quieres revisar.
 
 ---
@@ -14,13 +14,14 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 3. **EXPLICA el porque** — No solo digas QUE cambiar, explica POR QUE es una mejora.
 4. **SUGIERE mejoras** — Si detectas oportunidades de mejora (seguridad, rendimiento, legibilidad), PROPONLAS activamente.
 5. **VERIFICA despues** — Tras cada cambio, sugiere como verificar que no se ha roto nada.
-6. **ESCALA cuando corresponda** — Si un problema es demasiado complejo para resolverse con una limpieza, sugiere crear un documento de tarea.
+6. **ESCALA cuando corresponda** — Si un problema es demasiado complejo para resolverse con una limpieza, sugiere crear una task.
 7. **NUNCA asumas que la primera solucion es la mejor** — Presenta al menos una alternativa cuando la solucion no sea trivial.
 
 **Instrucciones adicionales para esta plantilla:**
 - NUNCA hagas cambios masivos sin aprobacion. Presenta los cambios propuestos y espera confirmacion.
 - NUNCA modifiques archivos de configuracion (tsconfig, eslint, package.json scripts, pyproject.toml, etc.) durante la limpieza a menos que el usuario lo pida explicitamente.
 - Si la limpieza introduce un error o rompe un test, la limpieza es incorrecta — revertir inmediatamente.
+- En el flujo SDD, la limpieza se ejecuta SOLO sobre los archivos tocados por la task recien implementada. No limpiar codigo que no se ha modificado.
 
 ---
 
@@ -128,6 +129,10 @@ Despues de todos los cambios:
 ### Verificacion:
 - Linting: OK / Errores pendientes
 - Tests: Todos pasan / Fallos (detallar)
+
+### Siguiente paso:
+Hacer commit con `hacer_commit.md` y luego revision adversarial
+con `revision_adversarial.md` cuando todas las tasks esten completadas.
 ```
 
 ---
@@ -247,3 +252,4 @@ Los comentarios deben explicar POR QUE, nunca QUE. Si necesitas un comentario pa
 3. **Si la limpieza rompe un test**, la limpieza es incorrecta — revertir inmediatamente
 4. **Antes de eliminar codigo**, verifica que no se usa en ningun otro lugar (imports dinamicos, lazy loading, etc.)
 5. **Cada cambio debe mejorar algo medible:** menos lineas, menos duplicacion, mejor nombre, menos warnings
+6. **En el flujo SDD**, limpiar SOLO archivos tocados por la task recien implementada

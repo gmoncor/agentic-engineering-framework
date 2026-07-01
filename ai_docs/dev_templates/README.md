@@ -1,6 +1,6 @@
 # Templates de Desarrollo Asistido por IA
 
-> Sistema de plantillas para guiar a asistentes de IA durante el desarrollo de software.
+> Sistema de plantillas para guiar a asistentes de IA durante el desarrollo de software, organizado alrededor de la metodologia SDD (Spec-Driven Development).
 
 ---
 
@@ -28,113 +28,155 @@ El resultado: menos errores, mejor codigo, y tu entiendes cada decision que se t
 
 ---
 
-## Quick Start — por donde empiezo?
+## Metodologia SDD (Spec-Driven Development)
 
-### Si te incorporas a un proyecto existente
-
-Tu equipo ya tiene codigo, repositorio y arquitectura definida. No necesitas planificar desde cero. Empieza directamente con las plantillas operativas:
+El flujo SDD es un pipeline lineal donde cada paso produce un artefacto que alimenta al siguiente:
 
 ```
-1. Lee el codigo existente y entiende la estructura del proyecto
-2. Cuando te asignen una tarea  →  crear_tarea.md
-3. Revisa el plan               →  revisar_tarea.md
-4. Implementa con tu asistente de IA
-5. Revisa la calidad            →  limpieza_de_codigo.md
-6. Si no hay tests              →  ../core_templates/04_setup_testing.md (una sola vez)
-7. Si no hay CI local           →  ci_local.md (una sola vez)
-8. Escribe tests                →  unit_testing.md
-9. Haz commit                   →  commit.md
-10. Crea la PR                  →  revision_pr.md
+Solicitud del usuario
+    |
+    v
+[2. SPEC]  ──────────────────  spec.md
+    |                          Define QUE se quiere lograr
+    v
+[3. TASKS]  ─────────────────  tareas.md
+    |                          Divide la spec en tasks atomicas
+    v
+[4. REVISION DE TASKS]  ─────  revisar_tarea.md
+    |                          Valida cada task individualmente
+    v
+[5. AUDITORIA]  ─────────────  auditar_spec.md
+    |                          Verifica coherencia spec + tasks
+    v
+[6. IMPLEMENTACION]  ────────  implementar.md
+    |                          Ejecuta cada task (paralelo si es posible)
+    |   |
+    |   +── limpieza_de_codigo.md  (por task)
+    |   +── testing_basico.md      (por task)
+    |   +── hacer_commit.md        (por task)
+    |
+    v
+[7. REVISION ADVERSARIAL]  ──  revision_adversarial.md
+    |                          Revision adversarial de TODA la implementacion
+    v
+[PR]  ───────────────────────  revision_pr.md
+                               Cierra las tasks de la spec
 ```
 
-**Plantilla mas importante para ti:** `crear_tarea.md` — usala ANTES de cada tarea para planificar que vas a hacer. Parece un paso extra, pero te ahorrara tiempo y errores.
-
-### Si arrancas un proyecto nuevo
-
-Necesitas definir la idea, la estructura y el plan antes de escribir codigo. Usa las plantillas core en orden:
-
-```
-1. 01 Vision del Proyecto        →  Definir QUE se construye y PARA QUIEN
-2. 02 Planificacion Tecnica      →  Definir COMO se construye (datos, paginas, arquitectura)
-3. 03 Roadmap de Desarrollo      →  Definir EN QUE ORDEN se construye
-4. 04 Setup de Testing           →  Configurar el entorno de tests
-5. CI Local                      →  Configurar verificaciones automaticas (ci_local.md)
-6. Documento de Tarea            →  Crear tarea para la primera fase del roadmap
-7. Implementar + Testear + Commit + PR (flujo diario)
-```
-
-Las plantillas core estan en la carpeta `../core_templates/`. Consulta su README para mas detalle.
+**Principios del flujo SDD:**
+- Sin sprints — solo un roadmap global en `ai_docs/core/`
+- La spec define QUE. Las tasks definen COMO
+- Tasks atomicas y granulares, paralelizables cuando no hay dependencias
+- Revision adversarial obligatoria despues de implementar TODAS las tasks
+- Una spec, multiples tasks. Una task, un cambio atomico
 
 ---
 
 ## Plantillas disponibles
 
-### Documentacion Core del Proyecto (`../core_templates/`)
+### Pipeline SDD (usar en orden)
 
-Plantillas para definir y planificar un proyecto. **Requisito antes de usar las plantillas operativas.** Cada una genera un documento de referencia. Ver `../core_templates/README.md` para instrucciones detalladas.
+| # | Plantilla | Archivo | Cuando usarla |
+|---|-----------|---------|---------------|
+| 2 | **Spec** | `spec.md` | Al recibir una solicitud. Define QUE se quiere lograr |
+| 3 | **Derivar tasks** | `tareas.md` | Despues de aprobar la spec. Divide en tasks atomicas |
+| 4 | **Revisar task** | `revisar_tarea.md` | Despues de crear cada task. Valida alcance, dependencias, edge cases, TDD |
+| 5 | **Auditar spec** | `auditar_spec.md` | Despues de crear TODAS las tasks. Verifica cobertura, overlaps, huecos |
+| 6 | **Implementar** | `implementar.md` | Despues de la auditoria. Ejecuta cada task |
+| 7 | **Revision adversarial** | `revision_adversarial.md` | Despues de implementar TODAS las tasks. Busca problemas activamente |
+
+### Soporte (usar durante la implementacion)
+
+| Plantilla | Archivo | Cuando usarla | Cuando NO usarla |
+|-----------|---------|---------------|------------------|
+| **Limpieza de codigo** | `limpieza_de_codigo.md` | Despues de implementar cada task, antes de la revision adversarial | Para anadir funcionalidad nueva |
+| **Testing** | `testing_basico.md` | Durante la implementacion de cada task | Si no hay framework de testing (primero usa `core_templates/04_setup_testing.md`) |
+| **Commit** | `hacer_commit.md` | Despues de implementar y limpiar cada task | Para crear PRs (usa `revision_pr.md`) |
+| **Pull Request** | `revision_pr.md` | Despues de la revision adversarial, para crear la PR final | Para revision de codigo sin PR (usa `limpieza_de_codigo.md`) |
+| **Correccion de bugs** | `correccion_de_bugs.md` | Cuando algo no funciona o tiene comportamiento inesperado | Para mejoras o features nuevos (eso es una spec) |
+
+### Documentacion Core del Proyecto (`core_templates/`)
+
+Plantillas para definir y planificar un proyecto. **Requisito antes de usar el pipeline SDD.** Cada una genera un documento de referencia. Ver `core_templates/README.md` para instrucciones detalladas.
 
 | Plantilla | Cuando usarla |
 |-----------|---------------|
-| **01 — Vision del Proyecto** | Al arrancar un proyecto nuevo o para documentar uno existente que no tiene vision clara |
-| **02 — Planificacion Tecnica** | Despues de 01. Para definir paginas, modelo de datos y arquitectura |
-| **03 — Roadmap de Desarrollo** | Despues de 02. Para organizar el trabajo en fases secuenciales |
-| **04 — Setup de Testing** | Una vez por proyecto. Configura framework de tests, coverage y scripts |
-
-### Operaciones del dia a dia
-
-Plantillas que usaras regularmente durante el desarrollo.
-
-| Plantilla | Cuando usarla | Cuando NO usarla |
-|-----------|---------------|------------------|
-| **Crear Tarea** | Antes de empezar cualquier trabajo: planificar, analizar alternativas y definir criterios de exito | Para bugs simples (usa fix_bugs) o cambios de una linea |
-| **Revisar Tarea** | Despues de planificar: validar alcance minimo, dependencias, edge cases y enfoque TDD | Si la tarea es trivial (1 archivo, sin riesgos) |
-| **Limpieza de Codigo** | Despues de implementar, para revisar calidad: redundancias, nombres, comentarios, DRY, KISS | Para anadir funcionalidad nueva (eso es una tarea) |
-| **Fix Bugs** | Cuando algo no funciona o tiene comportamiento inesperado | Para mejoras o features nuevos (eso es una tarea) |
-| **Unit Testing** | Para escribir tests de calidad o mejorar tests existentes | Si no hay framework de testing (primero usa 04_setup_testing) |
-| **Commit** | Cada vez que quieras guardar cambios en Git | Para crear PRs (usa revision_pr) |
-| **Revision de PR** | Para crear una PR nueva o revisar una existente antes de mergear | Para revision de codigo sin PR (usa limpieza_de_codigo) |
-| **CI Local** | Una vez por proyecto: configurar git hooks que verifican codigo antes de commit y push | Si ya tienes hooks configurados y funcionando |
+| **01 -- Vision del Proyecto** | Al arrancar un proyecto nuevo o para documentar uno existente |
+| **02 -- Planificacion Tecnica** | Despues de 01. Para definir paginas, modelo de datos y arquitectura |
+| **03 -- Roadmap de Desarrollo** | Despues de 02. Para organizar el trabajo en orden |
+| **04 -- Setup de Testing** | Una vez por proyecto. Configura framework de tests |
 
 ---
 
-## Flujo de trabajo diario
+## Quick Start
 
-Este es el ciclo que seguiras para cada tarea:
+### Si te incorporas a un proyecto existente
+
+Tu equipo ya tiene codigo, repositorio y arquitectura definida. Empieza directamente con el pipeline SDD:
 
 ```
-1. PLANIFICAR    →  crear_tarea.md
-   Antes de tocar codigo. Define que vas a hacer, por que, y como.
-
-2. REVISAR PLAN  →  revisar_tarea.md
-   Valida alcance minimo, dependencias, edge cases y enfoque TDD.
-
-3. IMPLEMENTAR   →  Tu asistente de IA con el documento de tarea revisado como guia.
-
-4. REVISAR       →  limpieza_de_codigo.md
-   Busca codigo muerto, redundancias, nombres poco claros, duplicaciones.
-
-5. TESTEAR       →  unit_testing.md
-   Escribe tests para lo que has implementado. No para todo el proyecto.
-
-6. COMMITEAR     →  commit.md
-   Guarda los cambios con un mensaje claro y sin archivos sensibles.
-
-7. PULL REQUEST  →  revision_pr.md
-   Crea o revisa la PR antes de mergear.
+1. Lee el codigo existente y entiende la estructura del proyecto
+2. Cuando te asignen trabajo      -->  spec.md (define QUE)
+3. Deriva las tasks               -->  tareas.md
+4. Revisa cada task               -->  revisar_tarea.md
+5. Audita spec + tasks            -->  auditar_spec.md
+6. Implementa cada task           -->  implementar.md
+   (incluye tests, limpieza, commit por task)
+7. Revision adversarial           -->  revision_adversarial.md
+8. Crea la PR                     -->  revision_pr.md
 ```
 
-**Si encuentras un bug** durante la implementacion: usa `fix_bugs.md`.
+### Si arrancas un proyecto nuevo
 
-**Si el proyecto no tiene tests configurados:** usa `../core_templates/04_setup_testing.md` una sola vez antes de escribir tests.
+Necesitas definir la idea, la estructura y el plan antes de escribir codigo:
 
-**Si el proyecto no tiene verificaciones automaticas:** usa `ci_local.md` una sola vez para configurar git hooks que verifican formato, lint y tests antes de cada commit y push.
+```
+1. 01 Vision del Proyecto          -->  Definir QUE se construye y PARA QUIEN
+2. 02 Planificacion Tecnica        -->  Definir COMO se construye
+3. 03 Roadmap de Desarrollo        -->  Definir EN QUE ORDEN se construye
+4. 04 Setup de Testing             -->  Configurar el entorno de tests
+5. Seguir el pipeline SDD para cada trabajo del roadmap
+```
+
+Las plantillas core estan en la carpeta `core_templates/`. Consulta su README para mas detalle.
+
+---
+
+## Flujo de trabajo diario (pipeline SDD)
+
+```
+2. SPEC            -->  spec.md
+   Recibir solicitud. Definir QUE, alcance, criterios de aceptacion.
+
+3. TAREAS          -->  tareas.md
+   Dividir la spec en tasks atomicas e independientes.
+
+4. REVISION DE TASKS  -->  revisar_tarea.md (por cada task)
+   Validar alcance, dependencias, edge cases, enfoque TDD.
+
+5. AUDITORIA       -->  auditar_spec.md
+   Verificar cobertura, overlaps, huecos, coherencia.
+
+6. IMPLEMENTAR     -->  implementar.md (por cada task, paralelo si es posible)
+   Implementar + tests + limpieza + commit por task.
+
+7. REVISION ADVERSARIAL  -->  revision_adversarial.md
+   Buscar problemas activamente en TODA la implementacion.
+
+PR                 -->  revision_pr.md
+   Crear la PR que cierra las tasks de la spec.
+```
+
+**Si encuentras un bug** durante la implementacion: usa `correccion_de_bugs.md`.
+
+**Si el proyecto no tiene tests configurados:** usa `core_templates/04_setup_testing.md` una sola vez antes de escribir tests.
 
 ---
 
 ## Reglas importantes
 
-- **No te saltes la planificacion.** Crear un documento de tarea ANTES de programar parece perder tiempo, pero lo ahorra. El asistente trabaja mucho mejor cuando tiene un plan claro.
-- **No aceptes la primera respuesta sin cuestionarla.** Las plantillas obligan al asistente a presentar alternativas — aprovechalo. Tu criterio es mejor que el del asistente para decidir que solucion encaja en tu proyecto.
-- **Revisa siempre el codigo generado.** El asistente genera codigo, pero TU eres responsable de lo que se sube al repositorio. Lee lo que ha hecho antes de hacer commit.
-- **Pregunta si no entiendes algo.** Estas plantillas estan disenadas para que el asistente te explique cada decision. Si no entiendes una sugerencia, pidele que la explique.
+- **No te saltes la especificacion.** Crear una spec ANTES de derivar tasks parece perder tiempo, pero lo ahorra. El asistente trabaja mucho mejor cuando tiene un contrato claro del QUE.
+- **No aceptes la primera respuesta sin cuestionarla.** Las plantillas obligan al asistente a presentar alternativas — aprovechalo.
+- **Revisa siempre el codigo generado.** El asistente genera codigo, pero TU eres responsable de lo que se sube al repositorio.
+- **La revision adversarial no es opcional.** Es el ultimo filtro antes de mergear. Su trabajo es ENCONTRAR problemas, no confirmar que todo esta bien.
 - **Itera.** La primera version nunca es la mejor. Las plantillas fuerzan rondas de revision — no las saltes.

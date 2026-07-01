@@ -1,239 +1,280 @@
 # Agentic Engineering Framework
 
-> Framework de plantillas para desarrollo de software asistido por IA — compatible con cualquier LLM o IDE agentico.
+> Framework de plantillas para desarrollo de software asistido por IA — metodologia SDD (Spec-Driven Development).
 
 ---
 
 ## Que es esto?
 
-Un sistema de plantillas que le das a tu asistente de IA (ChatGPT, Claude, Gemini, Copilot, Cursor, Windsurf, o cualquier otro) para que trabaje de forma estructurada. En lugar de pedirle "haz esto" y esperar que lo haga bien a la primera, las plantillas le obligan a:
+Un sistema de plantillas que estructura como trabaja tu asistente de IA. En lugar de pedirle "haz esto" y esperar lo mejor, el framework impone un flujo lineal: spec, tasks, auditoria, implementacion, revision adversarial.
 
-- **Preguntarte** cuando algo no esta claro (en vez de inventar)
-- **Mostrarte el plan** antes de tocar codigo (en vez de lanzarse a implementar)
-- **Presentarte alternativas** cuando la solucion no es obvia (en vez de darte solo una opcion)
-- **Verificar** que nada se ha roto despues de cada cambio
-
-El resultado: menos errores, mejor codigo, y tu entiendes cada decision que se toma.
-
----
-
-## Como funciona
-
-1. **Copia el contenido completo** de la plantilla que necesites
-2. **Pegalo en tu asistente de IA** (chat, IDE, o donde trabajes)
-3. **Describe tu tarea** a continuacion del texto pegado
-4. **Sigue las indicaciones** — el asistente te guiara paso a paso
-
-Funciona con cualquier LLM o IDE que acepte texto como entrada. No requiere configuracion, plugins ni integraciones.
+Compatible con cualquier LLM via copy-paste. Integracion nativa con Claude Code (comandos + agentes + skills) y Gemini CLI (extension instalable).
 
 ---
 
 ## Aviso importante
 
-Este framework NO funciona en automatico. Las plantillas guian al asistente de IA, pero la calidad del resultado depende de ti:
+Las plantillas guian al asistente de IA, pero la calidad del resultado depende de ti:
 
-- **Revisa cada respuesta** antes de aceptarla — el LLM puede inventar, omitir o simplificar en exceso
-- **Itera** — la primera version nunca es la mejor. Pide correcciones, cuestiona decisiones, refina
+- **Revisa cada respuesta** — el LLM puede inventar, omitir o simplificar en exceso
+- **Itera** — la primera version nunca es la mejor. Cuestiona decisiones, pide alternativas
 - **No confies ciegamente** — tu eres el ingeniero, el LLM es la herramienta
-- **Configura la documentacion core primero** — sin vision, planificacion y roadmap, las plantillas operativas trabajan a ciegas
-
-El setup inicial (`core_templates/`) es un **requisito**, no un paso opcional. Un proyecto sin documentacion core produce tareas ambiguas, bugs mal diagnosticados y codigo sin direccion clara.
+- **Configura `ai_docs/core/` primero** — sin vision, planificacion y roadmap, las plantillas trabajan a ciegas
 
 ---
 
-## Estructura del proyecto
+## El flujo SDD
+
+Toda solicitud sigue 7 pasos lineales. No hay sprints ni ceremonias — solo un flujo que va de la idea al codigo revisado.
 
 ```
-ai_docs/
-├── core_templates/          # Plantillas de planificacion inicial (usa en orden)
-│   ├── README.md
-│   ├── 01_vision_del_proyecto.md
-│   ├── 02_planificacion_tecnica.md
-│   ├── 03_roadmap_de_desarrollo.md
-│   └── 04_setup_testing.md
-│
-├── dev_templates/           # Plantillas operativas (usa estas a diario)
-│   ├── README.md
-│   ├── crear_tarea.md
-│   ├── revisar_tarea.md
-│   ├── fix_bugs.md
-│   ├── limpieza_de_codigo.md
-│   ├── unit_testing.md
-│   ├── commit.md
-│   ├── revision_pr.md
-│   └── ci_local.md
-│
-├── core/                    # Documentacion de TU proyecto (incluye ejemplos)
-│   ├── vision_del_proyecto.md      # Ejemplo generado con 01_vision_del_proyecto
-│   ├── planificacion_tecnica.md    # Ejemplo generado con 02_planificacion_tecnica
-│   └── roadmap.md                  # Ejemplo generado con 03_roadmap_de_desarrollo
-├── tasks/                   # Documentos de tarea de TU proyecto (ver abajo)
-└── refs/                    # Referencias externas de TU proyecto (ver abajo)
+  [1] Solicitud
+      |
+      v
+  [2] SPEC ──────────────── Define QUE se quiere lograr
+      |
+      v
+  [3] TAREAS ────────────── Parte la spec en tasks atomicas
+      |
+      v
+  [4] REVISION DE TASKS ─── Revisa cada task (alcance, edge cases, TDD)
+      |
+      v
+  [5] AUDITORIA ─────────── Coherencia spec + tasks (huecos, overlap, dependencias)
+      |
+      v
+  [6] IMPLEMENTACION ────── Ejecucion paralela de tasks independientes
+      |
+      v
+  [7] REVISION ADVERSARIAL  Revision esceptica de la implementacion total
+      |
+      v
+    Codigo revisado
 ```
+
+| Paso | Que pasa | Quien decide |
+|------|----------|--------------|
+| Solicitud | El usuario describe lo que quiere | Usuario |
+| Spec | Se crea un documento con alcance, criterios y restricciones | LLM + usuario |
+| Tareas | Se parte la spec en tasks granulares y paralelizables | LLM |
+| Revision de tasks | Se revisa cada task individualmente | LLM (revisor) |
+| Auditoria | Se audita coherencia entre spec y tasks | LLM (revisor) |
+| Implementacion | Se ejecutan las tasks (paralelo si son independientes) | LLM (implementador) |
+| Revision adversarial | Revision esceptica de la implementacion completa | LLM (revisor) |
+
+Principios del flujo:
+
+- **Una spec, multiples tasks.** La spec define QUE; las tasks definen COMO
+- **Tasks atomicas.** Una task = un cambio atomico = un commit
+- **Paralelizacion donde sea posible.** Tasks sin dependencias mutuas se ejecutan en paralelo
+- **Revision adversarial obligatoria.** Nunca mergear sin pasar por el paso 7
+- **Sin sprints.** Solo roadmap global en `ai_docs/core/`
 
 ---
 
-## Que hay en cada carpeta
+## Instalacion
 
-### `core_templates/` — Plantillas de planificacion inicial
+### Claude Code
 
-**Requisito antes de usar las plantillas operativas.** Se usan en orden y cada una genera un documento que alimenta a la siguiente. Para proyectos nuevos o existentes sin documentacion.
+**Opcion 1 — Proyecto nuevo:**
 
-| Plantilla | Cuando usarla |
-|-----------|---------------|
-| **01 — Vision del Proyecto** | Definir QUE se construye, PARA QUIEN y POR QUE |
-| **02 — Planificacion Tecnica** | Definir la estructura: paginas, datos y arquitectura |
-| **03 — Roadmap de Desarrollo** | Definir EN QUE ORDEN se construye todo |
-| **04 — Setup de Testing** | Configurar el entorno de tests (una sola vez) |
+```bash
+git clone https://github.com/gmoncor/agentic-engineering-framework.git mi-proyecto
+cd mi-proyecto
+claude
+```
 
-### `dev_templates/` — Plantillas que copias y pegas
+**Opcion 2 — Proyecto existente:**
 
-Estas son las instrucciones que le das a tu asistente de IA. **No las modificas, las copias tal cual.**
+Copia estas carpetas a la raiz de tu proyecto:
 
-| Plantilla | Cuando usarla |
-|-----------|---------------|
-| **crear_tarea.md** | Antes de empezar cualquier trabajo — planifica que vas a hacer |
-| **revisar_tarea.md** | Despues de planificar — revisa el plan antes de implementar |
-| **fix_bugs.md** | Cuando algo no funciona o da un error |
-| **limpieza_de_codigo.md** | Despues de implementar — revisa calidad, redundancias, nombres |
-| **unit_testing.md** | Para escribir tests o mejorar tests existentes |
-| **commit.md** | Para guardar cambios en Git con un commit limpio |
-| **revision_pr.md** | Para crear o revisar una Pull Request |
-| **ci_local.md** | Para configurar verificaciones automaticas antes de commit y push (git hooks) |
+```
+.claude/          # agentes, comandos, skills, settings
+ai_docs/          # plantillas + docs de tu proyecto
+CLAUDE.md         # instrucciones sistema
+```
 
-### `core/` — Documentacion de tu proyecto
+Comandos disponibles tras instalar:
 
-Aqui guardas los documentos que generan las plantillas de planificacion inicial:
+| Comando | Paso SDD | Que hace |
+|---------|----------|----------|
+| `/spec` | 2 | Crea una especificacion a partir de una solicitud |
+| `/tareas` | 3 | Parte una spec aprobada en tasks granulares |
+| `/auditar` | 5 | Audita coherencia entre spec y tasks |
+| `/implementar` | 6 | Implementa una task especifica |
+| `/revision` | 7 | Revision adversarial post-implementacion |
+| `/estado` | -- | Muestra el estado del proyecto |
 
-- El documento de vision (generado con 01_vision_del_proyecto)
-- La planificacion tecnica (generada con 02_planificacion_tecnica)
-- El roadmap de desarrollo (generado con 03_roadmap_de_desarrollo)
-- Cualquier otro documento de referencia de tu proyecto
+### Gemini CLI
 
-**En este repo, incluimos 3 documentos de ejemplo** generados aplicando las plantillas de planificacion inicial sobre el propio framework (dogfooding). Sirven para que veas el formato y nivel de detalle que produce cada plantilla:
+**Opcion 1 — Extension (recomendada):**
 
-- `vision_del_proyecto.md` — ejemplo generado con 01_vision_del_proyecto
-- `planificacion_tecnica.md` — ejemplo generado con 02_planificacion_tecnica
-- `roadmap.md` — ejemplo generado con 03_roadmap_de_desarrollo
+```bash
+gemini extensions install https://github.com/gmoncor/agentic-engineering-framework
+```
 
-Cuando uses el framework en tu proyecto, reemplaza estos ejemplos con los documentos de tu propio proyecto.
+**Opcion 2 — Manual:**
 
-### `tasks/` — Documentos de tarea
+Copia a la raiz de tu proyecto:
 
-Aqui guardas los documentos de tarea que generas con `crear_tarea.md`:
+```
+agents/               # agentes Gemini
+commands/              # comandos Gemini (.toml)
+skills/                # skills Gemini
+GEMINI.md              # instrucciones sistema
+gemini-extension.json  # manifest
+ai_docs/               # plantillas + docs de tu proyecto
+```
 
-- Un archivo por tarea: `001_descripcion_de_la_tarea.md`
-- Numeracion secuencial: `001`, `002`, `003`...
-- Sirven como registro de decisiones y como guia durante la implementacion
+### Sin CLI (copy-paste)
 
-**Esta carpeta empieza vacia.** Se llena conforme trabajas en tu proyecto.
+Funciona con cualquier LLM: ChatGPT, Copilot, Cursor, Windsurf, o cualquier otro.
 
-### `refs/` — Referencias externas
+1. Copia la carpeta `ai_docs/` a tu proyecto
+2. Abre la plantilla que necesites de `ai_docs/dev_templates/`
+3. Copia su contenido completo y pegalo en tu LLM
+4. Describe tu tarea a continuacion del texto pegado
 
-Aqui guardas documentacion externa que tu asistente de IA necesita consultar:
-
-- Documentacion de APIs que consumes
-- Guias de estilo del equipo
-- Especificaciones tecnicas de terceros
-- Cualquier documento de referencia que no sea codigo
-
-**Esta carpeta empieza vacia.** Annade lo que necesites.
+No requiere configuracion, plugins ni integraciones.
 
 ---
 
 ## Quick Start
 
-### Si te incorporas a un proyecto existente
+### Proyecto nuevo
 
-Tu equipo ya tiene codigo y arquitectura. Empieza directamente con las plantillas operativas:
-
-```
-1. Lee el codigo existente y entiende la estructura
-2. Cuando te asignen una tarea  →  crear_tarea.md
-3. Revisa el plan               →  revisar_tarea.md
-4. Implementa con tu asistente de IA
-5. Revisa la calidad            →  limpieza_de_codigo.md
-6. Si no hay tests              →  core_templates/04_setup_testing.md (una sola vez)
-7. Si no hay CI local           →  ci_local.md (una sola vez)
-8. Escribe tests                →  unit_testing.md
-9. Haz commit                   →  commit.md
-10. Crea la PR                  →  revision_pr.md
-```
-
-### Si arrancas un proyecto nuevo
-
-Usa las plantillas de planificacion inicial en orden para definir la idea, la estructura y el plan:
+Usa las plantillas de `core_templates/` en orden para definir la base del proyecto:
 
 ```
-1. 01  →  Definir QUE se construye y PARA QUIEN
-2. 02  →  Definir COMO se construye (datos, paginas, arquitectura)
-3. 03  →  Definir EN QUE ORDEN se construye
-4. 04  →  Configurar el entorno de tests
-5. CI Local  →  Configurar verificaciones automaticas (ci_local.md)
-6. Documento de Tarea  →  Crear tarea para la primera fase del roadmap
-7. Revisar Plan  →  Validar el plan antes de implementar (revisar_tarea.md)
-8. Implementar + Testear + Commit + PR (flujo diario)
+1. 01_vision_del_proyecto.md    → Definir QUE se construye y PARA QUIEN
+2. 02_planificacion_tecnica.md  → Definir COMO se construye (datos, paginas, arquitectura)
+3. 03_roadmap_de_desarrollo.md  → Definir EN QUE ORDEN se construye
+4. 04_setup_testing.md          → Configurar el entorno de tests (una sola vez)
 ```
+
+Cada plantilla genera un documento en `ai_docs/core/`. Estos documentos alimentan a todo el flujo SDD.
+
+Despues: crea tu primera spec con `/spec` (o copia `dev_templates/spec.md`) y sigue el flujo.
+
+### Proyecto existente
+
+Tu equipo ya tiene codigo y arquitectura. Empieza directamente con el flujo SDD:
+
+```
+1. Describe lo que necesitas  → /spec (o dev_templates/spec.md)
+2. Deriva tasks de la spec    → /tareas (o dev_templates/tareas.md)
+3. Revisa cada task            → skill revisar-tarea (o dev_templates/revisar_tarea.md)
+4. Audita spec + tasks         → /auditar (o dev_templates/auditar_spec.md)
+5. Implementa                  → /implementar (o dev_templates/implementar.md)
+6. Revision adversarial        → /revision (o dev_templates/revision_adversarial.md)
+```
+
+Si no tienes tests configurados, usa `core_templates/04_setup_testing.md` antes del paso 6.
 
 ---
 
 ## Flujo de trabajo diario
 
-```
-1. PLANIFICAR    →  crear_tarea.md
-   Antes de tocar codigo. Define que vas a hacer, por que, y como.
+El dia a dia sigue el flujo SDD. No todos los pasos aplican siempre — usa tu criterio:
 
-2. REVISAR PLAN  →  revisar_tarea.md
-   Valida alcance minimo, dependencias, edge cases y enfoque TDD.
+**2. Spec** — Describe lo que necesitas. El LLM crea la especificacion con alcance, criterios de aceptacion y restricciones. Revisala y apruebala antes de continuar.
 
-3. IMPLEMENTAR   →  Tu asistente de IA con el documento de tarea revisado como guia.
+**3. Tareas** — El LLM parte la spec en tasks atomicas. Cada task tiene dependencias, tamano estimado, edge cases y si es paralelizable.
 
-4. REVISAR       →  limpieza_de_codigo.md
-   Busca codigo muerto, redundancias, nombres poco claros, duplicaciones.
+**4. Revision de tasks** — Cada task se revisa individualmente: alcance minimo, dependencias correctas, edge cases cubiertos, enfoque TDD.
 
-5. TESTEAR       →  unit_testing.md
-   Escribe tests para lo que has implementado. No para todo el proyecto.
+**5. Auditoria** — Se revisa la coherencia entre spec y tasks como conjunto: huecos de cobertura, overlap entre tasks, dependencias circulares, features no cubiertas.
 
-6. COMMITEAR     →  commit.md
-   Guarda los cambios con un mensaje claro y sin archivos sensibles.
+**6. Implementacion** — Se ejecutan las tasks. Tasks sin dependencias mutuas se ejecutan en paralelo. Cada task produce codigo + tests.
 
-7. PULL REQUEST  →  revision_pr.md
-   Crea o revisa la PR antes de mergear.
-```
+**7. Revision adversarial** — Revision esceptica de toda la implementacion. El revisor busca problemas, no confirma que todo esta bien. Busca: integracion entre tasks, edge cases no cubiertos, regresiones, codigo muerto.
 
-Si encuentras un bug durante la implementacion: usa `fix_bugs.md`.
+**Si encuentras un bug:** usa `correccion_de_bugs.md`.
+**Si el codigo necesita limpieza:** usa `limpieza_de_codigo.md`.
+**Para commit y PR:** usa `hacer_commit.md` y `revision_pr.md`.
 
 ---
 
-## Como instalar en tu proyecto
+## Que hay en cada carpeta
 
-1. **Copia la carpeta `ai_docs/`** a la raiz de tu proyecto
-2. **Anade `ai_docs/` a tu `.gitignore`** — estas plantillas son herramientas de trabajo, no codigo de produccion
-
-```gitignore
-# Documentos generados por el framework de IA (especificos de tu proyecto)
-ai_docs/core/
-ai_docs/tasks/
-ai_docs/refs/
+```
+agentic-engineering-framework/
+├── README.md                    # Este archivo
+├── CLAUDE.md                    # Instrucciones sistema para Claude Code
+├── GEMINI.md                    # Instrucciones sistema para Gemini CLI
+├── LICENSE                      # CC BY 4.0
+│
+├── .claude/                     # Configuracion Claude Code
+│   ├── settings.json
+│   ├── agents/                  # planificador, revisor, implementador
+│   ├── commands/                # /spec, /tareas, /auditar, /implementar, /revision, /estado
+│   └── skills/                  # revisar-tarea, revision-adversarial
+│
+├── agents/                      # Agentes Gemini CLI
+├── commands/                    # Comandos Gemini CLI (.toml)
+├── skills/                      # Skills Gemini CLI
+├── gemini-extension.json        # Manifest extension Gemini
+│
+├── ai_docs/
+│   ├── core_templates/          # Plantillas de planificacion inicial (01-04, usar en orden)
+│   ├── dev_templates/           # Plantillas operativas SDD (copy-paste, LLM-agnostic)
+│   ├── core/                    # Docs de TU proyecto (incluye ejemplos)
+│   ├── tasks/                   # Tasks de TU proyecto (empieza vacia)
+│   └── refs/                    # Referencias externas (empieza vacia)
+│
+└── .cursor/rules/               # 43 reglas para Cursor IDE (opcional)
 ```
 
-3. **Empieza a usar las plantillas** — copia, pega, describe tu tarea
+### `core_templates/` — Plantillas de planificacion inicial
+
+Se usan en orden. Cada una genera un documento en `ai_docs/core/` que alimenta a la siguiente.
+
+| Plantilla | Para que |
+|-----------|---------|
+| **01 — Vision del Proyecto** | Definir QUE se construye, PARA QUIEN y POR QUE |
+| **02 — Planificacion Tecnica** | Definir estructura: paginas, datos y arquitectura |
+| **03 — Roadmap de Desarrollo** | Definir EN QUE ORDEN se construye todo |
+| **04 — Setup de Testing** | Configurar el entorno de tests (una sola vez) |
+
+### `dev_templates/` — Plantillas operativas SDD
+
+Son las instrucciones que le das al LLM. Se copian tal cual — no se modifican.
+
+| Plantilla | Paso SDD | Para que |
+|-----------|----------|---------|
+| `spec.md` | 2 | Crear una especificacion |
+| `tareas.md` | 3 | Derivar tasks de una spec |
+| `revisar_tarea.md` | 4 | Revisar una task individual |
+| `auditar_spec.md` | 5 | Auditar coherencia spec + tasks |
+| `implementar.md` | 6 | Implementar una task |
+| `revision_adversarial.md` | 7 | Revision adversarial post-implementacion |
+| `correccion_de_bugs.md` | -- | Diagnosticar y corregir bugs |
+| `limpieza_de_codigo.md` | -- | Revisar calidad de codigo |
+| `testing_basico.md` | -- | Escribir tests |
+| `hacer_commit.md` | -- | Commit limpio |
+| `revision_pr.md` | -- | Crear o revisar una PR |
+
+### `core/` — Documentacion de tu proyecto
+
+Aqui viven los documentos generados con las plantillas de planificacion inicial. Este repo incluye 3 ejemplos (dogfooding). Reemplazalos con los de tu proyecto.
+
+### `tasks/` — Tasks de tu proyecto
+
+Un archivo por task: `NNN_descriptor.md`. Numeracion secuencial. Empieza vacio.
+
+### `refs/` — Referencias externas
+
+Documentacion de APIs, guias de estilo, specs de terceros. Lo que el LLM necesite consultar. Empieza vacio.
 
 ---
 
-## Reglas importantes
+## Cursor IDE
 
-- **No te saltes la planificacion.** Crear un documento de tarea ANTES de programar parece perder tiempo, pero lo ahorra. El asistente trabaja mucho mejor cuando tiene un plan claro.
-- **No aceptes la primera respuesta sin cuestionarla.** Las plantillas obligan al asistente a presentar alternativas — aprovechalo.
-- **Revisa siempre el codigo generado.** El asistente genera codigo, pero TU eres responsable de lo que se sube al repositorio.
-- **Pregunta si no entiendes algo.** Las plantillas estan disenadas para que el asistente te explique cada decision.
-- **Itera.** La primera version nunca es la mejor. Las plantillas fuerzan rondas de revision — no las saltes.
+El directorio `.cursor/rules/` contiene 43 reglas que replican el comportamiento del framework dentro de Cursor. Son opcionales — el framework funciona sin ellas. Si usas Cursor, copia `.cursor/` a tu proyecto.
 
 ---
 
 ## Contribuir
-
-Si quieres proponer mejoras a las plantillas:
 
 1. Abre un issue describiendo que quieres mejorar y por que
 2. Haz fork del repositorio

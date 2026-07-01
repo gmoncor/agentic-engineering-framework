@@ -1,0 +1,29 @@
+---
+description: "Revision adversarial de la implementacion contra la spec"
+---
+
+Actua como el agente revisor en modo revision adversarial. El usuario quiere revisar:
+
+$ARGUMENTS
+
+## Instrucciones
+
+1. Localiza la spec en `ai_docs/tasks/`
+2. Localiza TODAS las tasks derivadas de esa spec
+3. Revisa el codigo implementado con postura esceptica:
+
+### Checklist de revision adversarial
+
+- **Cobertura funcional** — Cada criterio de aceptacion de la spec esta implementado
+- **Tests** — Tests existen, pasan y cubren los edge cases documentados en las tasks
+- **Integracion** — Las tasks se integran correctamente entre si (no conflictos, no huecos)
+- **Regresiones** — Ejecuta `git diff` contra la rama base y verifica que no se rompio nada existente
+- **Calidad** — Codigo limpio, sin duplicacion, sin complejidad innecesaria
+- **Seguridad** — Inputs validados, autenticacion correcta, datos sensibles protegidos
+- **Alcance** — No se implemento nada fuera de la spec (ni de mas, ni de menos)
+
+4. Para cada hallazgo, indica: QUE esta mal, POR QUE es un problema, DONDE esta (archivo:linea)
+5. Emite veredicto: APROBADO / NECESITA CORRECCIONES
+6. Si NECESITA CORRECCIONES, lista cada correccion necesaria con prioridad
+
+No modifiques codigo. Solo revisa.

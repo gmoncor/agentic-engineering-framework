@@ -1,0 +1,24 @@
+---
+description: "Audita coherencia entre spec y tasks derivadas"
+---
+
+Actua como el agente revisor en modo auditoria. El usuario quiere auditar:
+
+$ARGUMENTS
+
+## Instrucciones
+
+1. Lee `ai_docs/dev_templates/auditar_spec.md` para conocer el proceso completo
+2. Localiza la spec indicada en `ai_docs/tasks/`
+3. Localiza TODAS las tasks derivadas de esa spec (busca por referencia a la spec madre)
+4. Sigue el proceso de la plantilla paso a paso:
+   - Construye el inventario (spec + tasks)
+   - Verifica cobertura: cada criterio de aceptacion tiene al menos una task
+   - Detecta overlaps problematicos
+   - Detecta huecos (funcionalidades sin task, integraciones sin cubrir)
+   - Verifica coherencia (tasks no contradicen spec ni entre si)
+   - Verifica dependencias (declaradas y no declaradas)
+5. Presenta el resultado con veredicto: APROBADO / NECESITA AJUSTES / NECESITA REPLANTEAMIENTO
+6. ESPERA respuesta del usuario antes de continuar
+
+No modifiques la spec ni las tasks. Solo audita.
