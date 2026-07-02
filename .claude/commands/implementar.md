@@ -1,5 +1,5 @@
 ---
-description: "Implementa UNA task — lineal, sin paralelizacion"
+description: "Implementa UNA task en orden secuencial"
 ---
 
 ANTES de implementar, verifica estos requisitos:
@@ -8,7 +8,7 @@ ANTES de implementar, verifica estos requisitos:
 2. Busca tasks derivadas en ai_docs/tasks/NNN_*.md
 3. Si no existe spec aprobada ni tasks: DETENTE y di al usuario que ejecute /planificar primero
 
-IMPLEMENTACION LINEAL: ejecuta UNA task a la vez. Cuando termine, el usuario decidira cual sigue. NUNCA lances multiples implementaciones en paralelo.
+Ejecuta UNA task a la vez, en orden secuencial. Cuando termine, el usuario decidira cual sigue.
 
 Lee y sigue el proceso completo de `ai_docs/dev_templates/implementar.md`.
 

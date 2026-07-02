@@ -24,7 +24,7 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 - **FEATURE-FIRST:** Cada fase agrupa specs de funcionalidad COMPLETA para el usuario, NO capas tecnicas. Mal: "Fase 2: Migracion de Base de Datos". Bien: "Fase 2: Gestion de Productos con Catalogo".
 - **SPECS COMO FUENTE DE VERDAD:** El roadmap organiza specs. Las tasks se derivan de specs, no del roadmap directamente. El roadmap define el QUE y el ORDEN; las specs definen el ALCANCE; las tasks definen el COMO atomico.
 - **SIN CODIGO:** Este es un plan de ejecucion, no implementacion. Las specs dicen QUE lograr, no COMO codificarlo.
-- **SIN SPRINTS:** El roadmap es lineal. No hay iteraciones, velocidad de equipo ni ciclos de sprint. Cada fase se completa antes de pasar a la siguiente (salvo tasks independientes que se paralelizan).
+- **ROADMAP LINEAL:** Cada fase se completa antes de pasar a la siguiente. Las tasks independientes dentro de una fase se ejecutan en cualquier orden.
 
 ---
 
@@ -222,5 +222,5 @@ Roadmap (fases + specs)
 4. **NUNCA proponer fases como** "Migracion de BD", "Setup de Frontend", "Configuracion de API" — esas son tasks DENTRO de una spec
 5. **Si faltan documentos prerequisito**, pedir crearlos antes de empezar
 6. **Cada spec dice QUE lograr**, no COMO codificarlo
-7. **SIN sprints, SIN iteraciones, SIN velocidad de equipo** — el roadmap es lineal con fases secuenciales
+7. **Roadmap lineal con fases secuenciales** — cada fase se completa antes de pasar a la siguiente
 8. **Tasks independientes se paralelizan** — no serializar lo que no tiene dependencias

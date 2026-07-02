@@ -25,7 +25,7 @@ Las plantillas guian al asistente de IA, pero la calidad del resultado depende d
 
 ## El flujo SDD
 
-Toda solicitud sigue un flujo lineal. No hay sprints ni ceremonias — solo planificacion exhaustiva seguida de implementacion controlada.
+El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tasks, revision, auditoria cruzada y, solo entonces, implementacion secuencial.
 
 ```
   [1] Solicitud
@@ -38,7 +38,7 @@ Toda solicitud sigue un flujo lineal. No hay sprints ni ceremonias — solo plan
   [3] Aprobacion ──────── El usuario revisa el plan completo
       |
       v
-  [4] /implementar ────── UNA task a la vez (lineal, sin paralelizar)
+  [4] /implementar ────── UNA task a la vez, en orden secuencial
       |                     Repetir para cada task en orden
       v
   [5] /revision ──────── Revision adversarial de toda la implementacion
@@ -58,10 +58,10 @@ Toda solicitud sigue un flujo lineal. No hay sprints ni ceremonias — solo plan
 Principios del flujo:
 
 - **Planificacion exhaustiva.** Cada task revisada y auditada ANTES de tocar codigo
-- **Implementacion lineal.** Una task a la vez — sin paralelizar, sin drift
-- **Tasks atomicas.** Una task = un cambio atomico = un commit
-- **Revision adversarial obligatoria.** Nunca mergear sin pasar por el paso 5
-- **Sin sprints.** Solo roadmap global en `ai_docs/core/`
+- **Implementacion secuencial.** Una task a la vez, en orden, cada una con su commit
+- **Tasks atomicas.** Una task = un cambio acotado = un commit
+- **Revision adversarial obligatoria.** El paso 5 verifica la implementacion completa antes de mergear
+- **Roadmap global.** El plan de trabajo vive en `ai_docs/core/` y guia cada `/planificar`
 
 ---
 
