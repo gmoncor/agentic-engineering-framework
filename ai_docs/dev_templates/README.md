@@ -49,15 +49,12 @@ Solicitud del usuario
     |                          Verifica coherencia spec + tasks
     v
 [6. IMPLEMENTACION]  ────────  implementar.md
-    |                          Ejecuta cada task (una a la vez, en orden)
-    |   |
-    |   +── limpieza_de_codigo.md  (por task)
-    |   +── testing_basico.md      (por task)
-    |   +── hacer_commit.md        (por task)
+    |                          /implementar-spec ejecuta todas las tasks via workflow
+    |                          Cada task: implementar + tests + commit
     |
     v
 [7. REVISION ADVERSARIAL]  ──  revision_adversarial.md
-    |                          Revision adversarial de TODA la implementacion
+    |                          Incluida al final del workflow /implementar-spec
     v
 [PR]  ───────────────────────  revision_pr.md
                                Cierra las tasks de la spec
