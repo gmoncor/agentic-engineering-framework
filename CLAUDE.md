@@ -8,7 +8,7 @@
 1. Solicitud       — El usuario describe lo que quiere
 2. /planificar     — WORKFLOW: spec + tasks + revision paralela + auditoria cruzada
 3. Aprobacion      — El usuario revisa el plan completo y aprueba o pide cambios
-4. /implementar    — UNA task a la vez, en orden, sin paralelizar
+4. /implementar    — UNA task a la vez, en orden secuencial
 5. /revision       — Revision adversarial post-implementacion
 ```
 
@@ -43,11 +43,11 @@
 
 1. **Toda solicitud empieza con planificacion** — /planificar antes de /implementar
 2. **Planificacion exhaustiva** — cada task revisada, spec auditada, huecos detectados ANTES de codigo
-3. **Implementacion lineal** — una task a la vez, en orden, sin paralelizar
-4. **Nunca mergear sin revision adversarial** — paso 5 es obligatorio
-5. **Tasks son atomicas** — una task, un cambio atomico, un commit
-6. **Sin sprints** — solo roadmap global en `ai_docs/core/`
-7. **El revisor es esceptico** — su trabajo es encontrar problemas, no confirmar
+3. **Implementacion secuencial** — una task a la vez, en orden, cada una con su commit
+4. **Revision adversarial obligatoria** — el paso 5 verifica la implementacion completa antes de mergear
+5. **Tasks atomicas** — una task, un cambio acotado, un commit
+6. **Roadmap global** — el plan de trabajo vive en `ai_docs/core/` y guia cada planificacion
+7. **El revisor es esceptico** — su trabajo es encontrar problemas, validar con evidencia
 
 ## Estructura de archivos
 
@@ -112,12 +112,12 @@ Ambos advisory (warn, no bloquean). Configurados en `.claude/settings.json` y `h
 - Commits: `<tipo>: <descripcion>` (tipos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore)
 - Nombres de archivos: snake_case, sin acentos, descriptivos
 
-## Prohibiciones
+## Limites del framework
 
-- NUNCA implementar sin planificacion completa (spec + tasks + revision + auditoria)
-- NUNCA paralelizar la implementacion — una task a la vez
-- NUNCA crear tasks de una spec en estado BORRADOR
-- NUNCA mergear sin revision adversarial (paso 5)
-- NUNCA hacer tasks que toquen mas de 6 archivos — dividir
-- NUNCA saltar la auditoria si hay mas de 2 tasks
-- NUNCA aceptar la primera solucion sin cuestionar
+- Planificacion completa (spec + tasks + revision + auditoria) antes de implementar
+- Implementacion secuencial — una task a la vez, en orden
+- Las tasks se derivan solo de specs con estado APROBADA
+- Revision adversarial (paso 5) antes de mergear
+- Cada task toca maximo 6 archivos — si supera, dividir
+- Auditoria cruzada obligatoria cuando hay 3+ tasks
+- Evaluar alternativas antes de decidir la solucion

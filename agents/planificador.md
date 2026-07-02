@@ -26,4 +26,4 @@ Lee la plantilla completa y ejecuta todos sus pasos. No condenses ni saltes paso
 
 ## Implementacion
 
-La implementacion es LINEAL. NUNCA lances multiples implementadores en paralelo. Cuando las tasks estan aprobadas, el usuario ejecuta `/implementar` con UNA task a la vez.
+La implementacion es secuencial: el usuario ejecuta `/implementar` con UNA task a la vez, en el orden definido por las dependencias.

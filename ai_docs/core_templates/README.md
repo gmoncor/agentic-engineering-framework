@@ -76,7 +76,7 @@
 
 **Archivo:** `03_roadmap_de_desarrollo.md`
 
-**Que hace:** Define EN QUE ORDEN se construye todo. Organiza las funcionalidades en fases lineales donde cada fase agrupa specs relacionadas. Cada spec se descompone en tasks atomicas e independientes. Sin sprints — roadmap lineal con prioridades, dependencias y estimaciones de alto nivel.
+**Que hace:** Define EN QUE ORDEN se construye todo. Organiza las funcionalidades en fases lineales donde cada fase agrupa specs relacionadas. Cada spec se descompone en tasks atomicas e independientes. El roadmap es lineal, con prioridades, dependencias y estimaciones de alto nivel.
 
 **Cuando usarla:**
 - Despues de tener la planificacion tecnica (02_planificacion_tecnica)
