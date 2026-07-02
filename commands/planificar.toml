@@ -1,7 +1,15 @@
 description = "Planificacion exhaustiva: spec + tasks + revision + auditoria"
 
 prompt = """
-Ejecuta el proceso completo de planificacion SDD de forma secuencial y exhaustiva.
+ANTES de planificar, analiza la solicitud:
+
+DETECCION MULTI-SPEC:
+Si la solicitud describe multiples funcionalidades INDEPENDIENTES (features distintas que no comparten archivos ni logica):
+1. Lista cada spec necesaria con titulo y alcance resumido
+2. Recomienda: "Esta solicitud necesita N specs independientes. Para implementar en paralelo, abre una sesion por spec y ejecuta /planificar en cada una."
+3. Pregunta si quiere continuar con UNA spec o dividir en sesiones
+
+Si es UNA sola spec o el usuario confirma continuar con una, ejecuta el proceso:
 
 Lee ai_docs/core/ para contexto del proyecto.
 
@@ -27,7 +35,7 @@ Verifica: cobertura de criterios, overlaps, huecos, coherencia, dependencias.
 
 PASO 5 — RESUMEN:
 Presenta al usuario el resultado completo con veredicto final:
-- APROBADO: puede implementar con /implementar <task> (una task a la vez, en orden)
+- APROBADO: puede implementar con /implementar-spec <spec> (workflow completo) o /implementar <task> (manual)
 - NECESITA_AJUSTES: detalla problemas y propone como resolverlos
 - NECESITA_REPLANTEAMIENTO: recomienda rehacer con mas detalle
 

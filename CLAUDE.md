@@ -1,29 +1,32 @@
 # SDD (Spec-Driven Development) — Framework de Desarrollo
 
-> Flujo lineal basado en especificaciones. Planificacion exhaustiva antes de implementar. Implementacion lineal — una task a la vez.
+> Flujo lineal basado en especificaciones. Planificacion exhaustiva antes de implementar. Implementacion secuencial por spec, paralelizable entre specs.
 
 ## Flujo SDD
 
 ```
-1. Solicitud       — El usuario describe lo que quiere
-2. /planificar     — WORKFLOW: spec + tasks + revision paralela + auditoria cruzada
-3. Aprobacion      — El usuario revisa el plan completo y aprueba o pide cambios
-4. /implementar    — UNA task a la vez, en orden secuencial
-5. /revision       — Revision adversarial post-implementacion
+1. Solicitud          — El usuario describe lo que quiere
+2. /planificar        — WORKFLOW: spec + tasks + revision paralela + auditoria cruzada
+3. Aprobacion         — El usuario revisa el plan completo y aprueba o pide cambios
+4. /implementar-spec  — WORKFLOW: implementa TODAS las tasks de la spec + revision adversarial
+5. /pr                — Crea la PR con los cambios
 ```
 
-**Planificacion exhaustiva, implementacion lineal.** El workflow `/planificar` lanza revisores en paralelo y audita cruzadamente. La implementacion es estrictamente secuencial para evitar drift.
+**Planificacion exhaustiva, implementacion secuencial por spec.** El workflow `/planificar` lanza revisores en paralelo y audita cruzadamente. `/implementar-spec` ejecuta todas las tasks en orden con commit por task y revision adversarial al final.
+
+**Multi-spec:** cuando una solicitud requiere multiples specs independientes, `/planificar` recomienda 1 spec por sesion. Cada sesion ejecuta su propio `/implementar-spec`, lo que permite implementar multiples specs en paralelo (una sesion por spec).
 
 ## Comandos disponibles
 
 | Comando | Paso | Que hace |
 |---------|------|----------|
-| `/planificar` | 2 | **Workflow completo**: spec + tasks + revision paralela + auditoria |
+| `/planificar` | 2 | **Workflow completo**: spec + tasks + revision paralela + auditoria. Detecta multi-spec |
 | `/spec` | — | Crea una spec individual (paso aislado) |
 | `/tareas` | — | Deriva tasks de una spec (paso aislado) |
 | `/auditar` | — | Audita coherencia spec + tasks (paso aislado) |
-| `/implementar` | 4 | Implementa UNA task (lineal, con gate de planificacion) |
-| `/revision` | 5 | Revision adversarial post-implementacion |
+| `/implementar-spec` | 4 | **Workflow completo**: implementa TODAS las tasks de una spec + revision adversarial |
+| `/implementar` | 4 | Implementa UNA task individual (control manual) |
+| `/revision` | 5 | Revision adversarial post-implementacion (paso aislado) |
 | `/estado` | — | Muestra estado del proyecto (specs, tasks, progreso) |
 | `/bugfix` | — | Diagnostica y corrige un bug con causa raiz |
 | `/commit` | — | Crea un commit limpio con mensaje descriptivo |
@@ -55,9 +58,9 @@
 proyecto/
 ├── .claude/
 │   ├── agents/         # planificador, revisor, implementador, asesor
-│   ├── commands/       # 11 comandos SDD
+│   ├── commands/       # 12 comandos SDD
 │   ├── skills/         # 8 skills (auto-activacion)
-│   ├── workflows/      # planificar.js (revision paralela + auditoria)
+│   ├── workflows/      # planificar.js + implementar-spec.js
 │   └── settings.json   # model: claude-opus-4-8 + hooks
 ├── hooks/              # 2 hooks advisory (pipeline-guard + commit-guard)
 ├── ai_docs/

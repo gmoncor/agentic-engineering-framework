@@ -31,20 +31,17 @@ El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tas
   [1] Solicitud
       |
       v
-  [2] /planificar ─────── Workflow: spec + tasks + revision paralela + auditoria
-      |                     (Claude Code: workflow con agentes paralelos)
-      |                     (Gemini/otros: secuencial)
+  [2] /planificar ─────────── Workflow: spec + tasks + revision paralela + auditoria
+      |                         Detecta multi-spec y recomienda dividir
       v
-  [3] Aprobacion ──────── El usuario revisa el plan completo
+  [3] Aprobacion ─────────── El usuario revisa el plan completo
       |
       v
-  [4] /implementar ────── UNA task a la vez, en orden secuencial
-      |                     Repetir para cada task en orden
+  [4] /implementar-spec ──── Workflow: implementa TODAS las tasks + revision adversarial
+      |                         (Claude Code: workflow con agentes secuenciales)
+      |                         (Gemini/otros: secuencial via comando)
       v
-  [5] /revision ──────── Revision adversarial de toda la implementacion
-      |
-      v
-    Codigo revisado
+    Codigo revisado ──────── /pr para crear la Pull Request
 ```
 
 | Paso | Que pasa | Quien decide |
@@ -52,8 +49,7 @@ El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tas
 | Solicitud | El usuario describe lo que quiere | Usuario |
 | Planificar | Spec + tasks + revision paralela + auditoria cruzada | LLM (workflow) |
 | Aprobacion | El usuario revisa veredicto y decide | Usuario |
-| Implementar | Una task a la vez, en orden | LLM (implementador) |
-| Revision | Revision esceptica de la implementacion completa | LLM (revisor) |
+| Implementar | Todas las tasks de la spec, en orden, con revision adversarial al final | LLM (workflow) |
 
 Principios del flujo:
 
@@ -62,6 +58,7 @@ Principios del flujo:
 - **Tasks atomicas.** Una task = un cambio acotado = un commit
 - **Revision adversarial obligatoria.** El paso 5 verifica la implementacion completa antes de mergear
 - **Roadmap global.** El plan de trabajo vive en `ai_docs/core/` y guia cada `/planificar`
+- **Paralelizable entre specs.** Cuando una solicitud requiere multiples specs, `/planificar` recomienda 1 spec por sesion. Cada sesion ejecuta su propio `/implementar-spec`, permitiendo implementar multiples specs en paralelo
 
 ---
 
@@ -85,7 +82,7 @@ claude                     # abre Claude Code — los comandos estan listos
 Al abrir Claude Code dentro del proyecto, se carga automaticamente:
 - `CLAUDE.md` como instrucciones del sistema
 - `.claude/settings.json` con el modelo y los hooks
-- Los 11 comandos, 4 agentes, 8 skills y el workflow de planificacion
+- Los 12 comandos, 4 agentes, 8 skills y los 2 workflows
 
 **Opcion 2 — Proyecto existente (copiar lo necesario):**
 
@@ -114,7 +111,7 @@ Si no usas Claude Code, copia solo `ai_docs/` y usa las plantillas por copy-past
 gemini extensions install https://github.com/gmoncor/agentic-engineering-framework
 ```
 
-Esto instala los 11 comandos, 4 agentes, 8 skills y los hooks automaticamente. Comprueba con `gemini extensions list`.
+Esto instala los 12 comandos, 4 agentes, 8 skills y los hooks automaticamente. Comprueba con `gemini extensions list`.
 
 **Opcion 2 — Manual:**
 
@@ -122,7 +119,7 @@ Copia a la raiz de tu proyecto:
 
 ```
 agents/               # agentes Gemini (4)
-commands/              # comandos Gemini (.toml, 11)
+commands/              # comandos Gemini (.toml, 12)
 skills/                # skills Gemini (8)
 hooks/                 # hooks advisory (2)
 GEMINI.md              # instrucciones sistema
@@ -145,11 +142,11 @@ No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` par
 
 | Componente | Cantidad | Donde (Claude) | Donde (Gemini) |
 |------------|----------|-----------------|-----------------|
-| Comandos | 11 | `.claude/commands/` | `commands/` |
+| Comandos | 12 | `.claude/commands/` | `commands/` |
 | Agentes | 4 | `.claude/agents/` | `agents/` |
 | Skills | 8 | `.claude/skills/` | `skills/` |
 | Hooks | 2 | `hooks/` (wired en settings) | `hooks/` (wired en hooks.json) |
-| Workflow | 1 | `.claude/workflows/` | — (secuencial via comando) |
+| Workflows | 2 | `.claude/workflows/` | — (secuencial via comando) |
 | Templates | 12 | `ai_docs/dev_templates/` | `ai_docs/dev_templates/` |
 | Core templates | 4 | `ai_docs/core_templates/` | `ai_docs/core_templates/` |
 
@@ -207,8 +204,8 @@ El LLM puede analizar tu codigo existente para generar estos documentos — no t
 ```
 4. Describe lo que necesitas  → /planificar (spec + tasks + revision + auditoria)
 5. Revisa el plan             → Aprueba o pide ajustes
-6. Implementa                 → /implementar <task> (una a la vez, en orden)
-7. Revision adversarial       → /revision
+6. Implementa                 → /implementar-spec <spec> (todas las tasks + revision)
+7. Crea la PR                 → /pr
 ```
 
 Si no tienes tests configurados, usa `ai_docs/core_templates/04_setup_testing.md` antes del paso 6.
@@ -235,9 +232,9 @@ El dia a dia sigue el flujo SDD. Usa `/planificar` como punto de entrada princip
 
 **Aprobacion** — Revisa el plan completo. Si es APROBADO, procede. Si necesita ajustes, aplicalos y re-evalua.
 
-**`/implementar`** — Una task a la vez, en orden. No paralelizar. Cada task produce codigo + tests.
+**`/implementar-spec`** — Workflow que implementa TODAS las tasks de la spec en orden, con commit por task y revision adversarial al final. Recomendado para el flujo normal.
 
-**`/revision`** — Revision esceptica de toda la implementacion. Busca: integracion entre tasks, edge cases no cubiertos, regresiones, codigo muerto.
+**`/implementar`** — Implementa UNA task individual. Para cuando necesitas control manual sobre el orden o quieres implementar una task especifica.
 
 **Si encuentras un bug:** usa `/bugfix`.
 **Si tienes dudas o necesitas decidir:** usa `/asesor`.
@@ -259,12 +256,12 @@ agentic-engineering-framework/
 ├── .claude/                     # Configuracion Claude Code
 │   ├── settings.json            #   model: opus-4.8 + hooks wiring
 │   ├── agents/                  #   planificador, revisor, implementador, asesor
-│   ├── commands/                #   11 comandos SDD
+│   ├── commands/                #   12 comandos SDD
 │   ├── skills/                  #   8 skills (auto-activacion)
-│   └── workflows/               #   planificar.js (revision paralela + auditoria)
+│   └── workflows/               #   planificar.js + implementar-spec.js
 │
 ├── agents/                      # Agentes Gemini CLI (4)
-├── commands/                    # 11 comandos Gemini CLI (.toml)
+├── commands/                    # 12 comandos Gemini CLI (.toml)
 ├── skills/                      # 8 skills Gemini CLI
 ├── hooks/                       # Enforcement SDD (compartido ambas CLIs)
 ├── gemini-extension.json        # Manifest extension Gemini
