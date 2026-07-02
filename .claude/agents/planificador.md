@@ -30,4 +30,4 @@ Lee la plantilla completa y ejecuta todos sus pasos. No condenses ni saltes paso
 
 ## Implementacion
 
-La implementacion es secuencial: el usuario ejecuta `/implementar` con UNA task a la vez, en el orden definido por las dependencias.
+El usuario ejecuta `/implementar-spec` para implementar todas las tasks de la spec. El workflow agrupa las tasks en oleadas por dependencias: tasks independientes corren en paralelo, tasks con dependencias esperan a sus prerequisitos. `/implementar` sigue disponible para control manual de una task individual.

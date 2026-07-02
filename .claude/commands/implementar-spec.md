@@ -1,5 +1,5 @@
 ---
-description: "Implementa TODAS las tasks de una spec via workflow (secuencial + revision adversarial)"
+description: "Implementa TODAS las tasks de una spec: tasks independientes en paralelo, revision adversarial al final"
 ---
 
 Ejecuta el workflow de implementacion completa de una spec.
@@ -13,9 +13,15 @@ ANTES de lanzar el workflow, verifica:
 
 Si todo esta en orden, usa la herramienta Workflow con nombre "implementar-spec" y pasa como args el path de la spec (ej: ai_docs/tasks/spec_autenticacion.md).
 
-Al completarse el workflow, presenta al usuario:
+El workflow:
+1. Descubre las tasks y sus dependencias
+2. Agrupa en oleadas: tasks independientes corren en paralelo, tasks con dependencias esperan a que sus prerequisitos terminen
+3. Ejecuta cada oleada (paralelo dentro, secuencial entre oleadas)
+4. Revision adversarial de toda la implementacion
 
-1. **Resumen de implementacion** — tasks completadas vs fallidas
+Al completarse, presenta al usuario:
+
+1. **Oleadas ejecutadas** — cuantas, cuales tasks en cada una, cuales corrieron en paralelo
 2. **Detalle por task** — archivos modificados, tests creados, commit realizado
 3. **Revision adversarial** — veredicto, problemas criticos y menores
 4. **Hallazgos fuera de alcance** — para tasks futuras
