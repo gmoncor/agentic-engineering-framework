@@ -6,7 +6,7 @@
 
 ## Que es esto?
 
-Un sistema de plantillas que estructura como trabaja tu asistente de IA. En lugar de pedirle "haz esto" y esperar lo mejor, el framework impone un flujo: **planificacion exhaustiva** (spec + tasks + revision paralela + auditoria cruzada) antes de tocar codigo, seguida de **implementacion lineal** (una task a la vez) y revision adversarial.
+Un sistema de plantillas que estructura como trabaja tu asistente de IA. En lugar de pedirle "haz esto" y esperar lo mejor, el framework impone un flujo: **planificacion exhaustiva** (spec + tasks + revision paralela + auditoria cruzada) antes de tocar codigo, seguida de **implementacion por oleadas** (tasks independientes en paralelo, dependencias en orden) y revision adversarial.
 
 Compatible con cualquier LLM via copy-paste. Integracion nativa con Claude Code (workflows + comandos + agentes + skills) y Gemini CLI (extension instalable).
 
@@ -25,7 +25,7 @@ Las plantillas guian al asistente de IA, pero la calidad del resultado depende d
 
 ## El flujo SDD
 
-El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tasks, revision, auditoria cruzada y, solo entonces, implementacion secuencial.
+El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tasks, revision, auditoria cruzada y, solo entonces, implementacion por oleadas (tasks independientes en paralelo).
 
 ```
   [1] Solicitud
@@ -37,8 +37,8 @@ El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tas
   [3] Aprobacion ─────────── El usuario revisa el plan completo
       |
       v
-  [4] /implementar-spec ──── Workflow: implementa TODAS las tasks + revision adversarial
-      |                         (Claude Code: workflow con agentes secuenciales)
+  [4] /implementar-spec ──── Workflow: tasks independientes en paralelo + revision adversarial
+      |                         (Claude Code: workflow con agentes paralelos por oleada)
       |                         (Gemini/otros: secuencial via comando)
       v
     Codigo revisado ──────── /pr para crear la Pull Request
@@ -49,16 +49,16 @@ El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tas
 | Solicitud | El usuario describe lo que quiere | Usuario |
 | Planificar | Spec + tasks + revision paralela + auditoria cruzada | LLM (workflow) |
 | Aprobacion | El usuario revisa veredicto y decide | Usuario |
-| Implementar | Todas las tasks de la spec, en orden, con revision adversarial al final | LLM (workflow) |
+| Implementar | Tasks por oleadas (independientes en paralelo), revision adversarial al final | LLM (workflow) |
 
 Principios del flujo:
 
 - **Planificacion exhaustiva.** Cada task revisada y auditada ANTES de tocar codigo
-- **Implementacion secuencial.** Una task a la vez, en orden, cada una con su commit
+- **Implementacion por oleadas.** Tasks independientes en paralelo, dependencias en orden, cada una con su commit
 - **Tasks atomicas.** Una task = un cambio acotado = un commit
 - **Revision adversarial obligatoria.** El paso 5 verifica la implementacion completa antes de mergear
 - **Roadmap global.** El plan de trabajo vive en `ai_docs/core/` y guia cada `/planificar`
-- **Paralelizable entre specs.** Cuando una solicitud requiere multiples specs, `/planificar` recomienda 1 spec por sesion. Cada sesion ejecuta su propio `/implementar-spec`, permitiendo implementar multiples specs en paralelo
+- **Paralelizacion automatica.** `/implementar-spec` detecta dependencias entre tasks y agrupa en oleadas: tasks independientes corren en paralelo, las demas esperan a sus prerequisitos
 
 ---
 
@@ -232,7 +232,7 @@ El dia a dia sigue el flujo SDD. Usa `/planificar` como punto de entrada princip
 
 **Aprobacion** — Revisa el plan completo. Si es APROBADO, procede. Si necesita ajustes, aplicalos y re-evalua.
 
-**`/implementar-spec`** — Workflow que implementa TODAS las tasks de la spec en orden, con commit por task y revision adversarial al final. Recomendado para el flujo normal.
+**`/implementar-spec`** — Workflow que implementa TODAS las tasks de la spec por oleadas: tasks independientes en paralelo, dependencias en orden. Commit por task y revision adversarial al final. Recomendado para el flujo normal.
 
 **`/implementar`** — Implementa UNA task individual. Para cuando necesitas control manual sobre el orden o quieres implementar una task especifica.
 

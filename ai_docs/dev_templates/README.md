@@ -49,7 +49,8 @@ Solicitud del usuario
     |                          Verifica coherencia spec + tasks
     v
 [6. IMPLEMENTACION]  ────────  implementar.md
-    |                          /implementar-spec ejecuta todas las tasks via workflow
+    |                          /implementar-spec agrupa tasks en oleadas:
+    |                          independientes en paralelo, dependencias en orden
     |                          Cada task: implementar + tests + commit
     |
     v

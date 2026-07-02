@@ -6,8 +6,8 @@ ANTES de planificar, analiza la solicitud:
 DETECCION MULTI-SPEC:
 Si la solicitud describe multiples funcionalidades INDEPENDIENTES (features distintas que no comparten archivos ni logica):
 1. Lista cada spec necesaria con titulo y alcance resumido
-2. Recomienda: "Esta solicitud necesita N specs independientes. Para implementar en paralelo, abre una sesion por spec y ejecuta /planificar en cada una."
-3. Pregunta si quiere continuar con UNA spec o dividir en sesiones
+2. Pregunta si quiere planificar UNA spec ahora o combinar todo en una sola
+3. Explica que /implementar-spec paraleliza automaticamente las tasks independientes dentro de cada spec
 
 Si es UNA sola spec o el usuario confirma continuar con una, ejecuta el proceso:
 

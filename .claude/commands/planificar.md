@@ -6,15 +6,16 @@ ANTES de lanzar el workflow, analiza la solicitud del usuario:
 
 ## Deteccion multi-spec
 
-Lee la solicitud completa. Si describe multiples funcionalidades INDEPENDIENTES (features distintas que no comparten archivos ni logica), recomienda dividir:
+Lee la solicitud completa. Si describe multiples funcionalidades INDEPENDIENTES (features distintas que no comparten archivos ni logica):
 
 1. Lista cada spec que se necesitaria, con titulo descriptivo y alcance resumido
-2. Recomienda al usuario: "Esta solicitud necesita N specs independientes. Para implementar en paralelo, abre una sesion por spec y ejecuta `/planificar` en cada una con el alcance de esa spec individual. Luego `/implementar-spec` en cada sesion ejecuta todas las tasks de esa spec."
-3. Pregunta si quiere:
-   - **(A)** Continuar con UNA spec en esta sesion (indica cual)
-   - **(B)** Dividir en sesiones separadas (la opcion recomendada para specs independientes)
+2. Pregunta si quiere:
+   - **(A)** Planificar UNA spec ahora (indica cual) y las demas despues
+   - **(B)** Combinar todo en una sola spec (solo si el alcance total es razonable)
 
-Si la solicitud es UNA sola spec, o el usuario elige continuar con una, lanza el workflow directamente.
+Explicar que `/implementar-spec` paraleliza automaticamente las tasks independientes dentro de cada spec.
+
+Si la solicitud es UNA sola spec, o el usuario elige una, lanza el workflow directamente.
 
 ## Ejecucion del workflow
 

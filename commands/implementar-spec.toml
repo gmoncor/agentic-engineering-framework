@@ -1,7 +1,7 @@
-description = "Implementa TODAS las tasks de una spec (secuencial + revision adversarial)"
+description = "Implementa TODAS las tasks de una spec: tasks independientes en paralelo, revision adversarial al final"
 
 prompt = """
-Implementa TODAS las tasks de una spec de forma secuencial.
+Implementa TODAS las tasks de una spec, paralelizando donde sea posible.
 
 ANTES de implementar, verifica:
 
@@ -14,17 +14,21 @@ PROCESO (ejecuta en orden):
 
 PASO 1 — DESCUBRIMIENTO
 Lee la spec y encuentra todas sus tasks en ai_docs/tasks/.
-Ordena las tasks respetando dependencias.
-Muestra la lista al usuario antes de continuar.
+Identifica dependencias entre tasks.
+Agrupa en oleadas: tasks independientes van juntas, tasks con dependencias esperan a que sus prerequisitos terminen.
+Muestra las oleadas al usuario antes de continuar.
 
-PASO 2 — IMPLEMENTACION SECUENCIAL
-Para cada task, en orden:
+PASO 2 — IMPLEMENTACION POR OLEADAS
+Para cada oleada:
+- Si tiene 1 task: implementar + commit
+- Si tiene 2+ tasks: implementar todas, luego commitear cada una
+Para cada task:
 a. Lee ai_docs/dev_templates/implementar.md y sigue su proceso completo
 b. Implementa los cambios descritos en la task
 c. Escribe tests (RED-GREEN cuando aplique)
 d. Ejecuta validaciones (linting, tests, build)
 e. Haz commit con mensaje descriptivo
-f. Confirma que la task esta completada antes de pasar a la siguiente
+Confirma que la oleada esta completada antes de pasar a la siguiente.
 
 PASO 3 — REVISION ADVERSARIAL
 Al terminar TODAS las tasks:
@@ -33,7 +37,7 @@ Revisa TODA la implementacion, no solo la ultima task.
 Emite veredicto: APROBADA, NECESITA_CORRECCIONES o RECHAZADA.
 
 PASO 4 — RESUMEN
-Presenta: tasks completadas, archivos modificados, tests creados, veredicto de la revision.
+Presenta: oleadas ejecutadas, tasks completadas, archivos modificados, tests creados, veredicto.
 Si APROBADA: sugiere /pr.
 Si NECESITA_CORRECCIONES: detalla que corregir.
 

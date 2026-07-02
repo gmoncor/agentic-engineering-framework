@@ -1,6 +1,6 @@
 # SDD (Spec-Driven Development) — Framework de Desarrollo
 
-> Flujo lineal basado en especificaciones. Planificacion exhaustiva antes de implementar. Implementacion secuencial por spec, paralelizable entre specs.
+> Flujo basado en especificaciones. Planificacion exhaustiva antes de implementar. Tasks independientes se implementan en paralelo dentro de cada spec.
 
 ## Flujo SDD
 
@@ -12,9 +12,7 @@
 5. /pr                — Crea la PR con los cambios
 ```
 
-**Planificacion exhaustiva, implementacion secuencial por spec.** El workflow `/planificar` lanza revisores en paralelo y audita cruzadamente. `/implementar-spec` ejecuta todas las tasks en orden con commit por task y revision adversarial al final.
-
-**Multi-spec:** cuando una solicitud requiere multiples specs independientes, `/planificar` recomienda 1 spec por sesion. Cada sesion ejecuta su propio `/implementar-spec`, lo que permite implementar multiples specs en paralelo (una sesion por spec).
+**Planificacion exhaustiva, implementacion paralela por oleadas.** El workflow `/planificar` lanza revisores en paralelo y audita cruzadamente. `/implementar-spec` agrupa las tasks en oleadas por dependencias: tasks independientes corren en paralelo, tasks con dependencias esperan a que sus prerequisitos terminen. Revision adversarial al final.
 
 ## Comandos disponibles
 
@@ -24,7 +22,7 @@
 | `/spec` | — | Crea una spec individual (paso aislado) |
 | `/tareas` | — | Deriva tasks de una spec (paso aislado) |
 | `/auditar` | — | Audita coherencia spec + tasks (paso aislado) |
-| `/implementar-spec` | 4 | **Workflow completo**: implementa TODAS las tasks de una spec + revision adversarial |
+| `/implementar-spec` | 4 | **Workflow completo**: implementa tasks por oleadas (paralelo) + revision adversarial |
 | `/implementar` | 4 | Implementa UNA task individual (control manual) |
 | `/revision` | 5 | Revision adversarial post-implementacion (paso aislado) |
 | `/estado` | — | Muestra estado del proyecto (specs, tasks, progreso) |
@@ -46,7 +44,7 @@
 
 1. **Toda solicitud empieza con planificacion** — /planificar antes de /implementar
 2. **Planificacion exhaustiva** — cada task revisada, spec auditada, huecos detectados ANTES de codigo
-3. **Implementacion secuencial** — una task a la vez, en orden, cada una con su commit
+3. **Implementacion por oleadas** — tasks independientes en paralelo, tasks con dependencias en orden, cada una con su commit
 4. **Revision adversarial obligatoria** — el paso 5 verifica la implementacion completa antes de mergear
 5. **Tasks atomicas** — una task, un cambio acotado, un commit
 6. **Roadmap global** — el plan de trabajo vive en `ai_docs/core/` y guia cada planificacion
@@ -118,7 +116,7 @@ Ambos advisory (warn, no bloquean). Configurados en `.claude/settings.json` y `h
 ## Limites del framework
 
 - Planificacion completa (spec + tasks + revision + auditoria) antes de implementar
-- Implementacion secuencial — una task a la vez, en orden
+- Implementacion por oleadas — tasks independientes en paralelo, dependencias en orden
 - Las tasks se derivan solo de specs con estado APROBADA
 - Revision adversarial (paso 5) antes de mergear
 - Cada task toca maximo 6 archivos — si supera, dividir
