@@ -1,0 +1,18 @@
+# Normaliza los finales de linea a LF en el repositorio.
+# Los clones en Windows no reconvierten a CRLF, asi que los diffs
+# solo muestran cambios reales de contenido.
+* text=auto eol=lf
+
+*.js text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.mdc text eol=lf
+*.sh text eol=lf
+
+# Binarios: git no debe tocar su contenido.
+*.png binary
+*.jpg binary
+*.gif binary
+*.pdf binary
+*.ico binary
