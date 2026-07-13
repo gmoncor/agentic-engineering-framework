@@ -26,23 +26,33 @@ const path = require('node:path');
 
 const RAIZ = path.join(__dirname, '..');
 
+// Codex y Antigravity descubren sus skills en el MISMO directorio: no hay dos
+// copias que puedan divergir. Compararlos entre si no verificaria nada (seria un
+// directorio contra si mismo); lo que verifica algo es comparar cada uno con el
+// backend de referencia, que es lo que hace assertParidad.
+const SKILLS_COMPARTIDAS = '.agents/skills';
+
 /** Backends activos. Anadir uno aqui lo mete en la comparacion. */
 const BACKENDS = {
   claude: {
     agentes: [{ dir: '.claude/agents', ext: '.md' }],
-    capacidades: [{ dir: '.claude/commands', ext: '.md' }, { dir: '.claude/skills' }]
+    capacidades: [{ dir: '.claude/commands', ext: '.md' }, { dir: '.claude/skills' }],
+    cableado: '.claude/settings.json'
   },
   gemini: {
     agentes: [{ dir: 'agents', ext: '.md' }],
-    capacidades: [{ dir: 'commands', ext: '.toml' }, { dir: 'skills' }]
+    capacidades: [{ dir: 'commands', ext: '.toml' }, { dir: 'skills' }],
+    cableado: 'hooks/hooks.json'
   },
   codex: {
     agentes: [{ dir: '.codex/agents', ext: '.toml' }],
-    capacidades: [{ dir: '.agents/skills' }]
+    capacidades: [{ dir: SKILLS_COMPARTIDAS }],
+    cableado: '.codex/hooks.json'
   },
   antigravity: {
     agentes: [{ dir: '.agents/plugins/sdd/agents', ext: '.md' }],
-    capacidades: [{ dir: '.agents/skills' }]
+    capacidades: [{ dir: SKILLS_COMPARTIDAS }],
+    cableado: '.agents/hooks.json'
   }
 };
 
@@ -98,6 +108,65 @@ test('paridad: todos los backends exponen los mismos agentes', () => {
 
 test('paridad: todos los backends exponen las mismas capacidades del flujo', () => {
   assertParidad('capacidades');
+});
+
+test('codex y antigravity leen las skills del mismo directorio, por diseno', () => {
+  // Fija la premisa que permite no compararlos entre si: si algun dia uno de los
+  // dos pasa a tener su propio directorio de skills, este test falla y hay que
+  // volver a compararlos.
+  assert.deepStrictEqual(BACKENDS.codex.capacidades, [{ dir: SKILLS_COMPARTIDAS }]);
+  assert.deepStrictEqual(BACKENDS.antigravity.capacidades, [{ dir: SKILLS_COMPARTIDAS }]);
+});
+
+// ── Hooks cableados en cada backend ──────────────────────────────────────────
+//
+// Los guards no estan al mismo nivel en los cuatro backends, y eso es deliberado:
+//   - Los dos guards del ciclo (escrituras no planificadas, formato de commit)
+//     existen en todos. Que uno se caiga de un backend es un olvido, no un diseno.
+//   - El aviso de revision (sdd-review-gate) solo se cablea donde el flujo emite
+//     la senal que lo silencia: el backend con motor de workflows. Cablearlo donde
+//     no hay emisor daria un aviso imposible de atender por vias legitimas.
+
+const GUARDS_DEL_CICLO = ['sdd-pipeline-guard', 'sdd-commit-guard'];
+const AVISO_DE_REVISION = 'sdd-review-gate';
+const BACKEND_CON_MOTOR_DE_WORKFLOWS = 'claude';
+
+/** Nombres logicos de los hooks que un fichero de cableado invoca (sin sufijo de backend). */
+function hooksCableados(backend) {
+  const texto = leer(BACKENDS[backend].cableado)
+    .replace(/"_[a-zA-Z_]+":\s*"[^"]*"/g, ''); // los comentarios _* no cablean nada
+  const nombres = (texto.match(/sdd-[a-z-]+?(?:-codex)?\.js/g) || [])
+    .map(f => f.replace(/(?:-codex)?\.js$/, ''));
+  return [...new Set(nombres)].sort();
+}
+
+test('paridad: todos los backends cablean los dos guards del ciclo', () => {
+  for (const backend of Object.keys(BACKENDS)) {
+    const cableados = hooksCableados(backend);
+    for (const guard of GUARDS_DEL_CICLO) {
+      assert.ok(
+        cableados.includes(guard),
+        `${backend} no cablea ${guard} en ${BACKENDS[backend].cableado}. `
+          + `Cablea: ${cableados.join(', ') || 'nada'}.`
+      );
+    }
+  }
+});
+
+test('el aviso de revision solo se cablea donde hay emisor de la senal', () => {
+  for (const backend of Object.keys(BACKENDS)) {
+    const loCablea = hooksCableados(backend).includes(AVISO_DE_REVISION);
+    const deberia = backend === BACKEND_CON_MOTOR_DE_WORKFLOWS;
+
+    assert.strictEqual(
+      loCablea,
+      deberia,
+      deberia
+        ? `${backend} tiene el motor de workflows que emite la senal: debe cablear ${AVISO_DE_REVISION}`
+        : `${backend} no tiene emisor de la senal de revision: cablear ${AVISO_DE_REVISION} ahi daria `
+          + 'un aviso que nadie puede silenciar por una via legitima'
+    );
+  }
 });
 
 // ── Conteos citados en la documentacion ──────────────────────────────────────
