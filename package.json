@@ -1,7 +1,7 @@
 {
   "name": "agentic-engineering-framework",
-  "version": "2.1.0",
-  "description": "Framework SDD (Spec-Driven Development) — metodologia lineal para desarrollo asistido por IA. Planificacion exhaustiva, implementacion por oleadas, revision adversarial.",
+  "version": "3.0.0",
+  "description": "Framework SDD (Spec-Driven Development) para desarrollo asistido por IA. Planificacion exhaustiva, implementacion por oleadas (tasks independientes en paralelo), revision adversarial.",
   "private": true,
   "license": "CC-BY-4.0",
   "author": {
