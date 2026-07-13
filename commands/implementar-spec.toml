@@ -16,22 +16,20 @@ PASO 1 — DESCUBRIMIENTO
 Lee la spec y encuentra todas sus tasks en ai_docs/tasks/.
 Identifica dependencias entre tasks y los archivos que declara cada una en su tabla "Archivos afectados".
 Si las dependencias forman un ciclo, DETENTE: nombra las tasks del ciclo y pide corregir el plan.
-Agrupa en oleadas: tasks independientes van juntas, tasks con dependencias esperan a que sus prerequisitos terminen.
-Dos tasks solo van juntas si sus archivos son disjuntos; si se solapan, van en oleadas distintas (la que escribe primero, antes).
+Agrupa las tasks en niveles para ENSENAR el plan: nivel 1 sin dependencias, nivel N con las suyas ya resueltas.
+Dos tasks solo pueden ir a la vez si sus archivos son disjuntos; si se solapan, se serializan (la que escribe primero, antes).
 Una task que no declara archivos va sola.
-Muestra las oleadas al usuario antes de continuar, indicando que archivo obligo a serializar.
+Muestra los niveles al usuario antes de continuar, indicando que archivo obligo a serializar.
 
-PASO 2 — IMPLEMENTACION POR OLEADAS
-Para cada oleada:
-- Si tiene 1 task: implementar + commit
-- Si tiene 2+ tasks: implementar todas, luego commitear cada una
+PASO 2 — IMPLEMENTACION
+Los niveles son una vista del plan, no una barrera: lanza cada task en cuanto SUS dependencias estan hechas, sin quedarte a la cola del resto de su nivel, y nunca a la vez que otra task que escriba alguno de sus archivos.
 Para cada task:
 a. Lee ai_docs/dev_templates/implementar.md y sigue su proceso completo
 b. Implementa los cambios descritos en la task
 c. Escribe tests (RED-GREEN cuando aplique)
 d. Ejecuta validaciones (linting, tests, build)
 e. Haz commit con mensaje descriptivo
-Confirma que la oleada esta completada antes de pasar a la siguiente.
+Si una task falla, las que dependan de ella no se lanzan: se reportan como bloqueadas.
 
 PASO 3 — REVISION ADVERSARIAL
 Al terminar TODAS las tasks:
@@ -40,7 +38,7 @@ Revisa TODA la implementacion, no solo la ultima task.
 Emite veredicto: APROBADA, NECESITA_CORRECCIONES o RECHAZADA.
 
 PASO 4 — RESUMEN
-Presenta: oleadas ejecutadas, tasks completadas, archivos modificados, tests creados, veredicto.
+Presenta: orden de ejecucion (que tasks fueron a la vez y cuales se serializaron, y por que archivo), tasks completadas, archivos modificados, tests creados, veredicto.
 Si APROBADA: sugiere /pr.
 Si NECESITA_CORRECCIONES: detalla que corregir.
 

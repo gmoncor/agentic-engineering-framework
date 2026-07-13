@@ -116,10 +116,14 @@ Contrato de la senal de revision (emisor `/implementar-spec`, consumidor `sdd-re
 
 ## Estilo
 
-- Idioma: espanol sin acentos
+- Idioma del proyecto: espanol. La prosa nueva se escribe con ortografia correcta, acentos incluidos. El corpus antiguo esta sin acentuar y se corrige a medida que se toca cada fichero
+- Nombres de archivos y de ramas: solo ASCII, sin acentos. Los ficheros, ademas, en snake_case y descriptivos
 - Comunicacion: clara, directa, sin hedging
 - Commits: `<tipo>: <descripcion>` (tipos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore)
-- Nombres de archivos: snake_case, sin acentos, descriptivos
+
+## Reglas de Cursor (`.cursor/rules/`)
+
+Opcionales: el framework funciona sin ellas. Estan escritas para un stack concreto — Next.js 15 + React + Drizzle + PostgreSQL + Python — asi que si el proyecto usa otro stack, la mayoria no aplica tal cual. Revisalas antes de darlas por validas.
 
 ## Limites del framework
 

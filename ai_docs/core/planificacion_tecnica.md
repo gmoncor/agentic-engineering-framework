@@ -20,8 +20,10 @@
 ### Contenido publico (lo que se distribuye)
 - **README.md:** Punto de entrada — explica que es, como usar, estructura, quick start
 - **LICENSE:** CC-BY 4.0
-- **ai_docs/dev_templates/:** 8 plantillas operativas + README
+- **ai_docs/dev_templates/:** 12 plantillas operativas + README
 - **ai_docs/core_templates/:** 4 plantillas de planificacion inicial + README
+
+> Estos conteos los verifica el canary de paridad (`node --test tests/backend-parity.test.js`): si una plantilla se anade o se elimina sin actualizar el documento, el test falla.
 
 ### Contenido del usuario (lo que genera al usarlo)
 - **ai_docs/core/:** Documentos de vision, planificacion y roadmap de su proyecto
@@ -99,4 +101,4 @@ Usuario
 ## Riesgos Tecnicos Identificados
 
 - **Desactualizacion de plantillas:** Las plantillas referencian patrones y herramientas que pueden quedar obsoletas. Mitigacion: revision periodica del contenido.
-- **Barrera idiomatica:** El framework esta solo en espanol. Mitigacion: traduccion a ingles en fase 2.
+- **Barrera idiomatica:** El framework esta solo en espanol. Mitigacion: traduccion a ingles (Fase 4 del roadmap).

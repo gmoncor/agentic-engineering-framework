@@ -12,7 +12,7 @@
 5. /pr                — Crea la PR con los cambios
 ```
 
-**Planificacion exhaustiva, implementacion paralela por oleadas.** El comando `/planificar` ejecuta el ciclo completo de planificacion. `/implementar-spec` agrupa las tasks en oleadas por dependencias: tasks independientes van en paralelo, tasks con dependencias esperan a que sus prerequisitos terminen. Revision adversarial al final.
+**Planificacion exhaustiva, implementacion paralela segura.** El comando `/planificar` ejecuta el ciclo completo de planificacion. `/implementar-spec` lanza cada task en cuanto SUS dependencias estan satisfechas (no espera al resto de su nivel) y nunca a la vez que otra task que escriba alguno de sus archivos: lo que hace seguro el paralelismo es la particion por dueno de archivo. Revision adversarial al final.
 
 ## Comandos disponibles
 
@@ -91,6 +91,10 @@ Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
 | `revision_pr.md` | Creacion de PRs |
 | `resolver_problema.md` | Analisis de problemas y recomendaciones |
 
+## Modelo por defecto
+
+La extension no fija modelo: usa el que tengas configurado en el CLI (`gemini` arranca con su default; `/model` lo cambia en caliente). Elige uno capaz para planificar y revisar — la planificacion es donde el framework se juega la calidad — y baja a uno mas rapido para tareas mecanicas.
+
 ## Hooks (enforcement mecanico)
 
 | Hook | Evento | Que enforcea | Modo |
@@ -99,16 +103,20 @@ Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
 | `sdd-review-gate.js` | run_command (git commit/merge) | **Bloquea** el commit si el codigo entregado no paso la revision adversarial POST-implementacion | Bloqueante (opt-in) |
 | `sdd-commit-guard.js` | run_command (git commit) | Warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Advisory |
 
-Configurados en `hooks/hooks.json`. `sdd-review-gate.js` se activa poniendo `sdd_review_gate.enabled: true` en `hooks/config.json`.
+Configurados en `hooks/hooks.json`. Las rutas se resuelven desde la raiz del proyecto, asi que `hooks/` tiene que estar copiado ahi (tambien si instalas la extension). `sdd-review-gate.js` se activa poniendo `sdd_review_gate.enabled: true` en `hooks/config.json`.
 
 **Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada ambos bloqueos a aviso. Es para desbloquear una situacion puntual, no para dejarlo fijo en el shell: con el activo el pipeline SDD no enforcea nada.
 
+## Reglas de Cursor (`.cursor/rules/`)
+
+Opcionales: el framework funciona sin ellas. Estan escritas para un stack concreto — Next.js 15 + React + Drizzle + PostgreSQL + Python — asi que si el proyecto usa otro stack, la mayoria no aplica tal cual. Revisalas antes de darlas por validas.
+
 ## Estilo
 
-- Idioma: espanol sin acentos
+- Idioma del proyecto: espanol. La prosa nueva se escribe con ortografia correcta, acentos incluidos. El corpus antiguo esta sin acentuar y se corrige a medida que se toca cada fichero
+- Nombres de archivos y de ramas: solo ASCII, sin acentos. Los ficheros, ademas, en snake_case y descriptivos
 - Comunicacion: clara, directa, sin hedging
 - Commits: `<tipo>: <descripcion>` (tipos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore)
-- Nombres de archivos: snake_case, sin acentos, descriptivos
 
 ## Limites del framework
 

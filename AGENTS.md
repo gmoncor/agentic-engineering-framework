@@ -159,10 +159,28 @@ asi que los matchers salen de los nombres de herramienta que documenta la propia
 escritura no declarada llega a colarse, lo primero que hay que comprobar es si el nombre de la
 herramienta que llega al hook coincide con los del matcher.
 
+## Modelo por defecto
+
+Ningun modelo esta impuesto por el framework: el modelo es tuyo y depende de tu cuenta y tu
+presupuesto.
+
+- **Codex:** `.codex/config.toml` trae `model = "o4-mini"` como punto de partida razonable. Subelo
+  si la planificacion se te queda corta — es el paso donde el framework se juega la calidad — y
+  dejalo bajo para el trabajo mecanico.
+- **Antigravity:** la CLI usa el modelo que tengas seleccionado; el framework no lo fija.
+
+## Reglas de Cursor (`.cursor/rules/`)
+
+Opcionales: el framework funciona sin ellas. Estan escritas para un stack concreto — Next.js 15 +
+React + Drizzle + PostgreSQL + Python — asi que si el proyecto usa otro stack, la mayoria no aplica
+tal cual. Revisalas antes de darlas por validas.
+
 ## Estilo
 
-- Idioma: espanol sin acentos.
+- Idioma del proyecto: espanol. La prosa nueva se escribe con ortografia correcta, acentos
+  incluidos. El corpus antiguo esta sin acentuar y se corrige a medida que se toca cada fichero.
+- Nombres de archivo y de rama: solo ASCII, sin acentos. Los ficheros, ademas, en snake_case y
+  descriptivos.
 - Comunicacion: clara, directa, sin hedging. Nada de adular ni de rellenar.
 - Commits: `<tipo>: <descripcion>` (tipos: feat, fix, update, refactor, create, optimize, remove,
   rename, docs, test, style, chore). Sin coautoria de IA en el mensaje.
-- Nombres de archivo: snake_case, sin acentos, descriptivos.

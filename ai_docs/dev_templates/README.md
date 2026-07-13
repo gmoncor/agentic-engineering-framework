@@ -30,7 +30,7 @@ El resultado: menos errores, mejor codigo, y tu entiendes cada decision que se t
 
 ## Metodologia SDD (Spec-Driven Development)
 
-El flujo SDD es un pipeline lineal donde cada paso produce un artefacto que alimenta al siguiente:
+El flujo SDD encadena pasos: cada uno produce un artefacto que alimenta al siguiente. La planificacion va en orden; la implementacion, no: las tasks se lanzan por oleadas (las independientes en paralelo, las dependientes cuando sus prerequisitos terminan).
 
 ```
 Solicitud del usuario
@@ -156,7 +156,8 @@ Las plantillas core estan en la carpeta `core_templates/`. Consulta su README pa
 5. AUDITORIA       -->  auditar_spec.md
    Verificar cobertura, overlaps, huecos, coherencia.
 
-6. IMPLEMENTAR     -->  implementar.md (por cada task, una a la vez, en orden)
+6. IMPLEMENTAR     -->  implementar.md (por oleadas: independientes en paralelo,
+                        dependientes cuando sus prerequisitos terminan)
    Implementar + tests + limpieza + commit por task.
 
 7. REVISION ADVERSARIAL  -->  revision_adversarial.md

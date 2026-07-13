@@ -9,7 +9,9 @@
 - **Objetivo Final:** Ayudar a desarrolladores a trabajar mejor con asistentes de IA usando plantillas estructuradas
 - **Stack:** Markdown (sin framework, sin runtime)
 - **Equipo:** Desarrollador solo
-- **Modelo de desarrollo:** Secuencial
+- **Modelo de desarrollo:** Por oleadas — las tasks independientes se implementan en paralelo; las dependientes, cuando sus prerequisitos terminan
+
+> Los conteos de componentes que cita este documento (plantillas, comandos, agentes, skills) los verifica el canary de paridad: `node --test tests/backend-parity.test.js`. Si un conteo se queda obsoleto, el test falla.
 
 ---
 
@@ -27,10 +29,10 @@
 
 ## Fase 1: Plantillas Operativas
 
-**Meta:** Un desarrollador puede usar las 6 plantillas del dia a dia copiando y pegando
+**Meta:** Un desarrollador puede usar las plantillas operativas del dia a dia copiando y pegando
 
-**Contenido:**
-- [x] documento_de_tarea.md — planificacion antes de implementar
+**Contenido (las 6 iniciales; hoy `ai_docs/dev_templates/` tiene 12):**
+- [x] tareas.md — derivacion de tasks antes de implementar (nacio como documento_de_tarea.md)
 - [x] correccion_de_bugs.md — diagnostico y correccion estructurada
 - [x] limpieza_de_codigo.md — revision de calidad post-implementacion
 - [x] testing_basico.md — escritura de tests con patron AAA
@@ -71,7 +73,7 @@
 
 **Meta:** El framework esta disponible en ingles para audiencia internacional
 
-- [ ] Traducir las 6 plantillas operativas
+- [ ] Traducir las 12 plantillas operativas
 - [ ] Traducir las 4 plantillas de planificacion inicial
 - [ ] Traducir READMEs
 - [ ] Traducir documentos de ejemplo en core/
@@ -93,6 +95,6 @@
 
 **Meta:** La comunidad puede proponer y mejorar plantillas
 
-- [ ] Guia de contribucion detallada (CONTRIBUTING.md)
-- [ ] Templates de issues y PRs en GitHub
+- [x] Guia de contribucion detallada (CONTRIBUTING.md)
+- [x] Templates de issues y PRs en GitHub
 - [ ] Ejemplos de uso real con sesiones documentadas

@@ -7,7 +7,7 @@
 ## Contexto
 - **Tipo de proyecto:** Existente (repositorio publico de plantillas)
 - **Tipo de aplicacion:** Herramienta interna / recurso educativo (sin monetizacion)
-- **Estado actual:** Primera version publica con 10 plantillas operativas
+- **Estado actual:** Publicado, con 12 plantillas operativas y 4 de planificacion inicial
 
 ## Objetivo Final
 

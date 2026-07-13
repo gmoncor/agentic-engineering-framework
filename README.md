@@ -8,7 +8,9 @@
 
 Un sistema de plantillas que estructura como trabaja tu asistente de IA. En lugar de pedirle "haz esto" y esperar lo mejor, el framework impone un flujo: **planificacion exhaustiva** (spec + tasks + revision paralela + auditoria cruzada) antes de tocar codigo, seguida de **implementacion por oleadas** (tasks independientes en paralelo, dependencias en orden) y revision adversarial.
 
-Compatible con cualquier LLM via copy-paste. Integracion nativa con Claude Code (workflows + comandos + agentes + skills) y Gemini CLI (extension instalable).
+Compatible con cualquier LLM via copy-paste. Integracion nativa con cuatro CLIs: Claude Code (workflows + comandos + agentes + skills), Gemini CLI (extension instalable), Codex y Antigravity (agentes + skills + hooks). Los cuatro exponen el mismo flujo; un test de paridad lo verifica (`npm test`).
+
+El proyecto esta escrito en espanol: documentacion, plantillas, comandos y mensajes de los hooks.
 
 ---
 
@@ -38,8 +40,10 @@ El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tas
       |
       v
   [4] /implementar-spec ──── Workflow: tasks independientes en paralelo + revision adversarial
-      |                         (Claude Code: workflow con agentes paralelos por oleada)
-      |                         (Gemini/otros: secuencial via comando)
+      |                         (Claude Code: workflow que despacha cada task en cuanto
+      |                          sus dependencias estan hechas, con archivos disjuntos)
+      |                         (Gemini/Codex/Antigravity: el orquestador reparte el
+      |                          trabajo independiente; sin motor de workflows propio)
       v
     Codigo revisado ──────── /pr para crear la Pull Request
 ```
@@ -111,7 +115,9 @@ Si no usas Claude Code, copia solo `ai_docs/` y usa las plantillas por copy-past
 gemini extensions install https://github.com/gmoncor/agentic-engineering-framework
 ```
 
-Esto instala los 12 comandos, 4 agentes, 8 skills y los hooks automaticamente. Comprueba con `gemini extensions list`.
+Esto instala los 12 comandos, 4 agentes y 8 skills. Comprueba con `gemini extensions list`.
+
+> **Los hooks no viajan con la extension.** `hooks/hooks.json` los invoca con rutas relativas a la raiz del proyecto, asi que copia tambien la carpeta `hooks/` ahi. Sin ella no hay enforcement: el pipeline se convierte en una sugerencia.
 
 **Opcion 2 — Manual:**
 
@@ -151,6 +157,25 @@ nombrala. Los slash commands versionables estan deprecados en Codex, por eso no 
 
 Codex te pedira confiar (trust) en los hooks del proyecto la primera vez. Revisa `hooks/` antes.
 
+### Antigravity
+
+Requisito: el CLI de Antigravity (`agy`). Descubre sus personalizaciones en `.agents/`, la misma
+raiz que ya usa el framework, asi que reutiliza el contexto y las skills sin duplicarlos.
+
+Copia a la raiz de tu proyecto:
+
+```
+AGENTS.md              # instrucciones del proyecto (contexto compartido)
+.agents/skills/        # skills (17, auto-activacion por description)
+.agents/plugins/sdd/   # subagentes (4) + manifiesto del bundle
+.agents/hooks.json     # registro de los hooks
+hooks/                 # hooks de enforcement (guards)
+ai_docs/               # plantillas + docs de tu proyecto
+```
+
+Valida el bundle con `agy plugin validate .agents/plugins/sdd`. El bloqueo de escrituras no
+planificadas es real, no advisory. Detalle del cableado y sus limites en `AGENTS.md`.
+
 ### Sin CLI (copy-paste)
 
 Funciona con cualquier LLM: ChatGPT, Copilot, Cursor, Windsurf, o cualquier otro.
@@ -164,16 +189,19 @@ No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` par
 
 ### Que se instala
 
-| Componente | Donde (Claude) | Donde (Gemini) | Donde (Codex) |
-|------------|-----------------|-----------------|----------------|
-| Comandos | `.claude/commands/` (12) | `commands/` (12) | — (entregados como skills) |
-| Agentes | `.claude/agents/` (4) | `agents/` (4) | `.codex/agents/` (4, `.toml`) |
-| Skills | `.claude/skills/` (8) | `skills/` (8) | `.agents/skills/` (17) |
-| Hooks | `hooks/` (3, wired en settings) | `hooks/` (3, wired en hooks.json) | `hooks/` (2, wired en `.codex/hooks.json`) |
-| Workflows | `.claude/workflows/` (2) | — (secuencial via comando) | — (secuencial via skill) |
-| Contexto | `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` |
-| Templates | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) |
-| Core templates | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) |
+| Componente | Donde (Claude) | Donde (Gemini) | Donde (Codex) | Donde (Antigravity) |
+|------------|-----------------|-----------------|----------------|----------------------|
+| Comandos | `.claude/commands/` (12) | `commands/` (12) | — (entregados como skills) | — (entregados como skills) |
+| Agentes | `.claude/agents/` (4) | `agents/` (4) | `.codex/agents/` (4, `.toml`) | `.agents/plugins/sdd/agents/` (4) |
+| Skills | `.claude/skills/` (8) | `skills/` (8) | `.agents/skills/` (17) | `.agents/skills/` (17) |
+| Hooks | `hooks/` (3, wired en settings) | `hooks/` (3, wired en `hooks/hooks.json`) | `hooks/` (2, wired en `.codex/hooks.json`) | `hooks/` (2, wired en `.agents/hooks.json`) |
+| Workflows | `.claude/workflows/` (2) | — (el orquestador reparte el trabajo) | — (idem) | — (idem) |
+| Contexto | `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` | `AGENTS.md` |
+| Templates | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) |
+| Core templates | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) |
+
+Los cuatro backends exponen el mismo conjunto de agentes y de pasos del flujo. Un test de paridad
+(`tests/backend-parity.test.js`, incluido en `npm test`) falla si uno se queda atras.
 
 ---
 
@@ -293,8 +321,14 @@ agentic-engineering-framework/
 ├── agents/                      # Agentes Gemini CLI (4)
 ├── commands/                    # 12 comandos Gemini CLI (.toml)
 ├── skills/                      # 8 skills Gemini CLI
-├── hooks/                       # Enforcement SDD (compartido ambas CLIs)
 ├── gemini-extension.json        # Manifest extension Gemini
+│
+├── AGENTS.md                    # Contexto compartido (Codex + Antigravity)
+├── .codex/                      # Config, agentes (.toml), hooks y reglas de Codex
+├── .agents/                     # Skills (17), subagentes y hooks de Antigravity
+│
+├── hooks/                       # Enforcement SDD (compartido por los 4 backends)
+├── tests/                       # Canary de paridad entre backends
 │
 ├── ai_docs/
 │   ├── core_templates/          # Plantillas de planificacion inicial (01-04, usar en orden)
@@ -383,9 +417,11 @@ Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohibe esos mismos com
 
 **Modelo por defecto (Claude Code):** `.claude/settings.json` fija `"model": "claude-opus-4-8"`. Opus 4.8 es el modelo mas capaz para planificacion y revision exhaustiva. Override puntual con `/model sonnet` si necesitas velocidad en tareas mecanicas.
 
-## Cursor IDE
+## Reglas de Cursor
 
 El directorio `.cursor/rules/` contiene 43 reglas que replican el comportamiento del framework dentro de Cursor. Son opcionales — el framework funciona sin ellas. Si usas Cursor, copia `.cursor/` a tu proyecto.
+
+> **Asumen un stack concreto.** La mayoria de esas reglas (38 de 43) estan escritas para **Next.js 15 + React + Drizzle + PostgreSQL + Python**: dan por hecho ese runtime, esas convenciones y ese ORM. Si tu proyecto usa otro stack, revisalas y adaptalas antes de copiar `.cursor/` — o copia solo las que sean agnosticas. Las reglas del flujo SDD (las que no son de stack) valen para cualquier proyecto.
 
 ---
 

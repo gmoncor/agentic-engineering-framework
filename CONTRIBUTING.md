@@ -33,10 +33,10 @@ Abre un issue con la plantilla **Feature request** antes de escribir codigo. Des
 
 ## Estilo
 
-- **Idioma:** espanol sin acentos, en codigo y documentacion
+- **Idioma:** espanol, en codigo y documentacion. La prosa nueva se escribe con ortografia correcta, acentos incluidos. El corpus actual esta sin acentuar (asi nacio el proyecto) y se va corrigiendo a medida que se toca cada fichero: no abras una PR solo para acentuar, hazlo en la PR que ya toca ese fichero
 - **Commits:** `<tipo>: <descripcion>`, asunto de 72 caracteres o menos. Tipos validos: `feat`, `fix`, `update`, `refactor`, `create`, `optimize`, `remove`, `rename`, `docs`, `test`, `style`, `chore`
 - **Sin `Co-Authored-By` de asistentes de IA** en los mensajes de commit
-- **Nombres de archivo:** snake_case, sin acentos, descriptivos
+- **Nombres de archivo y de rama:** solo ASCII, sin acentos. Los ficheros, ademas, en snake_case y descriptivos
 - **Finales de linea:** LF. `.gitattributes` los normaliza automaticamente; no lo desactives
 
 El hook `sdd-commit-guard.js` avisa si un commit incumple estas reglas.
@@ -55,16 +55,22 @@ No lo exportes de forma permanente en tu shell ni en la configuracion del proyec
 
 ## Paridad entre CLIs
 
-El framework se distribuye para Claude Code, Gemini CLI y Codex. Muchos artefactos existen por duplicado:
+El framework se distribuye para Claude Code, Gemini CLI, Codex y Antigravity. Muchos artefactos existen por duplicado:
 
-| Claude Code | Gemini CLI | Codex |
-|---|---|---|
-| `.claude/agents/` | `agents/` | `.codex/agents/` (`.toml`) |
-| `.claude/commands/` (`.md`) | `commands/` (`.toml`) | `.agents/skills/` (los comandos son skills) |
-| `.claude/skills/` | `skills/` | `.agents/skills/` |
-| `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` |
+| Claude Code | Gemini CLI | Codex | Antigravity |
+|---|---|---|---|
+| `.claude/agents/` | `agents/` | `.codex/agents/` (`.toml`) | `.agents/plugins/sdd/agents/` |
+| `.claude/commands/` (`.md`) | `commands/` (`.toml`) | `.agents/skills/` (los comandos son skills) | `.agents/skills/` |
+| `.claude/skills/` | `skills/` | `.agents/skills/` | `.agents/skills/` |
+| `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` | `AGENTS.md` |
 
-Si cambias un agente, comando o skill en un lado, **aplica el cambio equivalente en los otros** dentro de la misma PR. Una PR que solo actualiza una de las CLIs deja el framework incoherente.
+Si anades o cambias un agente o una skill, **portalo a todos los backends** dentro de la misma PR y ejecuta el canary:
+
+```bash
+node --test tests/backend-parity.test.js
+```
+
+El canary compara el conjunto de nombres logicos de agentes y de pasos del flujo de cada backend, y falla nombrando lo que falta y donde. No compara el contenido de los ficheros: que las dos versiones de un mismo paso describan el mismo proceso es cosa de la revision de la PR. Una PR que solo actualiza una de las CLIs deja el framework incoherente.
 
 En Codex los slash commands versionables estan deprecados: cada comando se entrega como skill, y las skills cuyo nombre coincide con un comando (`bugfix`, `commit`, `pr`) son una sola, con el uso a peticion explicita como seccion adicional. La logica de la skill manda sobre la del comando.
 

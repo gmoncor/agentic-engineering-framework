@@ -126,15 +126,15 @@ Si esta task CONSUME un contrato, debe declarar como dependencia la task que lo 
 
 ## Paso 4: Definir orden de ejecucion
 
-Despues de crear todas las tasks, construye un mapa de dependencias para determinar el orden secuencial optimo:
+Despues de crear todas las tasks, construye un mapa de dependencias. Determina que puede ir a la vez y que tiene que ir despues:
 
 ```
-Orden 1: Task A, Task C, Task E  [sin dependencias — independientes entre si]
-Orden 2: Task B, Task D           [dependen de tasks del Orden 1]
-Orden 3: Task F                   [depende de tasks del Orden 2]
+Nivel 1: Task A, Task C, Task E  [sin dependencias — independientes entre si]
+Nivel 2: Task B, Task D           [dependen de tasks del Nivel 1]
+Nivel 3: Task F                   [depende de tasks del Nivel 2]
 ```
 
-La implementacion es siempre lineal (una task a la vez, en orden). Las tasks independientes se pueden ejecutar en cualquier orden dentro de su grupo; las dependientes respetan el orden de sus dependencias.
+Los niveles son una vista del plan, no una barrera de ejecucion: cada task arranca en cuanto SUS dependencias estan satisfechas, sin quedarse a la cola del resto de su nivel. Dos tasks solo corren a la vez si sus tablas "Archivos afectados" son disjuntas; si comparten un archivo, se serializan.
 
 **Reglas de dependencia:**
 - Dos tasks son independientes SI no comparten archivos Y no tienen dependencia de datos

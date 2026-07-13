@@ -90,8 +90,8 @@ function depsInternas(task, conocidas) {
 
 /**
  * Agrupa las tasks en niveles topologicos: nivel 1 = sin dependencias, nivel N =
- * dependencias resueltas en niveles anteriores. Sirve para visualizar el plan;
- * el despacho real es por dependencias satisfechas, no por barrera de oleada.
+ * dependencias resueltas en niveles anteriores. Sirve para visualizar el plan; el
+ * despacho real va task a task, en cuanto las dependencias de cada una terminan.
  *
  * Un ciclo es un error de planificacion: lanzarlo en paralelo seria ejecutar a la
  * vez justo lo que la dependencia pretendia ordenar.
@@ -275,8 +275,8 @@ function okPorDefecto(resultado) {
 }
 
 /**
- * Lanza cada task en cuanto SUS dependencias estan satisfechas — sin esperar a
- * que termine la oleada entera — y nunca a la vez que otra task que escribe
+ * Lanza cada task en cuanto SUS dependencias estan satisfechas — sin quedarse a
+ * la cola del resto de su nivel — y nunca a la vez que otra task que escribe
  * alguno de sus archivos.
  *
  * ejecutar(task) -> Promise<resultado>. Opciones:
