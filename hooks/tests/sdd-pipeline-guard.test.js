@@ -112,6 +112,36 @@ test('el placeholder de la plantilla no cuenta como archivo declarado: deny', ()
   assert.strictEqual(r.decision.decision, 'deny');
 });
 
+test('los archivos de una task de otra spec, ya cerrada, no autorizan la escritura', () => {
+  // El permiso de escritura se acota a la spec activa. Si se acumulase con el
+  // historial, el guard acabaria autorizando cualquier archivo que alguna task
+  // vieja declarase alguna vez, y dejaria de proteger.
+  const TASK_VIEJA = [
+    '# Task 900: Migrar el catalogo (spec ya cerrada)',
+    '',
+    'Spec madre: ai_docs/tasks/spec_catalogo.md',
+    '',
+    '## Archivos afectados',
+    '',
+    '| Archivo | Accion | Descripcion del cambio |',
+    '|---------|--------|----------------------|',
+    '| `src/catalogo/legacy.js` | MODIFICAR | Migracion del catalogo |',
+    '',
+  ].join('\n');
+
+  const root = proyecto(
+    { 'spec_autenticacion.md': SPEC_APROBADA, 'spec_catalogo.md': SPEC_BORRADOR.replace('Autenticacion', 'Catalogo') },
+    { '001_login.md': TASK_CON_ARCHIVOS, '900_catalogo.md': TASK_VIEJA }
+  );
+
+  const viejo = runHook(HOOK, escritura(root, 'src/catalogo/legacy.js'));
+  assert.strictEqual(viejo.decision.decision, 'deny');
+  assert.match(viejo.decision.reason, /no esta declarado en ninguna task de la spec activa/);
+
+  // La task de la spec activa sigue autorizando lo suyo.
+  assert.strictEqual(runHook(HOOK, escritura(root, 'src/auth/login.js')).code, 0);
+});
+
 test('SDD_GUARD_SKIP=1: warn en vez de deny', () => {
   const root = proyecto({ 'spec_autenticacion.md': SPEC_APROBADA }, { '001_login.md': TASK_CON_ARCHIVOS });
   const r = runHook(HOOK, escritura(root, 'src/pagos/checkout.js'), { SDD_GUARD_SKIP: '1' });

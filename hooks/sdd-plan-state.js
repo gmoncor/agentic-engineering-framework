@@ -41,9 +41,9 @@ function denialReason(tasksDir, resolved) {
       + 'Planifica y aprueba la spec antes de escribir codigo.';
   }
 
-  if (findTaskFiles(tasksDir).length === 0) {
-    return 'SDD: hay spec aprobada pero ninguna task derivada en ai_docs/tasks/. '
-      + 'Deriva las tasks antes de escribir codigo.';
+  if (findActiveTaskFiles(tasksDir).length === 0) {
+    return 'SDD: hay spec aprobada pero ninguna task derivada de ella en ai_docs/tasks/. '
+      + 'Deriva las tasks (cada una debe citar su spec madre) antes de escribir codigo.';
   }
 
   if (findDeclaredFiles(tasksDir).has(resolved)) return null;
@@ -70,15 +70,49 @@ function findTaskFiles(tasksDir) {
 }
 
 /**
- * Set de paths absolutos declarados en las tasks. Los paths de una task son relativos a la raiz del
- * proyecto (el padre de ai_docs/): se resuelven contra ella para que "src/foo.js" y "./src/foo.js"
- * comparen igual.
+ * Identificadores con los que una task puede citar a su spec madre: el nombre del fichero
+ * (spec_pagos.md), su raiz (spec_pagos), su descriptor (pagos) y el titulo de su encabezado.
+ * Se descartan los de menos de 4 caracteres: un identificador corto acertaria por casualidad.
+ */
+function specIdentifiers(specPath) {
+  const base = path.basename(specPath);
+  const stem = base.replace(/\.md$/i, '');
+  const descriptor = stem.replace(/^spec_/i, '');
+  const heading = (readText(specPath).match(/^#{1,6}\s+(?:Spec:\s*)?(.+?)\s*$/m) || [])[1];
+
+  return [base, stem, descriptor, heading]
+    .filter(Boolean)
+    .map(s => String(s).trim().toLowerCase())
+    .filter(s => s.length >= 4);
+}
+
+/**
+ * Tasks que pertenecen a alguna spec APROBADA, es decir, que la citan.
+ *
+ * Acotar a la spec activa es lo que mantiene util al guard: la union de TODAS las tasks del
+ * directorio crece con el historial del proyecto, y con ella el permiso de escritura. Al cabo de
+ * unos meses el guard autorizaria cualquier archivo que alguna task vieja declarase alguna vez.
+ */
+function findActiveTaskFiles(tasksDir) {
+  const identificadores = findApprovedSpecs(tasksDir).flatMap(specIdentifiers);
+  if (identificadores.length === 0) return [];
+
+  return findTaskFiles(tasksDir).filter(taskPath => {
+    const texto = readText(taskPath).toLowerCase();
+    return identificadores.some(id => texto.includes(id));
+  });
+}
+
+/**
+ * Set de paths absolutos declarados en las tasks de la spec activa. Los paths de una task son
+ * relativos a la raiz del proyecto (el padre de ai_docs/): se resuelven contra ella para que
+ * "src/foo.js" y "./src/foo.js" comparen igual.
  */
 function findDeclaredFiles(tasksDir) {
   const projectRoot = path.resolve(tasksDir, '..', '..');
   const declared = new Set();
 
-  for (const taskPath of findTaskFiles(tasksDir)) {
+  for (const taskPath of findActiveTaskFiles(tasksDir)) {
     for (const rel of parseAffectedFiles(readText(taskPath))) {
       declared.add(path.resolve(projectRoot, rel));
     }
@@ -108,5 +142,6 @@ module.exports = {
   denialReason,
   findApprovedSpecs,
   findTaskFiles,
+  findActiveTaskFiles,
   findDeclaredFiles,
 };
