@@ -1,4 +1,5 @@
 {
+  "_comment": "Las rutas se resuelven desde la raiz del proyecto: 'hooks/' tiene que estar copiado ahi, tambien al instalar la extension. Anclarlas al directorio de la extension solo funcionaria en esa via de instalacion y dejaria la manual con los hooks apuntando a archivos inexistentes.",
   "hooks": {
     "BeforeTool": [
       {
@@ -7,17 +8,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${extensionPath}${/}hooks${/}sdd-pipeline-guard.js\""
+            "command": "node hooks/sdd-pipeline-guard.js"
           }
         ]
       },
       {
-        "_comment": "Advisory: verifica formato de commit y previene scaffolding leaks.",
+        "_comment": "Advisory: verifica formato de commit y previene fugas de andamiaje.",
         "matcher": "run_command",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${extensionPath}${/}hooks${/}sdd-commit-guard.js\""
+            "command": "node hooks/sdd-commit-guard.js"
           }
         ]
       },
@@ -27,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${extensionPath}${/}hooks${/}sdd-review-gate.js\""
+            "command": "node hooks/sdd-review-gate.js"
           }
         ]
       }
