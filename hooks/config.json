@@ -1,0 +1,7 @@
+{
+  "_comment": "Configuracion de los hooks SDD. sdd-review-gate bloquea git commit/merge sin revision adversarial del codigo; se activa poniendo enabled: true (opt-in, porque exige que la revision POST-implementacion ocurra antes de cada commit).",
+  "sdd_review_gate": {
+    "enabled": false,
+    "ttl_hours": 4
+  }
+}

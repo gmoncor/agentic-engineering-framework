@@ -6,6 +6,7 @@ Gracias por tu interes en mejorar el framework. Este documento explica como repo
 
 - **Node.js >= 20** — requerido por los hooks (`hooks/*.js`). Verifica con `node --version`
 - Lee `CLAUDE.md` — define el estilo, el flujo SDD y los limites del framework. Todo cambio debe ser coherente con ellos
+- **Tests:** `npm test` ejecuta los tests de contrato de los hooks. Todo cambio en `hooks/` llega con sus tests en el mismo commit
 
 ## Reportar un bug
 
@@ -39,6 +40,18 @@ Abre un issue con la plantilla **Feature request** antes de escribir codigo. Des
 - **Finales de linea:** LF. `.gitattributes` los normaliza automaticamente; no lo desactives
 
 El hook `sdd-commit-guard.js` avisa si un commit incumple estas reglas.
+
+## Los guards bloquean: el escape es para emergencias
+
+`sdd-pipeline-guard.js` bloquea escribir archivos que ninguna task declara, y `sdd-review-gate.js` (opt-in) bloquea commitear codigo que no paso la revision adversarial. Si un guard te bloquea, la respuesta por defecto es **arreglar el plan**: declara el archivo en la tabla "Archivos afectados" de la task, o ejecuta la revision del codigo.
+
+`SDD_GUARD_SKIP=1` degrada ambos bloqueos a aviso. Es un escape **puntual** para desbloquear una urgencia:
+
+```bash
+SDD_GUARD_SKIP=1 git commit -m "fix: restaurar el servicio caido"
+```
+
+No lo exportes de forma permanente en tu shell ni en la configuracion del proyecto: con el activo, el pipeline SDD deja de enforcar nada y el framework vuelve a ser una sugerencia. Si necesitas el escape a menudo, el problema esta en el plan, no en el guard.
 
 ## Paridad entre CLIs
 

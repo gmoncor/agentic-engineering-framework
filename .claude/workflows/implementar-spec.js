@@ -58,6 +58,28 @@ const REVISION_SCHEMA = {
   required: ['veredicto', 'problemas_criticos', 'problemas_menores', 'resumen']
 }
 
+// ── Senal de revision POST-implementacion ─────────────────────────────────────
+// Tras la revision adversarial, este workflow deja constancia de que el codigo
+// entregado fue revisado. El hook sdd-review-gate.js consume esa senal para
+// dejar pasar los commits; sin ella, el commit se bloquea.
+// El contrato de la senal vive en hooks/sdd-review-signal.js (un solo formato
+// para emisor y consumidor). Si el modulo no esta disponible (framework sin
+// hooks instalados), la emision se omite sin romper el workflow.
+async function emitirSenalRevision(contenidoRevisado) {
+  try {
+    const path = await import('node:path')
+    const url = await import('node:url')
+    const mod = await import(url.pathToFileURL(path.resolve('hooks/sdd-review-signal.js')).href)
+    const senal = mod.default || mod
+
+    const hash = senal.hashDiff(contenidoRevisado)
+    senal.writeSignal(senal.resolveSessionId(), hash)
+    return hash
+  } catch (e) {
+    return null
+  }
+}
+
 // ── Wave computation ──────────────────────────────────────────────────────────
 // Groups tasks into execution waves based on dependencies.
 // Wave 1: tasks with no dependencies (all run in parallel)
@@ -322,6 +344,17 @@ Retorna tu veredicto con problemas criticos, menores, aspectos positivos y resum
 const veredicto = revision ? revision.veredicto : 'ERROR'
 log('Revision adversarial: ' + veredicto)
 
+// La senal solo se emite si la revision produjo veredicto: es la prueba de que
+// alguien miro el codigo entregado. Certifica que la revision OCURRIO, no que
+// haya salido limpia (las correcciones que exige tambien deben poder commitearse).
+var marcaRevision = null
+if (revision) {
+  marcaRevision = await emitirSenalRevision(JSON.stringify({ spec: specPath, impl: allResults, revision: revision }))
+  if (marcaRevision) {
+    log('Revision registrada. Marca para el mensaje de commit: [SDD-POST-IMPL: ' + marcaRevision + ']')
+  }
+}
+
 return {
   spec: specPath,
   spec_titulo: discovery.spec_titulo,
@@ -331,5 +364,6 @@ return {
   tasks_fallidas: fallidas,
   implementaciones: allResults,
   revision: revision,
+  marca_revision: marcaRevision,
   veredicto: veredicto
 }

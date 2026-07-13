@@ -2,7 +2,7 @@
   "hooks": {
     "BeforeTool": [
       {
-        "_comment": "Advisory: avisa si se escribe codigo fuente sin spec aprobada.",
+        "_comment": "Bloqueante: impide escribir codigo no declarado en una task de la spec aprobada.",
         "matcher": "write_file|edit_file",
         "hooks": [
           {
@@ -18,6 +18,16 @@
           {
             "type": "command",
             "command": "node \"${extensionPath}${/}hooks${/}sdd-commit-guard.js\""
+          }
+        ]
+      },
+      {
+        "_comment": "Bloqueante (opt-in en hooks/config.json): impide git commit/merge sin revision adversarial del codigo.",
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${extensionPath}${/}hooks${/}sdd-review-gate.js\""
           }
         ]
       }

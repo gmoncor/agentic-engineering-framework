@@ -60,7 +60,7 @@ proyecto/
 │   ├── skills/         # 8 skills (auto-activacion)
 │   ├── workflows/      # planificar.js + implementar-spec.js
 │   └── settings.json   # model: claude-opus-4-8 + hooks
-├── hooks/              # 2 hooks advisory (pipeline-guard + commit-guard)
+├── hooks/              # 3 hooks (pipeline-guard + review-gate + commit-guard)
 ├── ai_docs/
 │   ├── core/           # vision, planificacion, roadmap
 │   ├── core_templates/ # 4 plantillas de planificacion inicial (01-04)
@@ -99,12 +99,17 @@ Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
 
 ## Hooks (enforcement mecanico)
 
-| Hook | Evento | Que enforcea |
-|------|--------|-------------|
-| `sdd-pipeline-guard.js` | Write/Edit | Warn si se escribe codigo sin spec aprobada Y tasks derivadas |
-| `sdd-commit-guard.js` | Bash (git commit) | Warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA |
+| Hook | Evento | Que enforcea | Modo |
+|------|--------|-------------|------|
+| `sdd-pipeline-guard.js` | Write/Edit | **Bloquea** escribir un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de una spec APROBADA | Bloqueante |
+| `sdd-review-gate.js` | Bash (git commit/merge) | **Bloquea** el commit si el codigo entregado no paso la revision adversarial POST-implementacion | Bloqueante (opt-in) |
+| `sdd-commit-guard.js` | Bash (git commit) | Warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Advisory |
 
-Ambos advisory (warn, no bloquean). Configurados en `.claude/settings.json` y `hooks/hooks.json`.
+Configurados en `.claude/settings.json` y `hooks/hooks.json`. `sdd-review-gate.js` se activa poniendo `sdd_review_gate.enabled: true` en `hooks/config.json`.
+
+**Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada ambos bloqueos a aviso. Es para desbloquear una situacion puntual, no para dejarlo fijo en el shell: con el activo el pipeline SDD no enforcea nada.
+
+Contrato de la senal de revision (emisor `/implementar-spec`, consumidor `sdd-review-gate.js`): `hooks/sdd-review-signal.js`. Tests de contrato: `npm test`.
 
 ## Estilo
 

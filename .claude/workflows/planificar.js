@@ -6,6 +6,7 @@ export const meta = {
     { title: 'Tasks', detail: 'Derivar tasks granulares de la spec' },
     { title: 'Revision', detail: 'Revision paralela esceptica de cada task' },
     { title: 'Auditoria', detail: 'Auditoria cruzada de coherencia spec-tasks' },
+    { title: 'Aprobacion', detail: 'El usuario revisa el plan y aprueba la spec (BORRADOR -> APROBADA)' },
   ],
 }
 
@@ -73,7 +74,7 @@ const AUDIT_SCHEMA = {
 // NOTA DE DISENO: spec.md dice "PREGUNTA antes de asumir" (modo interactivo).
 // En workflow automatizado las preguntas bloquean el pipeline, asi que los
 // agentes trabajan con la informacion disponible. El PUNTO DE ESPERA del
-// usuario ocurre al final, cuando revisa el plan completo (fase Aprobacion).
+// usuario ocurre al final: la spec nace BORRADOR y solo el usuario la aprueba.
 phase('Spec')
 const specResult = await agent(`
 Lee ai_docs/dev_templates/spec.md y sigue su proceso completo para crear una especificacion.
@@ -82,7 +83,8 @@ Lee ai_docs/core/ para contexto del proyecto.
 IMPORTANTE:
 - NO hagas preguntas de clarificacion. Trabaja con la informacion disponible.
 - Clasifica el alcance, redacta la spec completa con todos los campos del formato.
-- Guarda la spec con Estado: APROBADA (la revision ocurre al final del workflow).
+- Guarda la spec con Estado: BORRADOR. NUNCA escribas APROBADA: la aprobacion
+  es del usuario y ocurre despues de que revise el plan completo.
 - Cada criterio de aceptacion debe ser medible. La seccion "No incluye" es obligatoria.
 
 Solicitud del usuario: ${args}
@@ -101,7 +103,7 @@ log('Spec creada: ' + specPath)
 phase('Tasks')
 const tasksResult = await agent(`
 Lee ai_docs/dev_templates/tareas.md y sigue su proceso completo.
-Lee la spec aprobada en: ${specPath}
+Lee la spec (en BORRADOR, pendiente de aprobacion del usuario) en: ${specPath}
 Lee ai_docs/core/ para contexto del proyecto.
 
 IMPORTANTE:
@@ -212,8 +214,25 @@ Retorna tu veredicto estructurado.
 const veredicto = auditResult ? auditResult.veredicto : 'ERROR'
 log('Auditoria final: ' + veredicto)
 
+// ── Phase 5: Aprobacion humana ────────────────────────────────────────────────
+// La spec esta en BORRADOR. El workflow NO la aprueba: presenta el plan y para.
+// Aprobar es un acto del usuario, no un efecto colateral de la planificacion.
+phase('Aprobacion')
+const instrucciones = veredicto === 'APROBADO'
+  ? 'Presenta al usuario la spec, las tasks y el resultado de la auditoria. '
+    + 'La spec sigue en BORRADOR: pide al usuario que la revise y escriba "apruebo" '
+    + 'para cambiar su estado a APROBADA. Solo entonces edita el estado en el archivo. '
+    + 'Sin aprobacion explicita del usuario, no se implementa.'
+  : 'Presenta al usuario los problemas encontrados por la auditoria (' + veredicto + ') '
+    + 'y propon como resolverlos. La spec permanece en BORRADOR hasta corregirlos y '
+    + 'obtener aprobacion explicita del usuario.'
+log(instrucciones)
+
 return {
   spec: specPath,
+  estado_spec: 'BORRADOR',
+  requires_approval: true,
+  instrucciones: instrucciones,
   tasks: taskList,
   reviews: validReviews,
   audit: auditResult,

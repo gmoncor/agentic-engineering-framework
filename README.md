@@ -64,7 +64,7 @@ Principios del flujo:
 
 ## Prerequisitos
 
-- **Node.js >= 20** — requerido por los hooks de enforcement (`sdd-pipeline-guard.js`, `sdd-commit-guard.js`). Sin Node.js, los hooks fallan silenciosamente y no hay enforcement del pipeline SDD. Verificar con `node --version`
+- **Node.js >= 20** — requerido por los hooks de enforcement (`sdd-pipeline-guard.js`, `sdd-review-gate.js`, `sdd-commit-guard.js`). Sin Node.js, los hooks fallan silenciosamente y no hay enforcement del pipeline SDD. Verificar con `node --version`
 
 ## Instalacion
 
@@ -90,7 +90,7 @@ Copia estas carpetas y archivos a la raiz de tu proyecto:
 
 ```
 .claude/          # agentes, comandos, skills, workflows, settings
-hooks/            # 2 hooks advisory (pipeline-guard + commit-guard)
+hooks/            # 3 hooks (pipeline-guard + review-gate + commit-guard)
 ai_docs/          # plantillas + carpetas para tus docs
 CLAUDE.md         # instrucciones del sistema
 ```
@@ -121,7 +121,7 @@ Copia a la raiz de tu proyecto:
 agents/               # agentes Gemini (4)
 commands/              # comandos Gemini (.toml, 12)
 skills/                # skills Gemini (8)
-hooks/                 # hooks advisory (2)
+hooks/                 # hooks de enforcement (3)
 GEMINI.md              # instrucciones sistema
 gemini-extension.json  # manifest
 ai_docs/               # plantillas + docs de tu proyecto
@@ -145,7 +145,7 @@ No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` par
 | Comandos | 12 | `.claude/commands/` | `commands/` |
 | Agentes | 4 | `.claude/agents/` | `agents/` |
 | Skills | 8 | `.claude/skills/` | `skills/` |
-| Hooks | 2 | `hooks/` (wired en settings) | `hooks/` (wired en hooks.json) |
+| Hooks | 3 | `hooks/` (wired en settings) | `hooks/` (wired en hooks.json) |
 | Workflows | 2 | `.claude/workflows/` | — (secuencial via comando) |
 | Templates | 12 | `ai_docs/dev_templates/` | `ai_docs/dev_templates/` |
 | Core templates | 4 | `ai_docs/core_templates/` | `ai_docs/core_templates/` |
@@ -331,10 +331,19 @@ El directorio `hooks/` contiene hooks compartidos entre ambas CLIs que refuerzan
 
 | Hook | Evento | Que hace | Modo |
 |------|--------|----------|------|
-| `sdd-pipeline-guard.js` | Write/Edit | Avisa si escribes codigo sin spec aprobada Y tasks derivadas | Advisory |
+| `sdd-pipeline-guard.js` | Write/Edit | **Bloquea** la escritura de un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task derivada de una spec APROBADA | Bloqueante |
+| `sdd-review-gate.js` | git commit / git merge | **Bloquea** el commit si el codigo entregado no paso la revision adversarial posterior a la implementacion | Bloqueante (opt-in) |
 | `sdd-commit-guard.js` | git commit | Verifica formato de commit (subject ≤72, tipo valido entre 12 tipos, sin Co-Authored-By IA) | Advisory |
 
-Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`). No requieren configuracion manual.
+Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`).
+
+**Los dos bloqueos cubren los dos extremos del ciclo de calidad:** `sdd-pipeline-guard.js` impide escribir codigo que nadie planifico; `sdd-review-gate.js` impide commitear codigo que nadie reviso. Sin el segundo, la revision adversarial es opcional de facto y el codigo llega a la rama sin que nadie haya mirado el diff.
+
+**Configuracion (`hooks/config.json`):** `sdd-review-gate.js` viene desactivado. Ponlo en `"enabled": true` cuando el flujo del proyecto ejecute la revision adversarial antes de commitear (el workflow `/implementar-spec` emite la evidencia que el gate consume; su contrato vive en `hooks/sdd-review-signal.js`). Con el gate activo, un commit sin revision se rechaza.
+
+**Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada ambos bloqueos a aviso. Uso puntual para desbloquear una urgencia; si se queda fijo en el shell, el enforcement deja de existir.
+
+**Tests:** `npm test` ejecuta los tests de contrato de los hooks (Node >= 20, sin dependencias).
 
 **Modelo por defecto (Claude Code):** `.claude/settings.json` fija `"model": "claude-opus-4-8"`. Opus 4.8 es el modelo mas capaz para planificacion y revision exhaustiva. Override puntual con `/model sonnet` si necesitas velocidad en tareas mecanicas.
 
@@ -392,7 +401,7 @@ El historial de cambios por version esta en **[CHANGELOG.md](CHANGELOG.md)**, en
 
 Para reportar una vulnerabilidad, sigue el proceso de **[SECURITY.md](SECURITY.md)** — no abras un issue publico.
 
-Ten presente que el framework **guia** al asistente de IA, pero no verifica el codigo que genera. Los hooks son advisory: avisan, no bloquean. Revisa y audita todo lo que llegue a produccion.
+Ten presente que el framework **guia** al asistente de IA, pero no verifica el codigo que genera. Los hooks bloquean escrituras y commits fuera del pipeline, no la correccion del codigo. Revisa y audita todo lo que llegue a produccion.
 
 ---
 

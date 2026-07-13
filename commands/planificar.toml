@@ -16,7 +16,8 @@ Lee ai_docs/core/ para contexto del proyecto.
 PASO 1 — SPEC:
 Lee ai_docs/dev_templates/spec.md y sigue todos sus pasos.
 NO hagas preguntas de clarificacion — trabaja con la informacion disponible.
-Crea la spec completa con Estado: APROBADA. Guarda en ai_docs/tasks/spec_<descriptor>.md.
+Crea la spec completa con Estado: BORRADOR. Guarda en ai_docs/tasks/spec_<descriptor>.md.
+NUNCA marques la spec como APROBADA: la aprobacion es del usuario y ocurre en el PASO 5.
 
 PASO 2 — TASKS:
 Lee ai_docs/dev_templates/tareas.md y sigue todos sus pasos.
@@ -33,11 +34,16 @@ Lee ai_docs/dev_templates/auditar_spec.md y ejecuta todos los pasos.
 Integra los hallazgos de las revisiones individuales del paso 3.
 Verifica: cobertura de criterios, overlaps, huecos, coherencia, dependencias.
 
-PASO 5 — RESUMEN:
+PASO 5 — RESUMEN Y APROBACION:
 Presenta al usuario el resultado completo con veredicto final:
-- APROBADO: puede implementar con /implementar-spec <spec> (workflow completo) o /implementar <task> (manual)
+- APROBADO: pide al usuario que revise el plan y escriba "apruebo". Solo entonces cambia
+  el estado de la spec de BORRADOR a APROBADA. Despues puede implementar con
+  /implementar-spec <spec> (workflow completo) o /implementar <task> (manual)
 - NECESITA_AJUSTES: detalla problemas y propone como resolverlos
 - NECESITA_REPLANTEAMIENTO: recomienda rehacer con mas detalle
+
+La spec permanece en BORRADOR hasta que el usuario da su aprobacion explicita.
+DETENTE aqui: no implementes nada sin esa aprobacion.
 
 Solicitud del usuario:
 

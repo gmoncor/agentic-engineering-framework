@@ -19,6 +19,9 @@
   "engines": {
     "node": ">=20"
   },
+  "scripts": {
+    "test": "node --test \"hooks/tests/*.test.js\""
+  },
   "keywords": [
     "sdd",
     "spec-driven-development",

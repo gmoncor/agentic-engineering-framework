@@ -8,12 +8,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ### Added
 
+- `hooks/sdd-review-gate.js`: bloquea `git commit` y `git merge` cuando el codigo entregado no paso la revision adversarial posterior a la implementacion. Opt-in via `hooks/config.json` (`sdd_review_gate.enabled`). La revision del PLAN (revision de tasks, auditoria de la spec) no lo satisface: valida el plan, no el codigo
+- `hooks/sdd-review-signal.js`: contrato unico de la senal de revision entre el emisor (workflow `/implementar-spec`, que la escribe tras revisar el diff) y el consumidor (`sdd-review-gate.js`). Dos canales: fichero de sesion con TTL de 4h y marca `[SDD-POST-IMPL: <hash>]` en el mensaje de commit
+- `hooks/config.json`: configuracion de los hooks (activacion del review gate y TTL de la senal)
+- `hooks/tests/`: tests de contrato de los guards, ejecutables con `npm test` (Node >= 20, sin dependencias). Cubren el round-trip completo emisor/consumidor de la senal de revision
 - `.gitattributes` que normaliza los finales de linea a LF en todo el repositorio
 - Andamiaje de proyecto publico: `CONTRIBUTING.md`, `CHANGELOG.md`, `SECURITY.md`, plantillas de issue y de Pull Request en `.github/`
 - `package.json` que declara `engines.node: ">=20"`, el requisito real de los hooks, hasta ahora solo expresado en prosa
 
 ### Changed
 
+- **La spec ya no nace aprobada.** `/planificar` la guardaba directamente con `Estado: APROBADA` antes de que el usuario la viera: la aprobacion humana era un tramite que el propio workflow se daba a si mismo. Ahora nace en `BORRADOR` y solo el usuario la aprueba, despues de revisar el plan completo
+- **`sdd-pipeline-guard.js` pasa de avisar a bloquear, y con granularidad real.** Antes comprobaba que existiera *alguna* spec aprobada y *alguna* task: tras la primera spec del proyecto quedaba satisfecho para siempre. Ahora exige que el archivo concreto que se va a escribir este declarado en la tabla "Archivos afectados" de alguna task
 - El arbol completo se renormalizo a LF en un commit aislado. Catorce ficheros estaban commiteados con CRLF y producian diffs fantasma
 - `gemini-extension.json` pasa a la version 2.1.0, alineada con `.claude-plugin/plugin.json`. Ambos manifiestos declaraban versiones distintas del mismo release
 - El README enlaza los documentos de contribucion, changelog y seguridad
