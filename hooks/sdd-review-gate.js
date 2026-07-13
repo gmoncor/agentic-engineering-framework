@@ -4,44 +4,58 @@
 /**
  * SDD Review Gate — PreToolUse / BeforeTool hook sobre comandos de shell.
  *
- * BLOQUEA `git commit` y `git merge` cuando no hay evidencia de que el codigo
- * entregado haya pasado la revision adversarial POST-implementacion.
+ * AVISA (nunca deniega) al ejecutar `git commit` o `git merge` cuando no consta
+ * que el codigo entregado haya pasado la revision adversarial POST-implementacion.
+ *
+ * POR QUE AVISA Y NO BLOQUEA
+ * Bloquear exige una prueba de que la revision ocurrio, y aqui no la hay:
+ *   - La unica evidencia posible es una senal que el propio flujo emite. No esta
+ *     atada al diff que se commitea: dice "hubo una revision en esta sesion", no
+ *     "este diff fue revisado". Bloquear con eso seria enforcement aparente.
+ *   - El emisor de la senal (el flujo de implementacion) commitea cada task antes
+ *     de la revision final. Con un bloqueo real no podria commitear su propio
+ *     trabajo: el gate se estaria bloqueando a si mismo.
+ * Un aviso honesto vale mas que un bloqueo que se puede fabricar. La frontera
+ * dura, si se necesita, va en CI y en las protecciones de rama.
  *
  * Reparto de responsabilidades:
  *   - sdd-pipeline-guard.js bloquea ESCRITURAS no declaradas en el plan (PRE).
- *   - sdd-review-gate.js    bloquea COMMITS sin revision del codigo (POST).
+ *   - sdd-review-gate.js    avisa de COMMITS sin revision del codigo (POST).
  *
  * La revision PRE-implementacion (revision de tasks, auditoria de la spec)
- * valida el PLAN, no el CODIGO: no satisface este gate.
+ * valida el PLAN, no el CODIGO: no silencia este aviso.
  *
- * Evidencia aceptada (ver sdd-review-signal.js):
- *   a) marca [SDD-POST-IMPL: <hash>] en el propio mensaje de commit
- *   b) fichero de senal de la sesion, dentro de su TTL
+ * Silencia el aviso: el fichero de senal de la sesion dentro de su TTL, escrito
+ * por el flujo de implementacion tras la revision (ver sdd-review-signal.js).
  *
- * Degradacion segura (deja pasar):
- *   - el gate no esta habilitado en hooks/config.json
+ * Silencio total (no avisa):
+ *   - el hook no esta habilitado en hooks/config.json
  *   - el payload no trae session_id (no hay sesion que correlacionar)
- *   - SDD_GUARD_SKIP=1 (escape de emergencia): degrada el bloqueo a aviso
  */
 
 const fs = require('fs');
 const path = require('path');
-const { readPayload, skipRequested, warn, deny } = require('./sdd-hook-utils');
-const { MARKER_RE, DEFAULT_TTL_MS, readSignal } = require('./sdd-review-signal');
+const { readPayload, readToolCall, warn } = require('./sdd-hook-utils');
+const { DEFAULT_TTL_MS, readSignal } = require('./sdd-review-signal');
 
-const SHELL_TOOLS = new Set(['Bash', 'run_command']);
+const SHELL_TOOLS = new Set(['Bash', 'run_command', 'shell']);
 const GUARDED_CMD_RE = /\bgit\s+(commit|merge)\b/;
 
-const DENY_REASON = 'SDD: revision del codigo no encontrada. El commit entrega codigo que nadie '
-  + 'ha revisado. Ejecuta la revision adversarial POST-implementacion (/revision o la fase final '
-  + 'de /implementar-spec) antes de commitear, o usa SDD_GUARD_SKIP=1 como escape puntual.';
+const AVISO = 'SDD: no consta que el codigo que vas a commitear haya sido revisado. '
+  + 'Este aviso no bloquea nada: no hay forma de probar que un diff concreto se reviso, '
+  + 'asi que el hook no puede denegar con honestidad. '
+  + 'Antes de entregar, pasa la revision adversarial POST-implementacion sobre el diff '
+  + '(la fase final del flujo de implementacion, o el paso de revision por separado) '
+  + 'y trata sus hallazgos.';
 
 async function main() {
   const data = await readPayload();
   if (!data) process.exit(0);
-  if (!SHELL_TOOLS.has(data.tool_name || '')) process.exit(0);
 
-  const cmd = ((data.tool_input || {}).command || '').trim();
+  const call = readToolCall(data);
+  if (!SHELL_TOOLS.has(call.name)) process.exit(0);
+
+  const cmd = String(call.input.command || '').trim();
   if (!GUARDED_CMD_RE.test(cmd)) process.exit(0);
 
   const config = loadConfig().sdd_review_gate || {};
@@ -50,11 +64,9 @@ async function main() {
   const sessionId = data.session_id || '';
   if (!sessionId) process.exit(0);
 
-  if (MARKER_RE.test(cmd)) process.exit(0);
   if (readSignal(sessionId, ttlMs(config))) process.exit(0);
 
-  if (skipRequested()) warn(DENY_REASON + ' [SDD_GUARD_SKIP=1: se permite el commit]');
-  deny(DENY_REASON);
+  warn(AVISO, call);
 }
 
 // SDD_CONFIG_PATH permite apuntar a otra configuracion (tests, entornos aislados).

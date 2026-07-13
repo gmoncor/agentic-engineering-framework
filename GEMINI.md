@@ -99,13 +99,14 @@ La extension no fija modelo: usa el que tengas configurado en el CLI (`gemini` a
 
 | Hook | Evento | Que enforcea | Modo |
 |------|--------|-------------|------|
-| `sdd-pipeline-guard.js` | write_file/edit_file | **Bloquea** escribir un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de una spec APROBADA | Bloqueante |
-| `sdd-review-gate.js` | run_command (git commit/merge) | **Bloquea** el commit si el codigo entregado no paso la revision adversarial POST-implementacion | Bloqueante (opt-in) |
+| `sdd-pipeline-guard.js` | write_file/edit_file | **Bloquea** escribir un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de la spec APROBADA activa | Bloqueante |
 | `sdd-commit-guard.js` | run_command (git commit) | Warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Advisory |
 
-Configurados en `hooks/hooks.json`. Las rutas se resuelven desde la raiz del proyecto, asi que `hooks/` tiene que estar copiado ahi (tambien si instalas la extension). `sdd-review-gate.js` se activa poniendo `sdd_review_gate.enabled: true` en `hooks/config.json`.
+Configurados en `hooks/hooks.json`. Las rutas se resuelven desde la raiz del proyecto, asi que `hooks/` tiene que estar copiado ahi (tambien si instalas la extension).
 
-**Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada ambos bloqueos a aviso. Es para desbloquear una situacion puntual, no para dejarlo fijo en el shell: con el activo el pipeline SDD no enforcea nada.
+**Aqui no hay aviso de revision del codigo.** El hook `sdd-review-gate.js` existe en el repositorio, pero se cablea solo en el backend de Claude Code: la senal que lo silencia la emite su motor de workflows, que este backend no tiene. Cablearlo aqui daria un aviso permanente sin ninguna via legitima de atenderlo. La revision adversarial posterior a la implementacion sigue siendo obligatoria en el flujo (`/revision`), pero aqui la sostiene la disciplina, no un hook.
+
+**Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada el bloqueo de escrituras a aviso. Es para desbloquear una situacion puntual, no para dejarlo fijo en el shell: con el activo el pipeline SDD no enforcea nada.
 
 ## Reglas de Cursor (`.cursor/rules/`)
 

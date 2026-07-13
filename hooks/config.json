@@ -1,5 +1,5 @@
 {
-  "_comment": "Configuracion de los hooks SDD. sdd-review-gate bloquea git commit/merge sin revision adversarial del codigo; se activa poniendo enabled: true (opt-in, porque exige que la revision POST-implementacion ocurra antes de cada commit).",
+  "_comment": "Configuracion de los hooks SDD. sdd-review-gate AVISA (nunca deniega) al hacer git commit/merge si no consta que el codigo entregado se haya revisado; se activa poniendo enabled: true. Solo se cablea en el backend de Claude Code, el unico cuyo flujo emite la senal de revision. La senal es de conveniencia: registra que hubo revision en la sesion, no que el diff que se commitea sea el revisado.",
   "sdd_review_gate": {
     "enabled": false,
     "ttl_hours": 4

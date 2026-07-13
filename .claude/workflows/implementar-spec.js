@@ -84,11 +84,12 @@ async function cargarModulo(rutaRelativa) {
 
 // ── Senal de revision POST-implementacion ─────────────────────────────────────
 // Tras la revision adversarial, este workflow deja constancia de que el codigo
-// entregado fue revisado. El hook sdd-review-gate.js consume esa senal para
-// dejar pasar los commits; sin ella, el commit se bloquea.
-// El contrato de la senal vive en hooks/sdd-review-signal.js (un solo formato
-// para emisor y consumidor). Si el modulo no esta disponible (framework sin
-// hooks instalados), la emision se omite sin romper el workflow.
+// entregado fue revisado. El hook sdd-review-gate.js consume esa senal para no
+// avisar. Es una senal de conveniencia, no una prueba: registra que hubo una
+// revision en esta sesion, no que el diff que luego se commitee sea el revisado.
+// El contrato vive en hooks/sdd-review-signal.js (un solo formato para emisor y
+// consumidor). Si el modulo no esta disponible (framework sin hooks instalados),
+// la emision se omite sin romper el workflow.
 async function emitirSenalRevision(contenidoRevisado) {
   try {
     const senal = await cargarModulo('hooks/sdd-review-signal.js')
@@ -140,10 +141,11 @@ if (taskList.length === 0) {
 // el descubrimiento solo se usa si la task no los declara en su tabla.
 const mapaArchivos = orq.mapearArchivos(taskList, '.')
 
-// Un ciclo de dependencias no puede implementarse: es un error del plan.
+// Un ciclo de dependencias, o una dependencia cuyo documento no existe, no pueden
+// implementarse: son errores del plan.
 var waves
 try {
-  waves = orq.computeWaves(taskList)
+  waves = orq.computeWaves(taskList, '.')
 } catch (e) {
   return { spec: specPath, error: e.message }
 }
@@ -364,14 +366,14 @@ Retorna tu veredicto con problemas criticos, menores, aspectos positivos y resum
 const veredicto = revision ? revision.veredicto : 'ERROR'
 log('Revision adversarial: ' + veredicto)
 
-// La senal solo se emite si la revision produjo veredicto: es la prueba de que
-// alguien miro el codigo entregado. Certifica que la revision OCURRIO, no que
-// haya salido limpia (las correcciones que exige tambien deben poder commitearse).
+// La senal solo se emite si la revision produjo veredicto. Registra que la
+// revision OCURRIO en esta sesion — no que haya salido limpia, ni que ate el
+// diff: sirve para que el aviso del hook no repita lo que ya se ha hecho.
 var marcaRevision = null
 if (revision) {
   marcaRevision = await emitirSenalRevision(JSON.stringify({ spec: specPath, impl: allResults, revision: revision }))
   if (marcaRevision) {
-    log('Revision registrada. Marca para el mensaje de commit: [SDD-POST-IMPL: ' + marcaRevision + ']')
+    log('Revision registrada en la senal de la sesion (' + marcaRevision + ')')
   }
 }
 

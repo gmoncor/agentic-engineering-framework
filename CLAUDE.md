@@ -104,15 +104,19 @@ Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
 
 | Hook | Evento | Que enforcea | Modo |
 |------|--------|-------------|------|
-| `sdd-pipeline-guard.js` | Write/Edit | **Bloquea** escribir un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de una spec APROBADA | Bloqueante |
-| `sdd-review-gate.js` | Bash (git commit/merge) | **Bloquea** el commit si el codigo entregado no paso la revision adversarial POST-implementacion | Bloqueante (opt-in) |
+| `sdd-pipeline-guard.js` | Write/Edit | **Bloquea** escribir un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de la spec APROBADA activa | Bloqueante |
+| `sdd-review-gate.js` | Bash (git commit/merge) | **Avisa** si no consta que el codigo entregado haya pasado la revision adversarial POST-implementacion. Nunca deniega | Advisory (opt-in) |
 | `sdd-commit-guard.js` | Bash (git commit) | Warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Advisory |
 
-Configurados en `.claude/settings.json` y `hooks/hooks.json`. `sdd-review-gate.js` se activa poniendo `sdd_review_gate.enabled: true` en `hooks/config.json`.
+Configurados en `.claude/settings.json`. `sdd-review-gate.js` se activa poniendo `sdd_review_gate.enabled: true` en `hooks/config.json`.
 
-**Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada ambos bloqueos a aviso. Es para desbloquear una situacion puntual, no para dejarlo fijo en el shell: con el activo el pipeline SDD no enforcea nada.
+**El unico bloqueo real es el de escrituras.** El aviso de revision no bloquea porque no puede probar lo que afirmaria: la unica evidencia de que hubo revision es una senal de sesion que no esta atada al diff que se commitea. Bloquear con eso seria enforcement aparente. Si necesitas una frontera dura sobre lo que se entrega, ponla en CI y en las protecciones de rama.
 
-Contrato de la senal de revision (emisor `/implementar-spec`, consumidor `sdd-review-gate.js`): `hooks/sdd-review-signal.js`. Tests de contrato: `npm test`.
+**El aviso de revision solo existe en este backend** (Claude Code): su senal la emite el motor de workflows, que los demas backends no tienen. Donde no hay emisor no se cablea, porque el aviso no podria silenciarse por ninguna via legitima.
+
+**Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada el bloqueo de escrituras a aviso. Es para desbloquear una situacion puntual, no para dejarlo fijo en el shell: con el activo el pipeline SDD no enforcea nada.
+
+Contrato de la senal de revision (emisor `/implementar-spec`, consumidor `sdd-review-gate.js`): `hooks/sdd-review-signal.js`. Es una senal de conveniencia, no una prueba criptografica. Tests de contrato: `npm test`.
 
 ## Estilo
 

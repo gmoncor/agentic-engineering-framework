@@ -390,11 +390,11 @@ El directorio `hooks/` contiene hooks compartidos entre ambas CLIs que refuerzan
 
 | Hook | Evento | Que hace | Modo |
 |------|--------|----------|------|
-| `sdd-pipeline-guard.js` | Write/Edit | **Bloquea** la escritura de un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task derivada de una spec APROBADA | Bloqueante |
-| `sdd-review-gate.js` | git commit / git merge | **Bloquea** el commit si el codigo entregado no paso la revision adversarial posterior a la implementacion | Bloqueante (opt-in) |
+| `sdd-pipeline-guard.js` | Write/Edit | **Bloquea** la escritura de un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de la spec APROBADA activa | Bloqueante |
+| `sdd-review-gate.js` | git commit / git merge | **Avisa** si no consta que el codigo entregado haya pasado la revision adversarial posterior a la implementacion. Nunca deniega | Advisory (opt-in, solo Claude Code) |
 | `sdd-commit-guard.js` | git commit | Verifica formato de commit (subject ≤72, tipo valido entre 12 tipos, sin Co-Authored-By IA) | Advisory |
 
-Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`).
+Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`). El aviso de revision (`sdd-review-gate.js`) se cablea **unicamente en Claude Code**; los demas backends no lo cargan.
 
 **Codex** usa dos hooks propios, registrados en `.codex/hooks.json`:
 
@@ -407,11 +407,11 @@ Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohibe esos mismos com
 
 **Limite honesto de los hooks de Codex:** son un **guardarrail**, no una frontera completa de enforcement — asi lo declara el propio fabricante. No interceptan todas las llamadas al shell ni todas las rutas de escritura: un proceso hijo lanzado desde un comando permitido puede escapar al matcher, y el payload de `apply_patch` no tiene esquema publico estable (si el guard no puede leer las rutas del parche, avisa en vez de denegar, porque bloquear a ciegas seria arbitrario). Sirven para que el camino correcto sea el camino por defecto y para que desviarse sea deliberado. Si necesitas una frontera dura, ponla en el CI y en las protecciones de rama.
 
-**Los dos bloqueos cubren los dos extremos del ciclo de calidad:** `sdd-pipeline-guard.js` impide escribir codigo que nadie planifico; `sdd-review-gate.js` impide commitear codigo que nadie reviso. Sin el segundo, la revision adversarial es opcional de facto y el codigo llega a la rama sin que nadie haya mirado el diff.
+**Solo un extremo del ciclo se bloquea de verdad, y conviene saber cual.** `sdd-pipeline-guard.js` impide escribir codigo que nadie planifico: puede comprobarlo mecanicamente, porque el archivo que se va a escribir esta declarado en una task o no lo esta. La revision del codigo entregado no admite esa comprobacion: la unica evidencia posible es una senal que el propio flujo emite, y esa senal dice "hubo una revision en esta sesion", no "este diff fue revisado". Bloquear con ella seria enforcement aparente — cualquiera que conozca el formato la reproduce. Por eso `sdd-review-gate.js` **avisa y deja pasar**. Que el codigo entregado se revise lo sostiene el flujo (`/implementar-spec` termina en revision adversarial), no un hook. Si necesitas una frontera dura sobre lo que llega a la rama, ponla en CI y en las protecciones de rama.
 
-**Configuracion (`hooks/config.json`):** `sdd-review-gate.js` viene desactivado. Ponlo en `"enabled": true` cuando el flujo del proyecto ejecute la revision adversarial antes de commitear (el workflow `/implementar-spec` emite la evidencia que el gate consume; su contrato vive en `hooks/sdd-review-signal.js`). Con el gate activo, un commit sin revision se rechaza.
+**Configuracion (`hooks/config.json`):** `sdd-review-gate.js` viene desactivado. Ponlo en `"enabled": true` para que avise cuando vayas a commitear codigo sin constancia de revision. El workflow `/implementar-spec` emite la senal que lo silencia; su contrato vive en `hooks/sdd-review-signal.js`. Solo se cablea en Claude Code: los demas backends no tienen motor de workflows y, por tanto, no tienen emisor de la senal — el aviso ahi no podria atenderse por ninguna via legitima.
 
-**Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada ambos bloqueos a aviso. Uso puntual para desbloquear una urgencia; si se queda fijo en el shell, el enforcement deja de existir.
+**Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada el bloqueo de escrituras a aviso. Uso puntual para desbloquear una urgencia; si se queda fijo en el shell, el enforcement deja de existir.
 
 **Tests:** `npm test` ejecuta los tests de contrato de los hooks (Node >= 20, sin dependencias).
 
@@ -473,7 +473,7 @@ El historial de cambios por version esta en **[CHANGELOG.md](CHANGELOG.md)**, en
 
 Para reportar una vulnerabilidad, sigue el proceso de **[SECURITY.md](SECURITY.md)** — no abras un issue publico.
 
-Ten presente que el framework **guia** al asistente de IA, pero no verifica el codigo que genera. Los hooks bloquean escrituras y commits fuera del pipeline, no la correccion del codigo. Revisa y audita todo lo que llegue a produccion.
+Ten presente que el framework **guia** al asistente de IA, pero no verifica el codigo que genera. Los hooks bloquean escrituras fuera del pipeline y avisan sobre los commits; no verifican la correccion del codigo, y el commit nunca se deniega. Revisa y audita todo lo que llegue a produccion.
 
 ---
 

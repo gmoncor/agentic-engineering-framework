@@ -15,8 +15,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 - **Los pasos del flujo se entregan tambien como skills auto-activables** (`.agents/skills/`, 17): describir lo que quieres basta para que entre la skill del paso
 - **Analisis previo de la solicitud** antes de crear la spec: `/planificar` no arranca a ciegas si falta contexto
 - `tests/backend-parity.test.js`: canary que falla si un backend se queda sin un agente o sin un paso del flujo que los demas si tienen. Verifica ademas que los conteos de plantillas que cita la documentacion siguen siendo ciertos y que los tres manifiestos declaran la misma version
-- `hooks/sdd-review-gate.js`: bloquea `git commit` y `git merge` cuando el codigo entregado no paso la revision adversarial posterior a la implementacion. Opt-in via `hooks/config.json` (`sdd_review_gate.enabled`). La revision del PLAN (revision de tasks, auditoria de la spec) no lo satisface: valida el plan, no el codigo
-- `hooks/sdd-review-signal.js`: contrato unico de la senal de revision entre el emisor (workflow `/implementar-spec`, que la escribe tras revisar el diff) y el consumidor (`sdd-review-gate.js`). Dos canales: fichero de sesion con TTL de 4h y marca `[SDD-POST-IMPL: <hash>]` en el mensaje de commit
+- `hooks/sdd-review-gate.js`: **avisa** (nunca deniega) al hacer `git commit` o `git merge` si no consta que el codigo entregado haya pasado la revision adversarial posterior a la implementacion. Opt-in via `hooks/config.json` (`sdd_review_gate.enabled`) y cableado solo en Claude Code, el unico backend cuyo flujo emite la senal que lo silencia. No bloquea porque no puede probar lo que afirmaria: la senal registra que hubo revision en la sesion, no que el diff concreto se revisara. La revision del PLAN (revision de tasks, auditoria de la spec) no lo silencia: valida el plan, no el codigo
+- `hooks/sdd-review-signal.js`: contrato unico de la senal de revision entre el emisor (workflow `/implementar-spec`, que la escribe tras revisar el diff) y el consumidor (`sdd-review-gate.js`). Un solo canal: fichero de sesion con TTL de 4h. Es una senal de conveniencia, no una prueba: no esta atada al diff que se commitea
 - `hooks/config.json`: configuracion de los hooks (activacion del review gate y TTL de la senal)
 - `hooks/tests/`: tests de contrato de los guards, ejecutables con `npm test` (Node >= 20, sin dependencias). Cubren el round-trip completo emisor/consumidor de la senal de revision
 - `.gitattributes` que normaliza los finales de linea a LF en todo el repositorio
@@ -39,7 +39,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ### Breaking
 
-- **Los guards pasan de avisar a bloquear.** Un proyecto que venia de la 2.x y escribia codigo sin declararlo en una task ahora se encuentra la escritura denegada. La salida es declarar el archivo en la task, no desactivar el guard
+- **El guard de escrituras pasa de avisar a bloquear.** Un proyecto que venia de la 2.x y escribia codigo sin declararlo en una task ahora se encuentra la escritura denegada. La salida es declarar el archivo en la task, no desactivar el guard. (El aviso de revision del codigo, en cambio, sigue siendo advisory: nunca deniega un commit)
 - **Los hooks de Gemini exigen `hooks/` en la raiz del proyecto.** Si instalaste la extension y no copiaste esa carpeta, copiala ahora
 
 ### Known issues

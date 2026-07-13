@@ -1,6 +1,7 @@
 {
   "_comment": "Hooks SDD para Codex. Son un guardarrail, no una frontera completa de enforcement: no cubren todas las rutas de escritura ni todas las llamadas al shell (procesos hijos, herramientas externas). El refuerzo duro vive en .codex/rules/ y en el CI del repositorio.",
   "_trust": "Codex pide confirmar (trust) los hooks del proyecto la primera vez que los ejecuta y cada vez que cambia su contenido. Revisa el codigo de hooks/ antes de confiar en el.",
+  "_sin_review_gate": "sdd-review-gate.js NO se cablea aqui: la senal de revision que lo silencia la emite el motor de workflows, que solo existe en el backend de Claude Code. En este backend el aviso no podria satisfacerse por ninguna via legitima.",
   "hooks": {
     "PreToolUse": [
       {

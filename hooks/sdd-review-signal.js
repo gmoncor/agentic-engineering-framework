@@ -2,14 +2,21 @@
 
 // Senal de revision POST-implementacion.
 //
-// Contrato unico entre el emisor (el workflow /implementar-spec, tras la
-// revision adversarial del diff) y el consumidor (sdd-review-gate.js, que
-// bloquea el commit si la revision no ocurrio). Ambos lados usan este modulo:
-// el formato de la senal no puede divergir.
+// Contrato unico entre el emisor (el flujo de implementacion, tras la revision
+// adversarial del diff) y el consumidor (sdd-review-gate.js, que avisa si no
+// consta la revision). Ambos lados usan este modulo: el formato no puede divergir.
 //
-// Canales de la senal:
-//   1. Fichero temporal por sesion: <tmp>/sdd-review-<session_id>.json
-//   2. Marca en el mensaje de commit: [SDD-POST-IMPL: <hash>]
+// QUE ES Y QUE NO ES ESTA SENAL
+// Es una senal de CONVENIENCIA, no una prueba: registra que hubo una revision en
+// esta sesion, no que el diff que se esta commiteando sea el que se reviso. El
+// hash guardado es el del contenido revisado, y nadie lo contrasta con el diff.
+// Por eso el consumidor solo avisa; si bloqueara, estaria fingiendo una garantia
+// que la senal no da.
+//
+// Canal unico: fichero temporal por sesion, <tmp>/sdd-review-<session_id>.json.
+// El canal antiguo — una marca [SDD-POST-IMPL: <hash>] en el mensaje de commit —
+// se elimino: el mensaje de commit lo redacta el mismo agente al que el aviso
+// interpela, asi que la marca era auto-emitible y no aportaba evidencia alguna.
 
 const crypto = require('crypto');
 const fs = require('fs');
@@ -17,7 +24,6 @@ const os = require('os');
 const path = require('path');
 
 const SIGNAL = 'SDD_POST_IMPL';
-const MARKER_RE = /\[SDD-POST-IMPL:\s*([a-fA-F0-9]{4,})\]/;
 const HASH_RE = /^[a-fA-F0-9]{4,}$/;
 const DEFAULT_TTL_MS = 4 * 60 * 60 * 1000; // 4h: cubre una sesion de implementacion
 
@@ -41,7 +47,7 @@ function resolveSessionId(env) {
 }
 
 // Escribe la senal. Retorna el path escrito, o null si no hay sesion conocida
-// (en ese caso el unico canal disponible es la marca en el mensaje de commit).
+// (sin sesion no hay nada que correlacionar y el consumidor no avisa).
 function writeSignal(sessionId, diffHash) {
   if (!sessionId || !HASH_RE.test(String(diffHash))) return null;
   const file = signalPath(sessionId);
@@ -65,4 +71,4 @@ function readSignal(sessionId, ttlMs) {
   return raw;
 }
 
-module.exports = { MARKER_RE, DEFAULT_TTL_MS, signalPath, hashDiff, resolveSessionId, writeSignal, readSignal };
+module.exports = { DEFAULT_TTL_MS, signalPath, hashDiff, resolveSessionId, writeSignal, readSignal };

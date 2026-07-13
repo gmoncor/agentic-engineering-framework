@@ -1,5 +1,6 @@
 {
   "_comment": "Las rutas se resuelven desde la raiz del proyecto: 'hooks/' tiene que estar copiado ahi, tambien al instalar la extension. Anclarlas al directorio de la extension solo funcionaria en esa via de instalacion y dejaria la manual con los hooks apuntando a archivos inexistentes.",
+  "_sin_review_gate": "sdd-review-gate.js NO se cablea aqui: su senal la emite el motor de workflows, que solo existe en el backend de Claude Code. Cablearlo en este backend daria un aviso que nada puede silenciar de forma legitima.",
   "hooks": {
     "BeforeTool": [
       {
@@ -19,16 +20,6 @@
           {
             "type": "command",
             "command": "node hooks/sdd-commit-guard.js"
-          }
-        ]
-      },
-      {
-        "_comment": "Bloqueante (opt-in en hooks/config.json): impide git commit/merge sin revision adversarial del codigo.",
-        "matcher": "run_command",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node hooks/sdd-review-gate.js"
           }
         ]
       }

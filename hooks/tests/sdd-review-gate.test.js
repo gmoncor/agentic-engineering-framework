@@ -1,11 +1,16 @@
 'use strict';
 
-// Contrato de sdd-review-gate.js: bloquea commits de codigo sin revision
-// adversarial POST-implementacion, y round-trip emisor/consumidor.
+// Contrato de sdd-review-gate.js: AVISA de commits de codigo sin revision
+// adversarial POST-implementacion, y nunca los deniega.
 //
-// El round-trip es la garantia critica: el gate solo puede bloquear si la senal
-// que el workflow de implementacion emite es exactamente la que el gate acepta.
-// Si emisor y consumidor divergen, el repo queda bloqueado para siempre.
+// El hook es advisory por diseno: la unica evidencia disponible es una senal de
+// sesion que no esta atada al diff que se commitea. Denegar con eso seria fingir
+// una garantia que no existe. Estos tests fijan ese contrato: si alguien vuelve a
+// poner el hook a denegar, fallan.
+//
+// El round-trip emisor/consumidor sigue siendo critico: el aviso solo se silencia
+// si la senal que el flujo de implementacion emite es exactamente la que el hook
+// acepta. Si emisor y consumidor divergen, el aviso sale siempre.
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -32,7 +37,7 @@ function commit(mensaje, sessionId) {
   return payload;
 }
 
-// Escribe la senal igual que lo hace el workflow de implementacion: mismo modulo,
+// Escribe la senal igual que lo hace el flujo de implementacion: mismo modulo,
 // misma funcion. Este es el lado "emisor" del round-trip.
 function emitirSenal(env, contenidoRevisado, edadMs) {
   process.env.SDD_SIGNAL_DIR = env.SDD_SIGNAL_DIR;
@@ -47,16 +52,32 @@ function emitirSenal(env, contenidoRevisado, edadMs) {
   return hash;
 }
 
-test('git commit sin senal ni marca: deny', () => {
+test('git commit sin senal: avisa y deja pasar (nunca deniega)', () => {
   const env = entorno(CONFIG_ON);
   const r = runHook(HOOK, commit('feat: entregar el modulo de pagos'), env);
 
-  assert.strictEqual(r.decision.decision, 'deny');
-  assert.strictEqual(r.code, 2);
-  assert.match(r.decision.reason, /revision del codigo no encontrada/);
+  assert.strictEqual(r.decision.decision, 'warn');
+  assert.strictEqual(r.code, 0);
+  assert.match(r.decision.reason, /no consta que el codigo/);
+  assert.match(r.decision.reason, /no bloquea nada/);
 });
 
-test('round-trip: la senal que emite el workflow es aceptada por el gate', () => {
+test('el hook no deniega en ningun caso: no emite decision de bloqueo', () => {
+  const env = entorno(CONFIG_ON);
+  const casos = [
+    commit('feat: entregar el modulo de pagos'),
+    { tool_name: 'Bash', tool_input: { command: 'git merge feature/pagos' }, session_id: SESSION },
+  ];
+
+  for (const caso of casos) {
+    const r = runHook(HOOK, caso, env);
+    assert.notStrictEqual(r.decision.decision, 'deny');
+    assert.strictEqual(r.decision.hookSpecificOutput, undefined);
+    assert.strictEqual(r.code, 0);
+  }
+});
+
+test('round-trip: la senal que emite el flujo silencia el aviso', () => {
   const env = entorno(CONFIG_ON);
   emitirSenal(env, 'diff del codigo entregado');
 
@@ -66,31 +87,34 @@ test('round-trip: la senal que emite el workflow es aceptada por el gate', () =>
   assert.strictEqual(r.decision, null);
 });
 
-test('round-trip inverso: sin emitir la senal, el mismo commit se bloquea', () => {
+test('round-trip inverso: sin emitir la senal, el mismo commit avisa', () => {
   const env = entorno(CONFIG_ON);
   const r = runHook(HOOK, commit('feat: entregar el modulo de pagos'), env);
 
-  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.decision.decision, 'warn');
 });
 
-test('marca [SDD-POST-IMPL: <hash>] en el mensaje de commit: allow', () => {
+test('el canal de la marca en el mensaje de commit ya no existe', () => {
   const env = entorno(CONFIG_ON);
   const hash = signal.hashDiff('diff del codigo entregado');
   const r = runHook(HOOK, commit('feat: entregar pagos [SDD-POST-IMPL: ' + hash + ']'), env);
 
-  assert.strictEqual(r.code, 0);
+  // Era auto-emitible: el mismo agente que redacta el mensaje conocia el formato
+  // y podia fabricarla. Escribirla en el mensaje ya no silencia el aviso.
+  assert.strictEqual(r.decision.decision, 'warn');
+  assert.strictEqual(signal.MARKER_RE, undefined);
 });
 
-test('senal con TTL expirado (>4h): deny', () => {
+test('senal con TTL expirado (>4h): avisa', () => {
   const env = entorno(CONFIG_ON);
   emitirSenal(env, 'diff viejo', 5 * 60 * 60 * 1000);
 
   const r = runHook(HOOK, commit('feat: entregar el modulo de pagos'), env);
 
-  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.decision.decision, 'warn');
 });
 
-test('senal PRE-implementacion (revision del plan) no satisface el gate POST: deny', () => {
+test('senal PRE-implementacion (revision del plan) no silencia el aviso POST', () => {
   const env = entorno(CONFIG_ON);
   process.env.SDD_SIGNAL_DIR = env.SDD_SIGNAL_DIR;
   const file = signal.signalPath(SESSION);
@@ -99,25 +123,18 @@ test('senal PRE-implementacion (revision del plan) no satisface el gate POST: de
 
   const r = runHook(HOOK, commit('feat: entregar el modulo de pagos'), env);
 
-  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.decision.decision, 'warn');
 });
 
-test('git merge sin senal: deny', () => {
+test('git merge sin senal: avisa y deja pasar', () => {
   const env = entorno(CONFIG_ON);
   const r = runHook(HOOK, { tool_name: 'Bash', tool_input: { command: 'git merge feature/pagos' }, session_id: SESSION }, env);
-
-  assert.strictEqual(r.decision.decision, 'deny');
-});
-
-test('SDD_GUARD_SKIP=1: warn en vez de deny', () => {
-  const env = Object.assign(entorno(CONFIG_ON), { SDD_GUARD_SKIP: '1' });
-  const r = runHook(HOOK, commit('feat: entregar el modulo de pagos'), env);
 
   assert.strictEqual(r.decision.decision, 'warn');
   assert.strictEqual(r.code, 0);
 });
 
-test('sin session_id en el payload: allow (degradacion segura)', () => {
+test('sin session_id en el payload: silencio (no hay sesion que correlacionar)', () => {
   const env = entorno(CONFIG_ON);
   const r = runHook(HOOK, commit('feat: entregar el modulo de pagos', null), env);
 
@@ -125,35 +142,42 @@ test('sin session_id en el payload: allow (degradacion segura)', () => {
   assert.strictEqual(r.decision, null);
 });
 
-test('gate deshabilitado en la config: allow (degradacion segura)', () => {
+test('hook deshabilitado en la config: silencio', () => {
   const env = entorno(CONFIG_OFF);
   const r = runHook(HOOK, commit('feat: entregar el modulo de pagos'), env);
 
   assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null);
 });
 
-test('comando que no es commit ni merge: allow', () => {
+test('comando que no es commit ni merge: silencio', () => {
   const env = entorno(CONFIG_ON);
   const r = runHook(HOOK, { tool_name: 'Bash', tool_input: { command: 'git status' }, session_id: SESSION }, env);
 
   assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null);
 });
 
-test('el emisor del workflow usa el mismo contrato de senal que el gate', () => {
+test('el emisor del flujo usa el mismo contrato de senal que el hook', () => {
   const workflow = fs.readFileSync(
     path.resolve(HOOKS_DIR, '..', '.claude', 'workflows', 'implementar-spec.js'), 'utf8');
 
   assert.match(workflow, /hooks\/sdd-review-signal\.js/);
   assert.match(workflow, /writeSignal/);
-  assert.match(workflow, /SDD-POST-IMPL/);
+  assert.doesNotMatch(workflow, /SDD-POST-IMPL/, 'el canal de la marca en el mensaje de commit se elimino');
 });
 
-test('el gate esta wired en hooks.json y en .claude/settings.json', () => {
-  const hooksJson = fs.readFileSync(path.join(HOOKS_DIR, 'hooks.json'), 'utf8');
+test('el hook solo se cablea donde el flujo emite la senal: Claude Code', () => {
   const settings = fs.readFileSync(path.resolve(HOOKS_DIR, '..', '.claude', 'settings.json'), 'utf8');
+  const hooksJson = fs.readFileSync(path.join(HOOKS_DIR, 'hooks.json'), 'utf8');
 
-  assert.match(hooksJson, /sdd-review-gate\.js/);
-  assert.match(hooksJson, /sdd-pipeline-guard\.js/);
   assert.match(settings, /sdd-review-gate\.js/);
   assert.match(settings, /sdd-pipeline-guard\.js/);
+
+  assert.match(hooksJson, /sdd-pipeline-guard\.js/);
+  assert.doesNotMatch(
+    hooksJson.replace(/"_[a-z_]+":\s*"[^"]*"/g, ''),
+    /sdd-review-gate\.js/,
+    'sin motor de workflows no hay emisor de la senal: cablear el aviso ahi no tendria via de silenciarse'
+  );
 });
