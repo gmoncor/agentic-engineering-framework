@@ -250,8 +250,13 @@ agentic-engineering-framework/
 ├── README.md                    # Este archivo
 ├── CLAUDE.md                    # Instrucciones sistema para Claude Code
 ├── GEMINI.md                    # Instrucciones sistema para Gemini CLI
+├── CONTRIBUTING.md              # Como contribuir (issues, PRs, estilo)
+├── CHANGELOG.md                 # Historial de cambios por version
+├── SECURITY.md                  # Reporte de vulnerabilidades y alcance
 ├── LICENSE                      # CC BY 4.0
+├── package.json                 # Metadatos + engines (Node >= 20)
 ├── .claude-plugin/plugin.json   # Manifest para plugins Claude Code
+├── .github/                     # Plantillas de issue y de Pull Request
 │
 ├── .claude/                     # Configuracion Claude Code
 │   ├── settings.json            #   model: opus-4.8 + hooks wiring
@@ -371,10 +376,23 @@ git pull origin main
 
 ## Contribuir
 
-1. Abre un issue describiendo que quieres mejorar y por que
-2. Haz fork del repositorio
-3. Crea una rama con tus cambios
-4. Abre una Pull Request con descripcion clara
+Las contribuciones son bienvenidas. Lee **[CONTRIBUTING.md](CONTRIBUTING.md)** antes de abrir una Pull Request: explica como reportar bugs, como proponer mejoras, el estilo de commits y la regla de paridad entre las dos CLIs.
+
+Resumen: abre un issue → haz fork → crea una rama → abre la PR rellenando la plantilla.
+
+---
+
+## Changelog
+
+El historial de cambios por version esta en **[CHANGELOG.md](CHANGELOG.md)**, en formato [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Consultalo antes de actualizar: las entradas marcadas como *Breaking* indican que debes migrar algo en tu proyecto.
+
+---
+
+## Seguridad
+
+Para reportar una vulnerabilidad, sigue el proceso de **[SECURITY.md](SECURITY.md)** — no abras un issue publico.
+
+Ten presente que el framework **guia** al asistente de IA, pero no verifica el codigo que genera. Los hooks son advisory: avisan, no bloquean. Revisa y audita todo lo que llegue a produccion.
 
 ---
 
@@ -383,3 +401,5 @@ git pull origin main
 Este proyecto esta licenciado bajo [Creative Commons Attribution 4.0 International (CC BY 4.0)](LICENSE).
 
 Puedes usar, copiar, modificar y distribuir este material para cualquier proposito, incluso comercial, siempre que des credito al autor original.
+
+> **Nota:** el repositorio incluye codigo ejecutable (hooks y workflows `.js`). CC BY 4.0 es una licencia de contenido y Creative Commons desaconseja usarla para software; se mantiene por simplicidad, dado que el grueso del repositorio son plantillas y documentacion. Si necesitas el codigo bajo una licencia de software explicita (MIT, Apache-2.0), abre un issue. Ver la nota completa en [LICENSE](LICENSE).

@@ -22,3 +22,21 @@ Under the following terms:
   anything the license permits.
 
 Full license text: https://creativecommons.org/licenses/by/4.0/legalcode
+
+---
+
+NOTE ON EXECUTABLE CODE
+
+This repository is mostly templates and documentation, but it also ships
+executable code: the hooks (hooks/*.js) and the workflows
+(.claude/workflows/*.js). Those files are covered by CC BY 4.0 as well.
+
+Creative Commons explicitly recommends against using its licenses for
+software, because they do not address patent rights, source-code
+availability or warranty disclaimers the way software licenses do. The
+project keeps CC BY 4.0 for simplicity. The recommended direction is dual
+licensing: MIT for the executable code, CC BY 4.0 for documentation and
+templates.
+
+If you need the code under an explicit software license (for example MIT
+or Apache-2.0), open an issue or contact the author.
