@@ -77,9 +77,36 @@ test('computeWaves: ciclo de tres tasks nombra a las tres', () => {
   );
 });
 
-test('computeWaves: una dependencia fuera de la spec no se confunde con un ciclo', () => {
-  const waves = orq.computeWaves([{ path: 'a', dependencias: ['ai_docs/tasks/999_previa.md'] }]);
-  assert.deepStrictEqual(waves.map(w => w.map(t => t.path)), [['a']]);
+test('computeWaves: una dependencia fuera de la spec, pero que existe, no es un ciclo', () => {
+  const p = proyecto({ '001_a.md': ['src/a.js'] });
+  writeFile(path.join(p.raiz, 'ai_docs', 'tasks', '999_previa.md'), taskDoc(['src/previa.js']));
+
+  const tasks = conDeps(p.tasks, { '001_a.md': ['ai_docs/tasks/999_previa.md'] });
+  const waves = orq.computeWaves(tasks, p.raiz);
+
+  assert.deepStrictEqual(waves.map(w => w.map(t => path.basename(t.path))), [['001_a.md']]);
+});
+
+test('computeWaves: una dependencia cuyo documento no existe es un error, no una externa', () => {
+  const p = proyecto({ '001_a.md': ['src/a.js'] });
+  const tasks = conDeps(p.tasks, { '001_a.md': ['ai_docs/tasks/002_typo.md'] });
+
+  // Sin esta comprobacion la task se lanzaria como si no dependiera de nada: el
+  // path mal escrito se descartaria en silencio por "externa ya satisfecha".
+  assert.throws(
+    () => orq.computeWaves(tasks, p.raiz),
+    /DEPENDENCIA_INEXISTENTE.*002_typo\.md/s
+  );
+});
+
+test('validarDependencias: nombra todas las dependencias rotas, no solo la primera', () => {
+  const p = proyecto({ '001_a.md': ['src/a.js'], '002_b.md': ['src/b.js'] });
+  const tasks = conDeps(p.tasks, {
+    '001_a.md': ['ai_docs/tasks/900_no_existe.md'],
+    '002_b.md': ['ai_docs/tasks/901_tampoco.md'],
+  });
+
+  assert.throws(() => orq.validarDependencias(tasks, p.raiz), /900_no_existe\.md.*901_tampoco\.md/s);
 });
 
 // ── Particion por dueno de archivo ───────────────────────────────────────────

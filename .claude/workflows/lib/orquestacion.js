@@ -83,9 +83,39 @@ function archivosCompartidos(taskA, taskB, mapa) {
 
 // ── Oleadas y ciclos ─────────────────────────────────────────────────────────
 
-/** Dependencias que apuntan a otra task de esta misma spec (las externas ya estan hechas). */
+/**
+ * Dependencias que apuntan a otra task de esta misma spec. Las que no apuntan a
+ * ninguna task conocida se ignoran porque ya estan hechas — pero eso solo vale si
+ * el documento al que apuntan EXISTE. Verificarlo es cosa de validarDependencias:
+ * sin esa comprobacion previa, una dependencia mal escrita se cuela aqui como
+ * "externa" y la task arranca como si no dependiera de nada.
+ */
 function depsInternas(task, conocidas) {
   return (task.dependencias || []).filter(d => conocidas.has(d));
+}
+
+/**
+ * Una dependencia que no es de esta spec y que tampoco existe en disco es un error
+ * del plan, no una dependencia externa ya satisfecha. Casi siempre es un path mal
+ * escrito: descartarla en silencio lanzaria la task sin su pre-requisito.
+ */
+function validarDependencias(tasks, raiz) {
+  const conocidas = new Set(tasks.map(t => t.path));
+  const rotas = [];
+
+  for (const t of tasks) {
+    for (const d of (t.dependencias || [])) {
+      if (conocidas.has(d)) continue;
+      if (!fs.existsSync(path.resolve(raiz || '.', d))) rotas.push(t.path + ' -> ' + d);
+    }
+  }
+
+  if (rotas.length > 0) {
+    throw new Error('DEPENDENCIA_INEXISTENTE: hay dependencias que no son de esta spec y cuyo '
+      + 'documento de task no existe: ' + rotas.join('; ') + '. Corrige el path (o elimina la '
+      + 'dependencia) antes de implementar: una dependencia mal escrita dejaria la task sin su '
+      + 'pre-requisito.');
+  }
 }
 
 /**
@@ -96,7 +126,9 @@ function depsInternas(task, conocidas) {
  * Un ciclo es un error de planificacion: lanzarlo en paralelo seria ejecutar a la
  * vez justo lo que la dependencia pretendia ordenar.
  */
-function computeWaves(tasks) {
+function computeWaves(tasks, raiz) {
+  validarDependencias(tasks, raiz);
+
   const conocidas = new Set(tasks.map(t => t.path));
   const completadas = new Set();
   const waves = [];
@@ -350,6 +382,7 @@ module.exports = {
   archivosDeTask,
   mapearArchivos,
   archivosCompartidos,
+  validarDependencias,
   computeWaves,
   verifyFilePartition,
   describirParticion,
