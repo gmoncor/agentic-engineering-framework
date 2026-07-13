@@ -1,0 +1,32 @@
+{
+  "sdd-pipeline-guard": {
+    "PreToolUse": [
+      {
+        "_comment": "Bloqueante: deniega escribir un archivo que ninguna task de una spec APROBADA declara. El comando corre desde el directorio de este archivo (.agents/), de ahi el ../hooks/.",
+        "matcher": "write_to_file|replace_file_content|multi_replace_file_content|create_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ../hooks/sdd-pipeline-guard.js",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  },
+  "sdd-commit-guard": {
+    "PreToolUse": [
+      {
+        "_comment": "Advisory: avisa de commits mal formados y de fugas de andamiaje.",
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ../hooks/sdd-commit-guard.js",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

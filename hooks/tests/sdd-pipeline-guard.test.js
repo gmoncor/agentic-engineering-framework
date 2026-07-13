@@ -141,3 +141,65 @@ test('tool que no escribe: allow', () => {
 
   assert.strictEqual(r.code, 0);
 });
+
+// --- Contrato de Antigravity CLI ---------------------------------------------------------------
+// Su payload es distinto: la llamada llega en toolCall {name, args} (camelCase) y la ruta del
+// archivo en args.TargetFile. La decision viaja SOLO por stdout: su contrato no incluye el codigo
+// de salida, asi que aqui el guard sale con 0 tanto si permite como si deniega.
+
+const ESCRITURA_AGY = ['write_to_file', 'replace_file_content', 'multi_replace_file_content', 'create_file'];
+
+function escrituraAgy(root, relPath, tool) {
+  return { toolCall: { name: tool || 'write_to_file', args: { TargetFile: path.join(root, relPath) } } };
+}
+
+for (const tool of ESCRITURA_AGY) {
+  test(`${tool}: archivo NO declarado -> deny sin apoyarse en el codigo de salida`, () => {
+    const root = proyecto({ 'spec_autenticacion.md': SPEC_APROBADA }, { '001_login.md': TASK_CON_ARCHIVOS });
+    const r = runHook(HOOK, escrituraAgy(root, 'src/pagos/checkout.js', tool));
+
+    assert.strictEqual(r.decision.decision, 'deny');
+    assert.strictEqual(r.code, 0);
+    assert.match(r.decision.reason, /no esta declarado en ninguna task/);
+  });
+}
+
+test('write_to_file: archivo declarado en una task: allow', () => {
+  const root = proyecto({ 'spec_autenticacion.md': SPEC_APROBADA }, { '001_login.md': TASK_CON_ARCHIVOS });
+  const r = runHook(HOOK, escrituraAgy(root, 'src/auth/login.js'));
+
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null);
+});
+
+test('write_to_file sobre ai_docs/: siempre allow (planificar es escribir docs)', () => {
+  const root = proyecto({}, {});
+  const r = runHook(HOOK, escrituraAgy(root, 'ai_docs/tasks/spec_nueva.md'));
+
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null);
+});
+
+test('SDD_GUARD_SKIP=1: allow con motivo (Antigravity no admite "warn" como decision)', () => {
+  const root = proyecto({ 'spec_autenticacion.md': SPEC_APROBADA }, { '001_login.md': TASK_CON_ARCHIVOS });
+  const r = runHook(HOOK, escrituraAgy(root, 'src/pagos/checkout.js'), { SDD_GUARD_SKIP: '1' });
+
+  assert.strictEqual(r.decision.decision, 'allow');
+  assert.strictEqual(r.code, 0);
+});
+
+test('escritura sin TargetFile: allow con motivo, el hueco se declara y no se deniega a ciegas', () => {
+  const r = runHook(HOOK, { toolCall: { name: 'write_to_file', args: {} } });
+
+  assert.strictEqual(r.decision.decision, 'allow');
+  assert.strictEqual(r.code, 0);
+  assert.match(r.decision.reason, /no expone ninguna ruta/);
+});
+
+test('tool de Antigravity que no escribe: allow', () => {
+  const root = proyecto({ 'spec_autenticacion.md': SPEC_APROBADA }, { '001_login.md': TASK_CON_ARCHIVOS });
+  const r = runHook(HOOK, { toolCall: { name: 'view_file', args: { TargetFile: path.join(root, 'src/pagos/checkout.js') } } });
+
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null);
+});

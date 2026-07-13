@@ -52,8 +52,9 @@ entre. Tambien puedes nombrarla explicitamente.
 | `implementador` | Ejecuta UNA task (codigo + tests + commit) | Paso 4 |
 | `asesor` | Analiza problemas, evalua opciones, recomienda (solo lectura) | Cualquier momento |
 
-Definidos en `.codex/agents/*.toml`. El asesor corre en modo solo lectura; los demas pueden
-escribir dentro del espacio de trabajo.
+Definidos en `.codex/agents/*.toml` (Codex) y en `.agents/plugins/sdd/agents/*.md` (Antigravity
+CLI). El asesor corre en modo solo lectura; los demas pueden escribir dentro del espacio de
+trabajo.
 
 ## Orquestacion: fan-out no bloqueante + un gate bloqueante
 
@@ -112,6 +113,51 @@ rama, CI). Si necesitas una frontera dura, ponla en CI.
 
 **Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada los bloqueos a aviso. Es para desbloquear una
 situacion puntual, no para dejarlo fijo en el shell: con el activo el pipeline no enforcea nada.
+
+## Antigravity CLI (`agy`)
+
+Antigravity descubre sus personalizaciones en `.agents/`, la misma raiz que ya usa este framework,
+asi que reutiliza lo que hay sin duplicarlo:
+
+| Pieza | Donde vive | Formato |
+|-------|-----------|---------|
+| Contexto | Este `AGENTS.md` | Markdown, sin frontmatter, activo para todo el directorio y sus hijos |
+| Skills | `.agents/skills/<nombre>/SKILL.md` | Frontmatter YAML con `name` y `description` |
+| Subagentes | `.agents/plugins/sdd/agents/*.md` | Markdown con frontmatter YAML (`name`, `description`) |
+| Manifiesto del bundle | `.agents/plugins/sdd/plugin.json` | Solo declara el nombre; marca el directorio como plugin |
+| Hooks | `.agents/hooks.json` | Un objeto por hook; dentro, sus eventos |
+
+Los subagentes van dentro del plugin porque es la ubicacion que la CLI reconoce para ellos; las
+skills, en cambio, se cargan directamente desde la raiz de personalizaciones.
+
+Comprueba el bundle con `agy plugin validate .agents/plugins/sdd`.
+
+**Hooks.** `.agents/hooks.json` registra dos hooks `PreToolUse`, con las mismas reglas y el mismo
+codigo que los demas backends (`hooks/sdd-pipeline-guard.js` y `hooks/sdd-commit-guard.js`):
+
+| Matcher | Hook | Que hace |
+|---------|------|----------|
+| `write_to_file`, `replace_file_content`, `multi_replace_file_content`, `create_file` | `sdd-pipeline-guard.js` | **Deniega** escribir un archivo que ninguna task de una spec APROBADA declara |
+| `run_command` | `sdd-commit-guard.js` | Avisa de commits mal formados y de fugas de andamiaje |
+
+Dos detalles del contrato de esta CLI, distintos de los otros backends:
+
+- El comando de cada hook se ejecuta **desde el directorio que contiene `hooks.json`** (`.agents/`).
+  Por eso las rutas son `node ../hooks/...`.
+- La decision viaja **solo** en el JSON de stdout (`{"decision": "...", "reason": "..."}`) y los
+  valores admitidos son `allow`, `deny`, `ask` y `force_ask`. El bloqueo (`deny`) es real, no un
+  aviso. Como no hay `warn`, un aviso se expresa como `allow` con motivo.
+
+**Comandos.** Los `.toml` de `commands/` siguen siendo validos: dentro de un plugin, la CLI los
+convierte a skills al cargarlos. No hace falta reescribirlos, y las skills de `.agents/skills/`
+cubren ya el mismo flujo.
+
+**Verificado contra `agy` 1.1.1.** La CLI esta en desarrollo activo: si una version posterior
+cambia los formatos, esta seccion es lo primero que hay que revisar. Un hueco conocido: no se pudo
+capturar en vivo el payload de una escritura real (hace falta iniciar sesion de forma interactiva),
+asi que los matchers salen de los nombres de herramienta que documenta la propia CLI. Si una
+escritura no declarada llega a colarse, lo primero que hay que comprobar es si el nombre de la
+herramienta que llega al hook coincide con los del matcher.
 
 ## Estilo
 
