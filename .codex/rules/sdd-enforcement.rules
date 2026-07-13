@@ -1,0 +1,20 @@
+# Politica de ejecucion SDD (Starlark).
+#
+# Prohibe los comandos que saltan el ciclo de calidad del repositorio. Es la segunda capa: la
+# primera es hooks/sdd-commit-guard-codex.js. Ninguna de las dos cubre todas las rutas por si sola
+# (un script intermedio puede ejecutar git sin pasar por el matcher del hook), por eso van las dos.
+#
+# La politica de ejecucion es una funcionalidad experimental del CLI: si tu version no la carga, el
+# hook sigue siendo la via principal de enforcement. Comprobacion: `codex execpolicy check`.
+
+prefix_rule(
+    pattern = ["git", "commit", "--no-verify"],
+    decision = "forbidden",
+    reason = "SDD: --no-verify salta los ganchos de calidad. Corrige la causa del fallo, no lo esquives.",
+)
+
+prefix_rule(
+    pattern = ["git", "push", "--no-verify"],
+    decision = "forbidden",
+    reason = "SDD: --no-verify salta los ganchos de calidad. Corrige la causa del fallo, no lo esquives.",
+)
