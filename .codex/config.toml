@@ -1,0 +1,16 @@
+# Configuracion del proyecto para el CLI de Codex.
+# Ajusta el modelo a tu cuenta y presupuesto: no hay dependencia del framework con uno concreto.
+model = "o4-mini"
+
+# on-request: el agente pide aprobacion cuando necesita salirse del sandbox.
+approval_policy = "on-request"
+
+# workspace-write: puede escribir dentro del proyecto, no fuera.
+# danger-full-access desactiva el sandbox por completo (ver CONTRIBUTING.md).
+sandbox_mode = "workspace-write"
+
+# Los subagentes (planificador, revisor, implementador, asesor) viven en .codex/agents/.
+# max_depth = 1 evita que un subagente lance a su vez otro nivel de subagentes.
+[agents]
+max_depth = 1
+max_threads = 4
