@@ -1,31 +1,28 @@
 ---
-description: "Planificacion exhaustiva: spec + tasks + revision paralela + auditoria cruzada"
+description: "Planificacion exhaustiva: intake + spec + tasks + revision paralela + auditoria cruzada"
 ---
-
-ANTES de lanzar el workflow, analiza la solicitud del usuario:
-
-## Deteccion multi-spec
-
-Lee la solicitud completa. Si describe multiples funcionalidades INDEPENDIENTES (features distintas que no comparten archivos ni logica):
-
-1. Lista cada spec que se necesitaria, con titulo descriptivo y alcance resumido
-2. Sugiere al usuario abrir una sesion separada por spec para implementar en paralelo
-3. Pregunta si quiere:
-   - **(A)** Planificar UNA spec en esta sesion (indica cual) y las demas en sesiones separadas
-   - **(B)** Combinar todo en una sola spec (solo si el alcance total es razonable)
-
-Si la solicitud es UNA sola spec, o el usuario elige una, lanza el workflow directamente.
 
 ## Ejecucion del workflow
 
 Usa la herramienta Workflow con nombre "planificar" y pasa como args la solicitud del usuario (abajo).
 
-Al completarse el workflow, presenta al usuario:
+El workflow arranca con una **fase de intake**: el asesor analiza la solicitud antes de que se escriba ninguna spec. Reformula la peticion, declara lo que asume, avisa de las contradicciones con `ai_docs/core/` (donde manda la solicitud del usuario), propone una alternativa mas robusta si la hay, y decide si hay material suficiente para planificar. No hagas tu propio analisis previo: esa es la fase de intake.
 
-1. **La spec creada** — lee el archivo y muestra un resumen
-2. **Las tasks derivadas** — lista con dependencias y orden de ejecucion
-3. **Revision de cada task** — veredicto, problemas encontrados, ajustes propuestos
-4. **Auditoria cruzada** — cobertura, huecos, overlaps, coherencia, veredicto final
+El workflow puede **detenerse en el intake**, sin crear spec. En ese caso presenta al usuario:
+
+- **`NECESITA_CLARIFICACION`** — la solicitud tiene huecos criticos. Traslada las preguntas del intake y espera la respuesta. Con ella, relanza `/planificar` incorporandola a la solicitud.
+- **`DIVIDIR_EN_SPECS`** — la solicitud abarca varias funcionalidades independientes. Presenta la particion propuesta (titulo, alcance y dependencias de cada spec) y deja que el usuario decida. Se lanza un `/planificar` por spec, respetando el orden de dependencias.
+- **`ERROR_INTAKE`** — el analisis previo no fue utilizable. Explica el motivo y relanza el workflow.
+
+## Presentacion del resultado
+
+Si el intake da paso a la planificacion completa, al terminar el workflow presenta al usuario:
+
+1. **El intake** — reformulacion, asunciones declaradas y contradicciones detectadas
+2. **La spec creada** — lee el archivo y muestra un resumen
+3. **Las tasks derivadas** — lista con dependencias y orden de ejecucion
+4. **Revision de cada task** — veredicto, problemas encontrados, ajustes propuestos
+5. **Auditoria cruzada** — cobertura, huecos, overlaps, coherencia, veredicto final
 
 Si el veredicto es **APROBADO**: indica que puede implementar de dos formas:
 - `/implementar-spec <spec>` — implementa TODAS las tasks de la spec via workflow (recomendado)

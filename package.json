@@ -20,7 +20,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test \"hooks/tests/*.test.js\""
+    "test": "node --test \"hooks/tests/*.test.js\" \"tests/*.test.js\""
   },
   "keywords": [
     "sdd",

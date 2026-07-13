@@ -2,6 +2,7 @@ export const meta = {
   name: 'planificar',
   description: 'Planificacion exhaustiva SDD: spec + tasks + revision paralela + auditoria cruzada',
   phases: [
+    { title: 'Intake', detail: 'Analizar la solicitud, detectar huecos, proponer particion en specs' },
     { title: 'Spec', detail: 'Crear especificacion desde la solicitud' },
     { title: 'Tasks', detail: 'Derivar tasks granulares de la spec' },
     { title: 'Revision', detail: 'Revision paralela esceptica de cada task' },
@@ -70,24 +71,82 @@ const AUDIT_SCHEMA = {
   required: ['veredicto', 'cobertura', 'overlaps', 'huecos', 'incoherencias', 'dependencias_problematicas', 'resumen']
 }
 
-// ── Phase 1: Spec ──────────────────────────────────────────────────────────────
-// NOTA DE DISENO: spec.md dice "PREGUNTA antes de asumir" (modo interactivo).
-// En workflow automatizado las preguntas bloquean el pipeline, asi que los
-// agentes trabajan con la informacion disponible. El PUNTO DE ESPERA del
-// usuario ocurre al final: la spec nace BORRADOR y solo el usuario la aprueba.
+// ── Phase 1: Intake ────────────────────────────────────────────────────────────
+// NOTA DE DISENO: spec.md dice "PREGUNTA antes de asumir", pero dentro del
+// workflow las preguntas bloquean el pipeline. La clarificacion no se suprime:
+// se concentra aqui. El asesor examina la solicitud UNA vez, antes de que nadie
+// escriba nada, y decide si hay material para planificar. Si falta lo critico o
+// la solicitud abarca varias specs, el workflow para y devuelve el turno al
+// usuario. A partir de aqui los agentes ya no preguntan: trabajan con lo que el
+// intake dejo cerrado. El segundo punto de espera es la aprobacion final.
+const intakeUrl = await import('node:url')
+const intakePath = await import('node:path')
+const intakeMod = await import(intakeUrl.pathToFileURL(intakePath.resolve('.claude/workflows/lib/intake.js')).href)
+const { INTAKE_SCHEMA, evaluarIntake } = intakeMod.default || intakeMod
+
+phase('Intake')
+const intakeResult = await agent(`
+Eres el asesor del proyecto. Analiza la solicitud del usuario ANTES de que se escriba ninguna spec.
+Lee ai_docs/core/ para contexto del proyecto. Si no existe o esta vacio, dilo: planificar sin vision
+ni roadmap es planificar a ciegas, y el usuario deberia rellenar ai_docs/core_templates/ primero.
+
+REGLAS:
+1. Reformula la solicitud en 1-3 frases. Copia LITERALMENTE cifras, nombres propios, entidades y
+   criterios de aceptacion tal y como los escribio el usuario. Parafrasearlos los pierde.
+2. Separa lo que el usuario DIJO de lo que tu ASUMISTE. Cada asuncion, en "asunciones", explicita.
+   No des por confirmado nada que el usuario no haya escrito.
+3. Si la solicitud contradice ai_docs/core/, gana la solicitud del usuario. Anota la contradiccion
+   en "contradicciones" para que el usuario la vea. No la resuelvas en silencio.
+4. Si la solicitud contiene 2 o mas funcionalidades independientes (no comparten archivos ni logica),
+   proponlas como specs separadas en "particion_propuesta", cada una con su alcance y sus
+   dependencias, y usa el veredicto DIVIDIR_EN_SPECS. Una spec monolitica no se puede revisar.
+5. Si falta un dato critico (que problema resuelve, quien lo usa, que cuenta como exito), usa el
+   veredicto NECESITA_CLARIFICACION y escribe las preguntas concretas que lo cierran.
+6. Si la solicitud es clara, acotada y autocontenida, usa el veredicto LISTO_PARA_PLANIFICAR.
+7. Si existe un enfoque mas robusto que ataque la causa raiz del problema, describelo en
+   "alternativa". Recomienda; la decision es del usuario.
+
+Solicitud del usuario: ${args}
+`, { label: 'intake', phase: 'Intake', schema: INTAKE_SCHEMA })
+
+const decision = evaluarIntake(intakeResult)
+if (!decision.continuar) {
+  log('Intake: ' + decision.resultado.veredicto + ' — la planificacion se detiene sin crear spec')
+  return decision.resultado
+}
+log('Intake: LISTO_PARA_PLANIFICAR')
+
+const contextoIntake = [
+  'Reformulacion del asesor: ' + intakeResult.reformulacion,
+  'Asunciones (NO son afirmaciones del usuario, son hipotesis a validar): '
+    + (intakeResult.asunciones.length ? intakeResult.asunciones.join(' | ') : 'ninguna'),
+  'Contradicciones con ai_docs/core/ (gana la solicitud del usuario): '
+    + (intakeResult.contradicciones.length ? intakeResult.contradicciones.join(' | ') : 'ninguna'),
+  intakeResult.alternativa ? 'Alternativa propuesta por el asesor: ' + intakeResult.alternativa : '',
+].filter(Boolean).join('\n')
+
+// ── Phase 2: Spec ──────────────────────────────────────────────────────────────
 phase('Spec')
 const specResult = await agent(`
 Lee ai_docs/dev_templates/spec.md y sigue su proceso completo para crear una especificacion.
 Lee ai_docs/core/ para contexto del proyecto.
 
 IMPORTANTE:
-- NO hagas preguntas de clarificacion. Trabaja con la informacion disponible.
+- NO hagas preguntas de clarificacion. El intake ya cerro los huecos criticos.
+- La solicitud literal del usuario MANDA. Si el analisis del intake o los documentos de
+  ai_docs/core/ la contradicen, gana la solicitud: dejalo escrito en la spec.
+- Copia verbatim las cifras, entidades y criterios de aceptacion que escribio el usuario.
+- No escribas que el usuario confirmo, acepto o eligio algo si no consta en su solicitud.
+  Lo que venga de "Asunciones" se declara como asuncion, no como decision del usuario.
 - Clasifica el alcance, redacta la spec completa con todos los campos del formato.
 - Guarda la spec con Estado: BORRADOR. NUNCA escribas APROBADA: la aprobacion
   es del usuario y ocurre despues de que revise el plan completo.
 - Cada criterio de aceptacion debe ser medible. La seccion "No incluye" es obligatoria.
 
-Solicitud del usuario: ${args}
+Solicitud del usuario (fuente de verdad): ${args}
+
+Analisis previo del intake (contexto, subordinado a la solicitud):
+${contextoIntake}
 
 Guarda la spec en ai_docs/tasks/spec_<descriptor>.md (snake_case, sin acentos).
 Retorna SOLO el path del archivo creado (ej: ai_docs/tasks/spec_autenticacion.md).
@@ -99,7 +158,7 @@ if (!specPath || specPath.length < 5) {
 }
 log('Spec creada: ' + specPath)
 
-// ── Phase 2: Tasks ─────────────────────────────────────────────────────────────
+// ── Phase 3: Tasks ─────────────────────────────────────────────────────────────
 phase('Tasks')
 const tasksResult = await agent(`
 Lee ai_docs/dev_templates/tareas.md y sigue su proceso completo.
@@ -124,7 +183,7 @@ if (taskList.length === 0) {
   return { spec: specPath, tasks: [], reviews: [], audit: null, veredicto: 'SIN_TASKS' }
 }
 
-// ── Phase 3: Revision paralela ─────────────────────────────────────────────────
+// ── Phase 4: Revision paralela ─────────────────────────────────────────────────
 phase('Revision')
 const reviews = await parallel(
   taskList.map((task, i) => () =>
@@ -168,7 +227,7 @@ const ajustes = validReviews.filter(r => r.veredicto === 'NECESITA_AJUSTES').len
 const replantear = validReviews.filter(r => r.veredicto === 'NECESITA_REPLANTEAMIENTO').length
 log('Revision: ' + listos + ' listos, ' + ajustes + ' con ajustes, ' + replantear + ' a replantear')
 
-// ── Phase 4: Auditoria cruzada ─────────────────────────────────────────────────
+// ── Phase 5: Auditoria cruzada ─────────────────────────────────────────────────
 phase('Auditoria')
 const taskPaths = taskList.map(function(t) { return t.path }).join(', ')
 const reviewSummary = JSON.stringify(validReviews.map(function(r) {
@@ -214,7 +273,7 @@ Retorna tu veredicto estructurado.
 const veredicto = auditResult ? auditResult.veredicto : 'ERROR'
 log('Auditoria final: ' + veredicto)
 
-// ── Phase 5: Aprobacion humana ────────────────────────────────────────────────
+// ── Phase 6: Aprobacion humana ────────────────────────────────────────────────
 // La spec esta en BORRADOR. El workflow NO la aprueba: presenta el plan y para.
 // Aprobar es un acto del usuario, no un efecto colateral de la planificacion.
 phase('Aprobacion')
