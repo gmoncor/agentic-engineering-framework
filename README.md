@@ -127,6 +127,30 @@ gemini-extension.json  # manifest
 ai_docs/               # plantillas + docs de tu proyecto
 ```
 
+### Codex
+
+Requisito: el CLI de Codex instalado (`npm i -g @openai/codex`). Sin CLI no hay integracion nativa:
+los agentes, las skills y los hooks no se cargan. En ese caso usa las plantillas por copy-paste.
+
+Copia a la raiz de tu proyecto:
+
+```
+AGENTS.md              # instrucciones del proyecto (contexto compartido)
+.codex/config.toml     # modelo, sandbox y politica de aprobacion
+.codex/agents/         # agentes (4, .toml)
+.codex/hooks.json      # hooks de enforcement
+.codex/rules/          # politica de ejecucion (experimental)
+.agents/skills/        # skills (17, auto-activacion por description)
+hooks/                 # hooks de enforcement (guards)
+ai_docs/               # plantillas + docs de tu proyecto
+```
+
+Codex descubre los agentes y las skills solos. Los comandos del flujo (planificar, implementar,
+revisar, estado...) se entregan como **skills**: describe lo que quieres y la skill entra sola, o
+nombrala. Los slash commands versionables estan deprecados en Codex, por eso no existen aqui.
+
+Codex te pedira confiar (trust) en los hooks del proyecto la primera vez. Revisa `hooks/` antes.
+
 ### Sin CLI (copy-paste)
 
 Funciona con cualquier LLM: ChatGPT, Copilot, Cursor, Windsurf, o cualquier otro.
@@ -140,15 +164,16 @@ No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` par
 
 ### Que se instala
 
-| Componente | Cantidad | Donde (Claude) | Donde (Gemini) |
-|------------|----------|-----------------|-----------------|
-| Comandos | 12 | `.claude/commands/` | `commands/` |
-| Agentes | 4 | `.claude/agents/` | `agents/` |
-| Skills | 8 | `.claude/skills/` | `skills/` |
-| Hooks | 3 | `hooks/` (wired en settings) | `hooks/` (wired en hooks.json) |
-| Workflows | 2 | `.claude/workflows/` | — (secuencial via comando) |
-| Templates | 12 | `ai_docs/dev_templates/` | `ai_docs/dev_templates/` |
-| Core templates | 4 | `ai_docs/core_templates/` | `ai_docs/core_templates/` |
+| Componente | Donde (Claude) | Donde (Gemini) | Donde (Codex) |
+|------------|-----------------|-----------------|----------------|
+| Comandos | `.claude/commands/` (12) | `commands/` (12) | — (entregados como skills) |
+| Agentes | `.claude/agents/` (4) | `agents/` (4) | `.codex/agents/` (4, `.toml`) |
+| Skills | `.claude/skills/` (8) | `skills/` (8) | `.agents/skills/` (17) |
+| Hooks | `hooks/` (3, wired en settings) | `hooks/` (3, wired en hooks.json) | `hooks/` (2, wired en `.codex/hooks.json`) |
+| Workflows | `.claude/workflows/` (2) | — (secuencial via comando) | — (secuencial via skill) |
+| Contexto | `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` |
+| Templates | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) |
+| Core templates | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) |
 
 ---
 
@@ -336,6 +361,17 @@ El directorio `hooks/` contiene hooks compartidos entre ambas CLIs que refuerzan
 | `sdd-commit-guard.js` | git commit | Verifica formato de commit (subject ≤72, tipo valido entre 12 tipos, sin Co-Authored-By IA) | Advisory |
 
 Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`).
+
+**Codex** usa dos hooks propios, registrados en `.codex/hooks.json`:
+
+| Hook | Evento | Que hace | Modo |
+|------|--------|----------|------|
+| `sdd-pipeline-guard-codex.js` | `apply_patch` | **Deniega** aplicar un parche sobre un archivo que ninguna task de una spec APROBADA declara | Bloqueante |
+| `sdd-commit-guard-codex.js` | `shell` | **Deniega** `git commit --no-verify` y `git push --no-verify`; avisa de commits mal formados | Bloqueante + advisory |
+
+Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohibe esos mismos comandos via politica de ejecucion (funcionalidad experimental del CLI; si tu version no la carga, el hook sigue siendo la via principal).
+
+**Limite honesto de los hooks de Codex:** son un **guardarrail**, no una frontera completa de enforcement — asi lo declara el propio fabricante. No interceptan todas las llamadas al shell ni todas las rutas de escritura: un proceso hijo lanzado desde un comando permitido puede escapar al matcher, y el payload de `apply_patch` no tiene esquema publico estable (si el guard no puede leer las rutas del parche, avisa en vez de denegar, porque bloquear a ciegas seria arbitrario). Sirven para que el camino correcto sea el camino por defecto y para que desviarse sea deliberado. Si necesitas una frontera dura, ponla en el CI y en las protecciones de rama.
 
 **Los dos bloqueos cubren los dos extremos del ciclo de calidad:** `sdd-pipeline-guard.js` impide escribir codigo que nadie planifico; `sdd-review-gate.js` impide commitear codigo que nadie reviso. Sin el segundo, la revision adversarial es opcional de facto y el codigo llega a la rama sin que nadie haya mirado el diff.
 

@@ -55,16 +55,22 @@ No lo exportes de forma permanente en tu shell ni en la configuracion del proyec
 
 ## Paridad entre CLIs
 
-El framework se distribuye para Claude Code y Gemini CLI. Muchos artefactos existen por duplicado:
+El framework se distribuye para Claude Code, Gemini CLI y Codex. Muchos artefactos existen por duplicado:
 
-| Claude Code | Gemini CLI |
-|---|---|
-| `.claude/agents/` | `agents/` |
-| `.claude/commands/` (`.md`) | `commands/` (`.toml`) |
-| `.claude/skills/` | `skills/` |
-| `CLAUDE.md` | `GEMINI.md` |
+| Claude Code | Gemini CLI | Codex |
+|---|---|---|
+| `.claude/agents/` | `agents/` | `.codex/agents/` (`.toml`) |
+| `.claude/commands/` (`.md`) | `commands/` (`.toml`) | `.agents/skills/` (los comandos son skills) |
+| `.claude/skills/` | `skills/` | `.agents/skills/` |
+| `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` |
 
-Si cambias un agente, comando o skill en un lado, **aplica el cambio equivalente en el otro** dentro de la misma PR. Una PR que solo actualiza una de las dos CLIs deja el framework incoherente.
+Si cambias un agente, comando o skill en un lado, **aplica el cambio equivalente en los otros** dentro de la misma PR. Una PR que solo actualiza una de las CLIs deja el framework incoherente.
+
+En Codex los slash commands versionables estan deprecados: cada comando se entrega como skill, y las skills cuyo nombre coincide con un comando (`bugfix`, `commit`, `pr`) son una sola, con el uso a peticion explicita como seccion adicional. La logica de la skill manda sobre la del comando.
+
+## Sandbox de Codex
+
+`.codex/config.toml` viene con `sandbox_mode = "workspace-write"`: el agente escribe dentro del proyecto y no fuera. Si tu proyecto necesita mas (acceso de red, escritura fuera del arbol), puedes subirlo a `danger-full-access`, pero entonces **el sandbox deja de existir**: el agente puede tocar cualquier cosa de la maquina. Hazlo solo si sabes por que, y no lo commitees como valor por defecto del repositorio. El modelo (`model`) tambien es tuyo: ajustalo a tu cuenta.
 
 ## Que NO incluir en una PR
 
