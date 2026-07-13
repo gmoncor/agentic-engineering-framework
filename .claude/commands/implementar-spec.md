@@ -14,14 +14,16 @@ ANTES de lanzar el workflow, verifica:
 Si todo esta en orden, usa la herramienta Workflow con nombre "implementar-spec" y pasa como args el path de la spec (ej: ai_docs/tasks/spec_autenticacion.md).
 
 El workflow:
-1. Descubre las tasks y sus dependencias
-2. Agrupa en oleadas: tasks independientes corren en paralelo, tasks con dependencias esperan a que sus prerequisitos terminen
-3. Ejecuta cada oleada (paralelo dentro, secuencial entre oleadas)
+1. Descubre las tasks, sus dependencias y los archivos que declara cada una
+2. Verifica que las tasks que van a correr a la vez escriben archivos disjuntos; las que se solapan se serializan
+3. Lanza cada task en cuanto SUS dependencias estan satisfechas; las tasks con efectos secundarios en el sistema de ficheros (migraciones, dependencias, contenedores) corren en un arbol de trabajo aparte
 4. Revision adversarial de toda la implementacion
+
+Un ciclo de dependencias entre tasks detiene el workflow con error: hay que corregir el plan antes de implementar.
 
 Al completarse, presenta al usuario:
 
-1. **Oleadas ejecutadas** — cuantas, cuales tasks en cada una, cuales corrieron en paralelo
+1. **Orden de ejecucion** — que tasks corrieron a la vez y cuales se serializaron (y por que archivo)
 2. **Detalle por task** — archivos modificados, tests creados, commit realizado
 3. **Revision adversarial** — veredicto, problemas criticos y menores
 4. **Hallazgos fuera de alcance** — para tasks futuras

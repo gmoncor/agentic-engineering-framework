@@ -17,6 +17,14 @@ ai_docs/refs/*
 !ai_docs/refs/.gitkeep
 
 # ===========================================
+# Arboles de trabajo temporales
+# ===========================================
+# /implementar-spec crea un arbol de trabajo aparte para las tasks con efectos
+# secundarios en el sistema de ficheros (migraciones, dependencias, contenedores).
+# Son temporales: se eliminan al fusionar.
+.worktrees/
+
+# ===========================================
 # Archivos sensibles
 # ===========================================
 .env

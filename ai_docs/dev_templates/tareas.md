@@ -69,6 +69,7 @@ Para cada task, usa este formato:
 **Estado:** PENDIENTE
 **Dependencias:** [Lista de tasks que deben completarse antes, o "Ninguna"]
 **Independiente:** [SI / NO — SI si no tiene dependencias de otras tasks]
+**Efectos secundarios en el sistema de ficheros:** [SI / NO — SI si instala dependencias, corre migraciones, levanta contenedores o altera el entorno mas alla de su propio codigo]
 **Tamano estimado:** [min]-[max] lineas en [N] archivos
 
 ## Objetivo
@@ -80,6 +81,21 @@ Para cada task, usa este formato:
 | Archivo | Accion | Descripcion del cambio |
 |---------|--------|----------------------|
 | `ruta/archivo.ext` | CREAR / MODIFICAR / ELIMINAR | [Que se hace en este archivo] |
+
+Esta tabla es la fuente de verdad de que archivos escribe la task. La usan el guard
+que bloquea escrituras no planificadas y la implementacion en paralelo, que solo
+lanza a la vez tasks cuyos archivos son disjuntos. Una task que no declara archivos
+no se paraleliza con ninguna otra.
+
+## Contratos
+
+[Opcional. Solo si esta task produce algo que otra consume, o al reves.]
+
+| Tipo | Nombre | Archivo |
+|------|--------|---------|
+| PRODUCE / CONSUME | [API, tipo, funcion exportada] | `ruta/archivo.ext` |
+
+Si esta task CONSUME un contrato, debe declarar como dependencia la task que lo PRODUCE.
 
 ## Plan de implementacion
 
@@ -173,7 +189,9 @@ Despues de la aprobacion, crea cada task como archivo individual:
 - **Descriptor:** snake_case, descriptivo, sin acentos
 - **Ejemplo:** `ai_docs/tasks/001_crear_modelo_usuario.md`
 
-Antes de crear, verificar la numeracion existente en `ai_docs/tasks/` para no pisar archivos.
+Reserva cada numero con `scripts/next-task-number.sh` (imprime el siguiente numero
+libre y lo marca como reservado). Leer el directorio y elegir el maximo + 1 no basta:
+dos sesiones que planifican a la vez eligen el mismo numero y una pisa a la otra.
 
 El siguiente paso es revisar cada task individualmente con `revisar_tarea.md`.
 

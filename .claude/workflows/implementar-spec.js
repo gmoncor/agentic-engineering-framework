@@ -1,9 +1,9 @@
 export const meta = {
   name: 'implementar-spec',
-  description: 'Implementa todas las tasks de una spec, paralelizando tasks independientes por oleadas',
+  description: 'Implementa todas las tasks de una spec, paralelizando las que escriben archivos disjuntos',
   phases: [
-    { title: 'Descubrimiento', detail: 'Identificar tasks, dependencias y calcular oleadas de ejecucion' },
-    { title: 'Implementacion', detail: 'Implementar tasks (paralelo en cada oleada, secuencial entre oleadas)' },
+    { title: 'Descubrimiento', detail: 'Identificar tasks, dependencias, archivos declarados y orden de ejecucion' },
+    { title: 'Implementacion', detail: 'Implementar cada task en cuanto sus dependencias estan satisfechas' },
     { title: 'Revision', detail: 'Revision adversarial de toda la implementacion' },
   ],
 }
@@ -21,7 +21,21 @@ const DISCOVER_SCHEMA = {
           path: { type: 'string' },
           titulo: { type: 'string' },
           independiente: { type: 'boolean' },
-          dependencias: { type: 'array', items: { type: 'string' } }
+          dependencias: { type: 'array', items: { type: 'string' } },
+          archivos: { type: 'array', items: { type: 'string' } },
+          side_effects_fs: { type: 'boolean' },
+          contratos: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                tipo: { type: 'string', enum: ['produce', 'consume'] },
+                nombre: { type: 'string' },
+                archivo: { type: 'string' }
+              },
+              required: ['tipo', 'nombre']
+            }
+          }
         },
         required: ['path', 'titulo', 'independiente']
       }
@@ -58,6 +72,16 @@ const REVISION_SCHEMA = {
   required: ['veredicto', 'problemas_criticos', 'problemas_menores', 'resumen']
 }
 
+// ── Modulos del repo ──────────────────────────────────────────────────────────
+// Se cargan por ruta absoluta desde la raiz del proyecto: el workflow se evalua
+// sin una URL de modulo propia, asi que un import relativo no resolveria.
+async function cargarModulo(rutaRelativa) {
+  const path = await import('node:path')
+  const url = await import('node:url')
+  const mod = await import(url.pathToFileURL(path.resolve(rutaRelativa)).href)
+  return mod.default || mod
+}
+
 // ── Senal de revision POST-implementacion ─────────────────────────────────────
 // Tras la revision adversarial, este workflow deja constancia de que el codigo
 // entregado fue revisado. El hook sdd-review-gate.js consume esa senal para
@@ -67,11 +91,7 @@ const REVISION_SCHEMA = {
 // hooks instalados), la emision se omite sin romper el workflow.
 async function emitirSenalRevision(contenidoRevisado) {
   try {
-    const path = await import('node:path')
-    const url = await import('node:url')
-    const mod = await import(url.pathToFileURL(path.resolve('hooks/sdd-review-signal.js')).href)
-    const senal = mod.default || mod
-
+    const senal = await cargarModulo('hooks/sdd-review-signal.js')
     const hash = senal.hashDiff(contenidoRevisado)
     senal.writeSignal(senal.resolveSessionId(), hash)
     return hash
@@ -80,51 +100,14 @@ async function emitirSenalRevision(contenidoRevisado) {
   }
 }
 
-// ── Wave computation ──────────────────────────────────────────────────────────
-// Groups tasks into execution waves based on dependencies.
-// Wave 1: tasks with no dependencies (all run in parallel)
-// Wave 2: tasks whose dependencies were all in wave 1 (all run in parallel)
-// etc.
-function computeWaves(tasks) {
-  var waves = []
-  var completed = {}
-  var remaining = tasks.slice()
-
-  while (remaining.length > 0) {
-    var wave = []
-    var nextRemaining = []
-    for (var i = 0; i < remaining.length; i++) {
-      var t = remaining[i]
-      var deps = t.dependencias || []
-      var allMet = true
-      for (var d = 0; d < deps.length; d++) {
-        if (!completed[deps[d]]) { allMet = false; break }
-      }
-      if (allMet) {
-        wave.push(t)
-      } else {
-        nextRemaining.push(t)
-      }
-    }
-    if (wave.length === 0) {
-      waves.push(nextRemaining)
-      break
-    }
-    waves.push(wave)
-    for (var j = 0; j < wave.length; j++) {
-      completed[wave[j].path] = true
-    }
-    remaining = nextRemaining
-  }
-  return waves
-}
-
-// ── Phase 1: Descubrimiento ───────────────────────────────────────────────────
+// ── Fase 1: Descubrimiento ────────────────────────────────────────────────────
 phase('Descubrimiento')
 const specPath = (typeof args === 'string' ? args : '').trim()
 if (!specPath || specPath.length < 5) {
   return { error: 'Se requiere el path de la spec como argumento (ej: ai_docs/tasks/spec_autenticacion.md)' }
 }
+
+const orq = await cargarModulo('.claude/workflows/lib/orquestacion.js')
 
 const discovery = await agent(`
 Encuentra todas las tasks asociadas a la spec: ${specPath}
@@ -132,13 +115,20 @@ Encuentra todas las tasks asociadas a la spec: ${specPath}
 Proceso:
 1. Lee la spec para obtener su titulo y criterios de aceptacion
 2. Busca en ai_docs/tasks/ todos los archivos .md (excluyendo spec_*.md) que referencien esta spec
-3. Lee cada task encontrada para extraer: titulo, si es independiente, dependencias (paths de otras tasks)
+3. Lee cada task encontrada para extraer: titulo, si es independiente, dependencias (paths de otras tasks),
+   los archivos de su tabla "Archivos afectados", si tiene efectos secundarios en el sistema de ficheros
+   y los contratos que produce o consume
 4. Una task es independiente si NO depende de otra task de esta misma spec
 5. Las dependencias deben ser paths exactos de otras tasks (ej: ai_docs/tasks/001_crear_modelos.md)
+6. side_effects_fs es true si la task instala dependencias, corre migraciones, levanta contenedores o
+   modifica el entorno mas alla de su propio codigo
+7. Los contratos son lo que una task produce y otra consume (API, tipo, export). Formato por contrato:
+   tipo (produce|consume), nombre, archivo
 
 IMPORTANTE: Retorna las dependencias como paths exactos de archivos, no como titulos ni descripciones.
+Los archivos, tal como aparecen en la tabla de la task (rutas relativas a la raiz del proyecto).
 
-Retorna el path de la spec, su titulo, y la lista completa de tasks con sus dependencias.
+Retorna el path de la spec, su titulo, y la lista completa de tasks.
 `, { label: 'descubrir-tasks', phase: 'Descubrimiento', schema: DISCOVER_SCHEMA })
 
 const taskList = (discovery && discovery.tasks) ? discovery.tasks : []
@@ -146,161 +136,191 @@ if (taskList.length === 0) {
   return { spec: specPath, error: 'No se encontraron tasks para esta spec. Ejecuta /planificar primero.' }
 }
 
-const waves = computeWaves(taskList)
-var waveDesc = []
-for (var w = 0; w < waves.length; w++) {
-  waveDesc.push('Oleada ' + (w + 1) + ': ' + waves[w].length + ' task(s)' + (waves[w].length > 1 ? ' (paralelo)' : ''))
+// Los archivos se leen de las propias tasks (fuente mecanica); lo reportado por
+// el descubrimiento solo se usa si la task no los declara en su tabla.
+const mapaArchivos = orq.mapearArchivos(taskList, '.')
+
+// Un ciclo de dependencias no puede implementarse: es un error del plan.
+var waves
+try {
+  waves = orq.computeWaves(taskList)
+} catch (e) {
+  return { spec: specPath, error: e.message }
 }
-log(taskList.length + ' tasks en ' + waves.length + ' oleada(s): ' + waveDesc.join(' → '))
 
-// ── Phase 2: Implementacion por oleadas ───────────────────────────────────────
-phase('Implementacion')
-const allResults = []
-var completadas = 0
-var fallidas = 0
-var taskCounter = 0
+const contratosRotos = orq.verificarContratos(taskList)
+for (var ci = 0; ci < contratosRotos.length; ci++) {
+  log('AVISO contrato: ' + contratosRotos[ci])
+}
 
-for (var wi = 0; wi < waves.length; wi++) {
-  var wave = waves[wi]
-  var isParallel = wave.length > 1
+log(taskList.length + ' tasks, ' + waves.length + ' nivel(es) de dependencia')
+for (var w = 0; w < waves.length; w++) {
+  log('Nivel ' + (w + 1) + ': ' + orq.describirParticion(waves[w], mapaArchivos))
+}
 
-  if (isParallel) {
-    log('Oleada ' + (wi + 1) + '/' + waves.length + ': ' + wave.length + ' tasks en paralelo')
-
-    // Parallel: implement without commit
-    var waveResults = await parallel(
-      wave.map(function(task, idx) {
-        var globalIdx = taskCounter + idx
-        return function() {
-          return agent('\
-Lee ai_docs/dev_templates/implementar.md y sigue su proceso completo para implementar esta task.\n\
-Lee ai_docs/core/ para contexto del proyecto.\n\
-\n\
-Task a implementar: ' + task.path + '\n\
-Spec madre: ' + specPath + '\n\
-\n\
-CONTEXTO DEL WORKFLOW:\n\
-- Esta task se implementa EN PARALELO con otras ' + (wave.length - 1) + ' task(s) de la misma oleada.\n\
-- Las oleadas anteriores ya estan implementadas y commiteadas.\n\
-' + (task.dependencias && task.dependencias.length > 0 ? '- Dependencias (ya completadas): ' + task.dependencias.join(', ') : '- Esta task es independiente.') + '\n\
-\n\
-PROCESO OBLIGATORIO:\n\
-1. Lee la task completa y verifica pre-requisitos\n\
-2. Investiga el codigo existente\n\
-3. Implementa los cambios descritos en la task\n\
-4. Escribe tests (RED-GREEN cuando aplique)\n\
-5. Ejecuta validaciones (linting, tests, build)\n\
-6. NO hagas commit — el commit se hara despues de que todas las tasks paralelas terminen\n\
-\n\
-REGLAS:\n\
-- SOLO implementa lo que dice la task\n\
-- Hallazgos fuera de alcance se anotan, no se corrigen\n\
-- Si algo falla en validaciones, corregir antes de continuar\n\
-- NO hagas preguntas. Trabaja con la informacion disponible.\n\
-- NO ejecutes git commit ni git add\n\
-\n\
-En commit_message retorna el mensaje que usarias (formato: <tipo>: <descripcion>, max 72 chars).\n\
-Tipos validos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore\n\
-\n\
-Retorna: path de la task, titulo, resultado, archivos modificados, tests creados/pasando, commit_message propuesto, hallazgos fuera de alcance.', {
-            label: 'impl-' + (globalIdx + 1) + '-' + task.titulo.substring(0, 25),
-            phase: 'Implementacion',
-            schema: IMPL_SCHEMA
-          })
-        }
-      })
-    )
-
-    // Sequential commits after parallel implementation
-    var validResults = waveResults.filter(Boolean)
-    if (validResults.length > 0) {
-      var commitList = validResults.map(function(r) {
-        return { files: (r.archivos_modificados || []).join(', '), message: r.commit_message || 'feat: implement ' + r.task_titulo }
-      })
-      var commitInstructions = commitList.map(function(c, i) {
-        return (i + 1) + '. Stage archivos: ' + c.files + ' → commit: "' + c.message + '"'
-      }).join('\n')
-
-      await agent('\
-Crea commits individuales para cada task completada en esta oleada.\n\
-Para CADA entrada, ejecuta git add con los archivos listados y luego git commit con el mensaje indicado.\n\
-Si algun archivo no existe o no tiene cambios, omitelo del staging sin error.\n\
-\n\
-Commits a crear (uno por task, en este orden):\n' + commitInstructions + '\n\
-\n\
-Ejecuta cada git add + git commit como operaciones separadas. Un commit por task.', {
-        label: 'commits-oleada-' + (wi + 1),
-        phase: 'Implementacion'
-      })
-    }
-
-    for (var ri = 0; ri < waveResults.length; ri++) {
-      var r = waveResults[ri]
-      if (r) {
-        allResults.push(r)
-        if (r.resultado === 'COMPLETADA') { completadas++ } else { fallidas++ }
-      } else {
-        allResults.push({ task_path: wave[ri].path, task_titulo: wave[ri].titulo, resultado: 'FALLIDA', archivos_modificados: [], notas: 'El agente no retorno resultado' })
-        fallidas++
-      }
-    }
-    taskCounter += wave.length
-
-  } else {
-    // Sequential: single task, implement + commit
-    var task = wave[0]
-    taskCounter++
-    log('Oleada ' + (wi + 1) + '/' + waves.length + ': ' + task.titulo)
-
-    var result = await agent('\
-Lee ai_docs/dev_templates/implementar.md y sigue su proceso completo para implementar esta task.\n\
-Lee ai_docs/core/ para contexto del proyecto.\n\
-\n\
-Task a implementar: ' + task.path + '\n\
-Spec madre: ' + specPath + '\n\
-\n\
-CONTEXTO DEL WORKFLOW:\n\
-- Task ' + taskCounter + ' de ' + taskList.length + ' en la implementacion de esta spec.\n\
-- Las oleadas anteriores ya estan implementadas y commiteadas.\n\
-' + (task.dependencias && task.dependencias.length > 0 ? '- Dependencias (ya completadas): ' + task.dependencias.join(', ') : '- Esta task es independiente.') + '\n\
-\n\
-PROCESO OBLIGATORIO:\n\
-1. Lee la task completa y verifica pre-requisitos\n\
-2. Investiga el codigo existente\n\
-3. Implementa los cambios descritos en la task\n\
-4. Escribe tests (RED-GREEN cuando aplique)\n\
-5. Ejecuta validaciones (linting, tests, build)\n\
-6. Haz commit con mensaje descriptivo siguiendo el formato: <tipo>: <descripcion>\n\
-   Tipos validos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore\n\
-   Subject maximo 72 caracteres\n\
-\n\
-REGLAS:\n\
-- SOLO implementa lo que dice la task\n\
-- Hallazgos fuera de alcance se anotan, no se corrigen\n\
-- Si algo falla en validaciones, corregir antes de continuar\n\
-- NO hagas preguntas. Trabaja con la informacion disponible.\n\
-\n\
-Retorna: path de la task, titulo, resultado (COMPLETADA/FALLIDA/PARCIAL), archivos modificados, tests creados/pasando, mensaje de commit, hallazgos fuera de alcance.', {
-      label: 'impl-' + taskCounter + '-' + task.titulo.substring(0, 25),
-      phase: 'Implementacion',
-      schema: IMPL_SCHEMA
-    })
-
-    if (result) {
-      allResults.push(result)
-      if (result.resultado === 'COMPLETADA') { completadas++ } else { fallidas++ }
-      log('Task ' + taskCounter + ': ' + (result.resultado || 'SIN_RESULTADO'))
-    } else {
-      allResults.push({ task_path: task.path, task_titulo: task.titulo, resultado: 'FALLIDA', archivos_modificados: [], notas: 'El agente no retorno resultado' })
-      fallidas++
-      log('Task ' + taskCounter + ': FALLO (sin resultado del agente)')
+const conWorktree = taskList.filter(function(t) { return orq.usaWorktree(t, mapaArchivos) })
+if (conWorktree.length > 0) {
+  log(conWorktree.length + ' task(s) con efectos secundarios en el sistema de ficheros: arbol de trabajo aparte')
+  if (!orq.headResuelve()) {
+    return {
+      spec: specPath,
+      error: 'PRE_CONDICION_WORKTREE: HEAD debe resolver antes de crear un arbol de trabajo. '
+        + 'Crea el primer commit del repo ANTES de implementar tasks con efectos secundarios.'
     }
   }
 }
 
+// ── Fase 2: Implementacion ────────────────────────────────────────────────────
+// Cada task arranca en cuanto SUS dependencias estan satisfechas — no espera al
+// resto de su nivel — y nunca a la vez que otra task que escriba alguno de sus
+// archivos. Los commits y los merges tocan el mismo indice de git: se serializan.
+phase('Implementacion')
+
+var colaGit = Promise.resolve()
+function enSerie(accion) {
+  const turno = colaGit.then(accion, accion)
+  colaGit = turno.catch(function() {})
+  return turno
+}
+
+function promptImplementacion(task, worktree) {
+  const deps = (task.dependencias && task.dependencias.length > 0)
+    ? '- Dependencias (ya completadas): ' + task.dependencias.join(', ')
+    : '- Esta task es independiente.'
+
+  const ubicacion = worktree
+    ? '- Trabaja EXCLUSIVAMENTE dentro de ' + worktree.dir + ' (arbol de trabajo aparte, rama ' + worktree.rama + ').\n'
+      + '  Esta task tiene efectos secundarios en el sistema de ficheros y se aisla del checkout compartido.\n'
+      + '  Las rutas de la task son relativas a la raiz del proyecto: resuelvelas contra ' + worktree.dir + '.\n'
+      + '  Si una ruta relativa no resuelve, avisa y continua: puede ser un archivo nuevo legitimo.\n'
+      + '- Al terminar, haz commit DENTRO del arbol de trabajo (formato: <tipo>: <descripcion>, max 72 chars).'
+    : '- Trabajas en el checkout compartido, en paralelo con otras tasks que escriben archivos distintos.\n'
+      + '- Escribe SOLO los archivos declarados en la tabla "Archivos afectados" de tu task.\n'
+      + '- NO hagas commit ni git add: el commit lo crea el workflow cuando termines.'
+
+  return '\
+Lee ai_docs/dev_templates/implementar.md y sigue su proceso completo para implementar esta task.\n\
+Lee ai_docs/core/ para contexto del proyecto.\n\
+\n\
+Task a implementar: ' + task.path + '\n\
+Spec madre: ' + specPath + '\n\
+\n\
+CONTEXTO DEL WORKFLOW:\n' + deps + '\n' + ubicacion + '\n\
+\n\
+PROCESO OBLIGATORIO:\n\
+1. Lee la task completa y verifica pre-requisitos\n\
+2. Investiga el codigo existente\n\
+3. Implementa los cambios descritos en la task\n\
+4. Escribe tests (RED-GREEN cuando aplique)\n\
+5. Ejecuta validaciones (linting, tests, build)\n\
+\n\
+REGLAS:\n\
+- SOLO implementa lo que dice la task\n\
+- Hallazgos fuera de alcance se anotan, no se corrigen\n\
+- Si algo falla en validaciones, corregir antes de continuar\n\
+- NO hagas preguntas. Trabaja con la informacion disponible.\n\
+\n\
+En commit_message retorna el mensaje del commit (formato: <tipo>: <descripcion>, max 72 chars).\n\
+Tipos validos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore\n\
+\n\
+Retorna: path de la task, titulo, resultado, archivos modificados, tests creados/pasando, commit_message, hallazgos fuera de alcance.'
+}
+
+function commitear(task, resultado) {
+  const archivos = (resultado.archivos_modificados || []).join(' ')
+  if (!archivos) return null
+
+  const mensaje = resultado.commit_message || 'feat: implementar ' + resultado.task_titulo
+  return enSerie(function() {
+    return agent('\
+Crea el commit de una task ya implementada. No modifiques codigo.\n\
+\n\
+1. git add ' + archivos + ' (omite sin error los archivos que no existan o no tengan cambios)\n\
+2. git commit con el mensaje: "' + mensaje + '"\n\
+\n\
+Si no hay nada staged, no hagas commit y termina sin error.', {
+      label: 'commit-' + task.titulo.substring(0, 25),
+      phase: 'Implementacion'
+    })
+  })
+}
+
+async function implementarTask(task) {
+  const aislada = orq.usaWorktree(task, mapaArchivos)
+  var worktree = null
+
+  if (aislada) {
+    try {
+      worktree = await enSerie(function() { return orq.crearWorktree(task) })
+      log('Task ' + task.titulo + ': arbol de trabajo ' + worktree.dir)
+    } catch (e) {
+      log('Task ' + task.titulo + ': ' + e.message)
+      return { task_path: task.path, task_titulo: task.titulo, resultado: 'FALLIDA', archivos_modificados: [], notas: e.message }
+    }
+  }
+
+  const resultado = await agent(promptImplementacion(task, worktree), {
+    label: 'impl-' + task.titulo.substring(0, 25),
+    phase: 'Implementacion',
+    schema: IMPL_SCHEMA
+  })
+
+  if (!worktree) {
+    if (resultado) await commitear(task, resultado)
+    return resultado
+  }
+
+  // El trabajo del arbol aparte se integra en el checkout compartido; el commit
+  // ya lo hizo el implementador dentro del worktree.
+  var fusionado = false
+  try {
+    await enSerie(function() { orq.fusionarWorktree(worktree) })
+    fusionado = true
+  } catch (e) {
+    log('Task ' + task.titulo + ': ' + e.message)
+    return { task_path: task.path, task_titulo: task.titulo, resultado: 'FALLIDA', archivos_modificados: [], notas: e.message }
+  } finally {
+    await enSerie(function() { orq.eliminarWorktree(worktree, null, fusionado) })
+  }
+  return resultado
+}
+
+const allResults = await orq.despacharPorDependencias(taskList, implementarTask, {
+  archivos: mapaArchivos,
+  alIniciar: function(task) { log('Implementando: ' + task.titulo) },
+  alBloquear: function(task, deps) {
+    log('Task ' + task.titulo + ': BLOQUEADA (dependencias no completadas: ' + deps.join(', ') + ')')
+    return {
+      task_path: task.path,
+      task_titulo: task.titulo,
+      resultado: 'FALLIDA',
+      archivos_modificados: [],
+      notas: 'No se implemento: sus dependencias no se completaron (' + deps.join(', ') + ')'
+    }
+  }
+}).then(function(rs) {
+  return rs.map(function(r, i) {
+    if (r) return r
+    return {
+      task_path: taskList[i].path,
+      task_titulo: taskList[i].titulo,
+      resultado: 'FALLIDA',
+      archivos_modificados: [],
+      notas: 'El agente no retorno resultado'
+    }
+  })
+})
+
+await colaGit
+
+var completadas = 0
+var fallidas = 0
+for (var ri = 0; ri < allResults.length; ri++) {
+  if (allResults[ri].resultado === 'COMPLETADA') { completadas++ } else { fallidas++ }
+}
 log('Implementacion: ' + completadas + ' completadas, ' + fallidas + ' fallidas de ' + taskList.length)
 
-// ── Phase 3: Revision adversarial ─────────────────────────────────────────────
+// ── Fase 3: Revision adversarial ──────────────────────────────────────────────
 phase('Revision')
 const implSummary = JSON.stringify(allResults.map(function(r) {
   return {
@@ -359,7 +379,7 @@ return {
   spec: specPath,
   spec_titulo: discovery.spec_titulo,
   tasks_total: taskList.length,
-  oleadas: waves.length,
+  niveles: waves.length,
   tasks_completadas: completadas,
   tasks_fallidas: fallidas,
   implementaciones: allResults,

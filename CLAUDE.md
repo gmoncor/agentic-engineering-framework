@@ -12,7 +12,9 @@
 5. /pr                — Crea la PR con los cambios
 ```
 
-**Planificacion exhaustiva, implementacion paralela por oleadas.** El workflow `/planificar` lanza revisores en paralelo y audita cruzadamente. `/implementar-spec` agrupa las tasks en oleadas por dependencias: tasks independientes corren en paralelo, tasks con dependencias esperan a que sus prerequisitos terminen. Revision adversarial al final.
+**Planificacion exhaustiva, implementacion paralela segura.** El workflow `/planificar` lanza revisores en paralelo y audita cruzadamente. `/implementar-spec` lanza cada task en cuanto SUS dependencias estan satisfechas (no espera a las demas) y nunca a la vez que otra task que escriba alguno de sus archivos. Revision adversarial al final.
+
+**Lo que hace seguro el paralelismo es la particion por dueno de archivo**, no el aislamiento: dos tasks solo corren a la vez si sus tablas "Archivos afectados" son disjuntas. Un arbol de trabajo aparte (worktree) solo se crea para las tasks con efectos secundarios en el sistema de ficheros — migraciones, instalacion de dependencias, contenedores — o para trabajar con varias sesiones a la vez. Si los archivos ya son disjuntos, el worktree solo anade coste.
 
 ## Comandos disponibles
 
@@ -44,7 +46,7 @@
 
 1. **Toda solicitud empieza con planificacion** — /planificar antes de /implementar
 2. **Planificacion exhaustiva** — cada task revisada, spec auditada, huecos detectados ANTES de codigo
-3. **Implementacion por oleadas** — tasks independientes en paralelo, tasks con dependencias en orden, cada una con su commit
+3. **Implementacion en paralelo solo con archivos disjuntos** — cada task arranca cuando sus dependencias estan satisfechas; dos tasks que escriben el mismo archivo se serializan. Una task, un commit
 4. **Revision adversarial obligatoria** — el paso 5 verifica la implementacion completa antes de mergear
 5. **Tasks atomicas** — una task, un cambio acotado, un commit
 6. **Roadmap global** — el plan de trabajo vive en `ai_docs/core/` y guia cada planificacion
@@ -58,9 +60,10 @@ proyecto/
 │   ├── agents/         # planificador, revisor, implementador, asesor
 │   ├── commands/       # 12 comandos SDD
 │   ├── skills/         # 8 skills (auto-activacion)
-│   ├── workflows/      # planificar.js + implementar-spec.js
+│   ├── workflows/      # planificar.js + implementar-spec.js + lib/ (orquestacion)
 │   └── settings.json   # model: claude-opus-4-8 + hooks
 ├── hooks/              # 3 hooks (pipeline-guard + review-gate + commit-guard)
+├── scripts/            # next-task-number.sh (numeracion de tasks sin colisiones)
 ├── ai_docs/
 │   ├── core/           # vision, planificacion, roadmap
 │   ├── core_templates/ # 4 plantillas de planificacion inicial (01-04)

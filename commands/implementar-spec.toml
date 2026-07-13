@@ -14,9 +14,12 @@ PROCESO (ejecuta en orden):
 
 PASO 1 — DESCUBRIMIENTO
 Lee la spec y encuentra todas sus tasks en ai_docs/tasks/.
-Identifica dependencias entre tasks.
+Identifica dependencias entre tasks y los archivos que declara cada una en su tabla "Archivos afectados".
+Si las dependencias forman un ciclo, DETENTE: nombra las tasks del ciclo y pide corregir el plan.
 Agrupa en oleadas: tasks independientes van juntas, tasks con dependencias esperan a que sus prerequisitos terminen.
-Muestra las oleadas al usuario antes de continuar.
+Dos tasks solo van juntas si sus archivos son disjuntos; si se solapan, van en oleadas distintas (la que escribe primero, antes).
+Una task que no declara archivos va sola.
+Muestra las oleadas al usuario antes de continuar, indicando que archivo obligo a serializar.
 
 PASO 2 — IMPLEMENTACION POR OLEADAS
 Para cada oleada:
