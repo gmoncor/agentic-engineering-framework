@@ -56,18 +56,17 @@ Definidos en `.codex/agents/*.toml` (Codex) y en `.agents/plugins/sdd/agents/*.m
 CLI). El asesor corre en modo solo lectura; los demas pueden escribir dentro del espacio de
 trabajo.
 
-## Orquestacion: fan-out no bloqueante + un gate bloqueante
+## Implementacion lineal + revision por task
 
-Este framework NO tiene motor de workflows declarativo: la secuenciacion depende de como el
-orquestador escribe sus llamadas. El principio que si funciona:
+Este framework NO tiene motor de workflows declarativo en estos backends: la secuenciacion
+depende de como el orquestador escribe sus llamadas. El principio que aplicar:
 
-1. **Fan-out no bloqueante.** Reparte el trabajo independiente entre varios subagentes y sigue
-   sin consumir sus resultados intermedios. Dos tasks solo pueden ir a la vez si sus tablas
-   "Archivos afectados" son **disjuntas**; si comparten un archivo, se serializan. Lo que hace
-   seguro el paralelismo es la particion por dueno de archivo, no el aislamiento del proceso.
-2. **Un unico gate bloqueante.** Antes de avanzar de fase (aprobar el plan, entregar el codigo)
-   hay UN punto cuyo veredicto se necesita para continuar: la auditoria cruzada en planificacion,
-   la revision adversarial en implementacion. Ahi se espera; en el resto, no.
+1. **Implementacion lineal.** Implementa las tasks una tras otra, en orden de dependencias: una
+   task no arranca hasta que las tasks de las que depende estan hechas. Cada task se implementa,
+   se revisa y se commitea antes de pasar a la siguiente. Una task, un commit.
+2. **Un gate de revision por task.** Antes de commitear cada task hay UN punto cuyo veredicto se
+   necesita para continuar: la revision adversarial de esa task. Ahi se espera. En planificacion
+   el gate equivalente es la auditoria cruzada, que si corre en paralelo sobre las tasks del plan.
 
 No escribas instrucciones del tipo "lanza N agentes en la misma respuesta": es una prescripcion
 que no se ejecuta en la practica y crea la ilusion de paralelismo sin darlo. Describe la

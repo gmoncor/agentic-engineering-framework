@@ -6,7 +6,7 @@
 
 ## Que es esto?
 
-Un sistema de plantillas que estructura como trabaja tu asistente de IA. En lugar de pedirle "haz esto" y esperar lo mejor, el framework impone un flujo: **planificacion exhaustiva** (spec + tasks + revision paralela + auditoria cruzada) antes de tocar codigo, seguida de **implementacion por oleadas** (tasks independientes en paralelo, dependencias en orden) y revision adversarial.
+Un sistema de plantillas que estructura como trabaja tu asistente de IA. En lugar de pedirle "haz esto" y esperar lo mejor, el framework impone un flujo: **planificacion exhaustiva** (spec + tasks + revision paralela + auditoria cruzada) antes de tocar codigo, seguida de **implementacion lineal** (una task tras otra en orden de dependencias, revision adversarial por task antes del commit).
 
 Compatible con cualquier LLM via copy-paste. Integracion nativa con cuatro CLIs: Claude Code (workflows + comandos + agentes + skills), Gemini CLI (extension instalable), Codex y Antigravity (agentes + skills + hooks). Los cuatro exponen el mismo flujo; un test de paridad lo verifica (`npm test`).
 
@@ -27,7 +27,7 @@ Las plantillas guian al asistente de IA, pero la calidad del resultado depende d
 
 ## El flujo SDD
 
-El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tasks, revision, auditoria cruzada y, solo entonces, implementacion por oleadas (tasks independientes en paralelo).
+El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tasks, revision, auditoria cruzada y, solo entonces, implementacion lineal (una task tras otra en orden de dependencias).
 
 ```
   [1] Solicitud
@@ -39,11 +39,11 @@ El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tas
   [3] Aprobacion ─────────── El usuario revisa el plan completo
       |
       v
-  [4] /implementar-spec ──── Workflow: tasks independientes en paralelo + revision adversarial
-      |                         (Claude Code: workflow que despacha cada task en cuanto
-      |                          sus dependencias estan hechas, con archivos disjuntos)
-      |                         (Gemini/Codex/Antigravity: el orquestador reparte el
-      |                          trabajo independiente; sin motor de workflows propio)
+  [4] /implementar-spec ──── Workflow: cada task en orden de dependencias + revision por task
+      |                         (Claude Code: workflow que implementa, revisa y commitea
+      |                          cada task antes de pasar a la siguiente)
+      |                         (Gemini/Codex/Antigravity: el orquestador implementa las
+      |                          tasks en orden; sin motor de workflows propio)
       v
     Codigo revisado ──────── /pr para crear la Pull Request
 ```
@@ -53,16 +53,16 @@ El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tas
 | Solicitud | El usuario describe lo que quiere | Usuario |
 | Planificar | Spec + tasks + revision paralela + auditoria cruzada | LLM (workflow) |
 | Aprobacion | El usuario revisa veredicto y decide | Usuario |
-| Implementar | Tasks por oleadas (independientes en paralelo), revision adversarial al final | LLM (workflow) |
+| Implementar | Cada task en orden de dependencias, revision adversarial por task antes del commit | LLM (workflow) |
 
 Principios del flujo:
 
 - **Planificacion exhaustiva.** Cada task revisada y auditada ANTES de tocar codigo
-- **Implementacion por oleadas.** Tasks independientes en paralelo, dependencias en orden, cada una con su commit
+- **Implementacion lineal.** Una task tras otra en orden de dependencias, cada una revisada y con su commit
 - **Tasks atomicas.** Una task = un cambio acotado = un commit
-- **Revision adversarial obligatoria.** El paso 5 verifica la implementacion completa antes de mergear
+- **Revision adversarial obligatoria.** Cada task se revisa antes de commitearla
 - **Roadmap global.** El plan de trabajo vive en `ai_docs/core/` y guia cada `/planificar`
-- **Paralelizacion automatica.** `/implementar-spec` detecta dependencias entre tasks y agrupa en oleadas: tasks independientes corren en paralelo, las demas esperan a sus prerequisitos
+- **Orden por dependencias.** `/implementar-spec` ordena las tasks por sus dependencias y las implementa una tras otra: cada task espera a las tasks de las que depende
 
 ---
 
@@ -195,7 +195,7 @@ No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` par
 | Agentes | `.claude/agents/` (4) | `agents/` (4) | `.codex/agents/` (4, `.toml`) | `.agents/plugins/sdd/agents/` (4) |
 | Skills | `.claude/skills/` (8) | `skills/` (8) | `.agents/skills/` (17) | `.agents/skills/` (17) |
 | Hooks | `hooks/` (3, wired en settings) | `hooks/` (3, wired en `hooks/hooks.json`) | `hooks/` (2, wired en `.codex/hooks.json`) | `hooks/` (2, wired en `.agents/hooks.json`) |
-| Workflows | `.claude/workflows/` (2) | — (el orquestador reparte el trabajo) | — (idem) | — (idem) |
+| Workflows | `.claude/workflows/` (2) | — (el orquestador implementa en orden) | — (idem) | — (idem) |
 | Contexto | `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` | `AGENTS.md` |
 | Templates | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) |
 | Core templates | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) |
@@ -285,7 +285,7 @@ El dia a dia sigue el flujo SDD. Usa `/planificar` como punto de entrada princip
 
 **Aprobacion** — Revisa el plan completo. Si es APROBADO, procede. Si necesita ajustes, aplicalos y re-evalua.
 
-**`/implementar-spec`** — Workflow que implementa TODAS las tasks de la spec por oleadas: tasks independientes en paralelo, dependencias en orden. Commit por task y revision adversarial al final. Recomendado para el flujo normal.
+**`/implementar-spec`** — Workflow que implementa TODAS las tasks de la spec en orden de dependencias, una tras otra. Revision adversarial y commit por task. Recomendado para el flujo normal.
 
 **`/implementar`** — Implementa UNA task individual. Para cuando necesitas control manual sobre el orden o quieres implementar una task especifica.
 
@@ -391,10 +391,10 @@ El directorio `hooks/` contiene hooks compartidos entre ambas CLIs que refuerzan
 | Hook | Evento | Que hace | Modo |
 |------|--------|----------|------|
 | `sdd-pipeline-guard.js` | Write/Edit | **Bloquea** la escritura de un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de la spec APROBADA activa | Bloqueante |
-| `sdd-review-gate.js` | git commit / git merge | **Avisa** si no consta que el codigo entregado haya pasado la revision adversarial posterior a la implementacion. Nunca deniega | Advisory (opt-in, solo Claude Code) |
+| `sdd-review-gate.js` | git commit / git merge | **Bloquea** un commit/merge cuyo diff no consta revisado: la revision por task emite una senal con el hash del diff y el hook la contrasta con lo staged. Sin senal o con hash que no ata, deniega | Bloqueante (opt-in, solo Claude Code) |
 | `sdd-commit-guard.js` | git commit | Verifica formato de commit (subject ≤72, tipo valido entre 12 tipos, sin Co-Authored-By IA) | Advisory |
 
-Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`). El aviso de revision (`sdd-review-gate.js`) se cablea **unicamente en Claude Code**; los demas backends no lo cargan.
+Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`). El gate de revision (`sdd-review-gate.js`) se cablea **unicamente en Claude Code**; los demas backends no lo cargan.
 
 **Codex** usa dos hooks propios, registrados en `.codex/hooks.json`:
 
@@ -407,11 +407,11 @@ Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohibe esos mismos com
 
 **Limite honesto de los hooks de Codex:** son un **guardarrail**, no una frontera completa de enforcement — asi lo declara el propio fabricante. No interceptan todas las llamadas al shell ni todas las rutas de escritura: un proceso hijo lanzado desde un comando permitido puede escapar al matcher, y el payload de `apply_patch` no tiene esquema publico estable (si el guard no puede leer las rutas del parche, avisa en vez de denegar, porque bloquear a ciegas seria arbitrario). Sirven para que el camino correcto sea el camino por defecto y para que desviarse sea deliberado. Si necesitas una frontera dura, ponla en el CI y en las protecciones de rama.
 
-**Solo un extremo del ciclo se bloquea de verdad, y conviene saber cual.** `sdd-pipeline-guard.js` impide escribir codigo que nadie planifico: puede comprobarlo mecanicamente, porque el archivo que se va a escribir esta declarado en una task o no lo esta. La revision del codigo entregado no admite esa comprobacion: la unica evidencia posible es una senal que el propio flujo emite, y esa senal dice "hubo una revision en esta sesion", no "este diff fue revisado". Bloquear con ella seria enforcement aparente — cualquiera que conozca el formato la reproduce. Por eso `sdd-review-gate.js` **avisa y deja pasar**. Que el codigo entregado se revise lo sostiene el flujo (`/implementar-spec` termina en revision adversarial), no un hook. Si necesitas una frontera dura sobre lo que llega a la rama, ponla en CI y en las protecciones de rama.
+**Hay dos bloqueos reales: escrituras y commits sin revision.** `sdd-pipeline-guard.js` impide escribir codigo que nadie planifico: puede comprobarlo mecanicamente, porque el archivo que se va a escribir esta declarado en una task o no lo esta. `sdd-review-gate.js` impide commitear un diff que no consta revisado: la revision adversarial ocurre POR TASK, antes del commit, y su senal guarda el hash del diff revisado; el hook recalcula el hash de `git diff --cached` y lo contrasta. Sin senal, o con un hash que no ata el diff staged, deniega. Cuando no hay diff cacheado computable no bloquea a ciegas: degrada a aviso. Que el codigo entregado se revise lo sostiene el flujo (`/implementar-spec` revisa cada task antes de commitearla) reforzado por el gate. Si necesitas una frontera aun mas dura sobre lo que llega a la rama, ponla en CI y en las protecciones de rama.
 
-**Configuracion (`hooks/config.json`):** `sdd-review-gate.js` viene desactivado. Ponlo en `"enabled": true` para que avise cuando vayas a commitear codigo sin constancia de revision. El workflow `/implementar-spec` emite la senal que lo silencia; su contrato vive en `hooks/sdd-review-signal.js`. Solo se cablea en Claude Code: los demas backends no tienen motor de workflows y, por tanto, no tienen emisor de la senal — el aviso ahi no podria atenderse por ninguna via legitima.
+**Configuracion (`hooks/config.json`):** `sdd-review-gate.js` viene desactivado. Ponlo en `"enabled": true` para que bloquee cuando vayas a commitear codigo sin constancia de revision. El workflow `/implementar-spec` emite la senal que lo satisface; su contrato vive en `hooks/sdd-review-signal.js`. Solo se cablea en Claude Code: los demas backends no tienen motor de workflows y, por tanto, no tienen emisor de la senal — el gate ahi no podria satisfacerse por ninguna via legitima.
 
-**Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada el bloqueo de escrituras a aviso. Uso puntual para desbloquear una urgencia; si se queda fijo en el shell, el enforcement deja de existir.
+**Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada ambos bloqueos (escrituras y revision) a aviso. Uso puntual para desbloquear una urgencia; si se queda fijo en el shell, el enforcement deja de existir.
 
 **Tests:** `npm test` ejecuta los tests de contrato de los hooks (Node >= 20, sin dependencias).
 
@@ -473,7 +473,7 @@ El historial de cambios por version esta en **[CHANGELOG.md](CHANGELOG.md)**, en
 
 Para reportar una vulnerabilidad, sigue el proceso de **[SECURITY.md](SECURITY.md)** — no abras un issue publico.
 
-Ten presente que el framework **guia** al asistente de IA, pero no verifica el codigo que genera. Los hooks bloquean escrituras fuera del pipeline y avisan sobre los commits; no verifican la correccion del codigo, y el commit nunca se deniega. Revisa y audita todo lo que llegue a produccion.
+Ten presente que el framework **guia** al asistente de IA, pero no verifica el codigo que genera. Los hooks bloquean escrituras fuera del pipeline y commits cuyo diff no consta revisado; no verifican la correccion del codigo. Revisa y audita todo lo que llegue a produccion.
 
 ---
 

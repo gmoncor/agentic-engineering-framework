@@ -6,6 +6,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+### Changed
+
+- **Implementacion lineal.** `/implementar-spec` implementa las tasks una tras otra en orden de dependencias —implementa, revisa y commitea cada task antes de pasar a la siguiente— en lugar de agruparlas en oleadas paralelas. La revision del PLAN (`/planificar`) sigue corriendo en paralelo; solo cambia la implementacion. La documentacion (`CLAUDE.md`, `AGENTS.md`, `README.md`) describia la implementacion como paralela por oleadas y particion por dueno de archivo; ahora describe el flujo lineal real
+- **`sdd-review-gate.js` pasa de avisar a bloquear.** La revision adversarial ocurre por task, antes del commit, y su senal guarda el hash del diff revisado; el gate recalcula el hash de `git diff --cached` y deniega si no hay senal o el hash no ata lo staged. Cuando no hay diff cacheado computable degrada a aviso, y `SDD_GUARD_SKIP=1` sigue siendo el escape puntual
+
+### Breaking
+
+- **El gate de revision pasa de advisory a bloqueante.** Con `sdd_review_gate.enabled: true`, un `git commit`/`merge` cuyo diff no conste revisado ahora se deniega (antes solo avisaba). La via para satisfacerlo es pasar la revision adversarial por task; el escape puntual sigue siendo `SDD_GUARD_SKIP=1`
+
 ## [3.0.0] - 2026-07-13
 
 ### Added

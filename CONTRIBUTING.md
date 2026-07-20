@@ -41,19 +41,19 @@ Abre un issue con la plantilla **Feature request** antes de escribir codigo. Des
 
 El hook `sdd-commit-guard.js` avisa si un commit incumple estas reglas.
 
-## El guard de escrituras bloquea; el de revision avisa
+## Dos guards que bloquean: escrituras y revision
 
 `sdd-pipeline-guard.js` bloquea escribir archivos que ninguna task de la spec activa declara. Si te bloquea, la respuesta por defecto es **arreglar el plan**: declara el archivo en la tabla "Archivos afectados" de la task.
 
-`sdd-review-gate.js` (opt-in, solo Claude Code) **avisa** cuando vas a commitear codigo sin constancia de que se haya revisado, pero nunca deniega. No puede: la unica evidencia de que hubo revision es una senal de sesion que no esta atada al diff que se commitea, y bloquear con ella seria fingir una garantia que no da. El aviso te recuerda pasar la revision adversarial (`/revision` o la fase final de `/implementar-spec`); atenderla es cosa tuya, no del hook. Solo se cablea en Claude Code, el unico backend cuyo flujo emite la senal.
+`sdd-review-gate.js` (opt-in, solo Claude Code) **bloquea** un commit cuyo diff no consta revisado. La revision adversarial ocurre POR TASK, antes del commit, y emite una senal con el hash del diff revisado; el hook recalcula el hash de `git diff --cached` y lo contrasta. Sin senal, o con un hash que no ata lo staged, deniega. Cuando no hay diff cacheado computable degrada a aviso, para no bloquear a ciegas. La via para satisfacerlo es pasar la revision adversarial (`/revision` o la revision por task de `/implementar-spec`). Solo se cablea en Claude Code, el unico backend cuyo flujo emite la senal.
 
-`SDD_GUARD_SKIP=1` degrada el bloqueo de escrituras a aviso. Es un escape **puntual** para desbloquear una urgencia:
+`SDD_GUARD_SKIP=1` degrada ambos bloqueos (escrituras y revision) a aviso. Es un escape **puntual** para desbloquear una urgencia:
 
 ```bash
 SDD_GUARD_SKIP=1 git commit -m "fix: restaurar el servicio caido"
 ```
 
-No lo exportes de forma permanente en tu shell ni en la configuracion del proyecto: con el activo, el guard de escrituras deja de enforcar nada. Si necesitas el escape a menudo, el problema esta en el plan, no en el guard.
+No lo exportes de forma permanente en tu shell ni en la configuracion del proyecto: con el activo, los guards dejan de enforcar nada. Si necesitas el escape a menudo, el problema esta en el plan, no en el guard.
 
 ## Paridad entre CLIs
 
