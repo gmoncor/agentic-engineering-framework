@@ -11,6 +11,11 @@ export const meta = {
   ],
 }
 
+// Como mucho una segunda pasada de revision/auditoria tras un veredicto adverso.
+// El presupuesto de pasadas es esta constante y nada mas: no hay motor de
+// convergencia. Con 1 no habria segunda pasada; con 2, una sola.
+const MAX_REVISION_PASSES = 2
+
 const TASKS_SCHEMA = {
   type: 'object',
   properties: {
@@ -23,7 +28,21 @@ const TASKS_SCHEMA = {
           path: { type: 'string' },
           titulo: { type: 'string' },
           independiente: { type: 'boolean' },
-          dependencias: { type: 'array', items: { type: 'string' } }
+          dependencias: { type: 'array', items: { type: 'string' } },
+          // Lo que una task produce (API, tipo, export) y otra consume. Permite
+          // detectar en la auditoria un consumidor sin productor: un error de plan.
+          contratos: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                tipo: { type: 'string', enum: ['produce', 'consume'] },
+                nombre: { type: 'string' },
+                archivo: { type: 'string' }
+              },
+              required: ['tipo', 'nombre']
+            }
+          }
         },
         required: ['path', 'titulo', 'independiente']
       }
@@ -69,6 +88,15 @@ const AUDIT_SCHEMA = {
     resumen: { type: 'string' }
   },
   required: ['veredicto', 'cobertura', 'overlaps', 'huecos', 'incoherencias', 'dependencias_problematicas', 'resumen']
+}
+
+// Carga un modulo del repo por ruta relativa a la raiz del proyecto: el workflow
+// se evalua sin una URL de modulo propia, asi que un import relativo no resolveria.
+async function cargarModulo(rutaRelativa) {
+  const path = await import('node:path')
+  const url = await import('node:url')
+  const mod = await import(url.pathToFileURL(path.resolve(rutaRelativa)).href)
+  return mod.default || mod
 }
 
 // ── Phase 1: Intake ────────────────────────────────────────────────────────────
@@ -172,8 +200,12 @@ IMPORTANTE:
 - Minimo 3 edge cases por task con logica de negocio.
 - Crea cada task como archivo en ai_docs/tasks/NNN_descriptor.md.
 - Verifica numeracion existente para no pisar archivos.
+- Declara los contratos entre tasks: lo que una task PRODUCE (API, tipo, export) y
+  otra CONSUME. Por contrato: tipo (produce|consume), nombre, archivo. El consumidor
+  debe depender del productor.
 
-Retorna un JSON con spec_path y la lista de tasks creadas (path, titulo, independiente, dependencias).
+Retorna un JSON con spec_path y la lista de tasks creadas (path, titulo, independiente,
+dependencias y contratos que produce o consume).
 `, { label: 'derivar-tasks', phase: 'Tasks', schema: TASKS_SCHEMA })
 
 const taskList = (tasksResult && tasksResult.tasks) ? tasksResult.tasks : []
@@ -183,11 +215,37 @@ if (taskList.length === 0) {
   return { spec: specPath, tasks: [], reviews: [], audit: null, veredicto: 'SIN_TASKS' }
 }
 
-// ── Phase 4: Revision paralela ─────────────────────────────────────────────────
-phase('Revision')
-const reviews = await parallel(
-  taskList.map((task, i) => () =>
-    agent(`
+// Reglas puras de la auditoria (adverso, hace falta otra pasada, hallazgo mas
+// severo, contratos rotos). Viven en un modulo aparte para poder probarse sin el
+// runtime de workflows, como el intake.
+const aud = await cargarModulo('.claude/workflows/lib/auditoria.js')
+
+// Un contrato producer/consumer roto (un consumidor sin productor, o que no depende
+// de el) es un error de plan que debe detectarse ANTES de tocar codigo. Se detecta
+// mecanicamente sobre las tasks y aflora en la auditoria. Degradacion segura: si el
+// modulo no esta disponible, se continua sin esta comprobacion.
+let contratosRotos = []
+try {
+  const orq = await cargarModulo('.claude/workflows/lib/orquestacion.js')
+  contratosRotos = orq.verificarContratos(taskList) || []
+  for (const roto of contratosRotos) log('Contrato roto detectado: ' + roto)
+} catch (e) {
+  log('No se pudieron verificar los contratos entre tasks (' + e.message + '); se continua sin esa comprobacion')
+}
+
+const taskPaths = taskList.map(function(t) { return t.path }).join(', ')
+
+// ── Fases 4-5: una pasada = revision paralela + auditoria cruzada ──────────────
+// El fan-out parallel() de la revision (Fase 4) se conserva intacto: es el
+// paralelismo de auditoria por task. La pasada se ejecuta hasta dos veces (ver
+// MAX_REVISION_PASSES); solo la primera marca las fases, la segunda solo registra.
+async function pasadaRevisionAuditoria(numeroPasada) {
+  if (numeroPasada === 1) phase('Revision')
+  else log('Segunda pasada: re-revision paralela de las tasks corregidas')
+
+  const reviews = await parallel(
+    taskList.map((task, i) => () =>
+      agent(`
 Lee ai_docs/dev_templates/revisar_tarea.md y sigue TODOS sus pasos sin saltar ninguno.
 Lee la task en: ${task.path}
 Lee la spec madre en: ${specPath}
@@ -211,36 +269,44 @@ Ejecuta todas las verificaciones:
 
 Retorna tu veredicto estructurado con problemas y ajustes concretos.
 `, {
-      label: 'revisar-' + (i + 1) + '-' + task.titulo.substring(0, 25),
-      phase: 'Revision',
-      schema: REVIEW_SCHEMA
-    })
+        label: 'revisar-p' + numeroPasada + '-' + (i + 1) + '-' + task.titulo.substring(0, 22),
+        phase: 'Revision',
+        schema: REVIEW_SCHEMA
+      })
+    )
   )
-)
 
-const validReviews = reviews.filter(Boolean)
-if (validReviews.length < taskList.length) {
-  log('ADVERTENCIA: ' + (taskList.length - validReviews.length) + ' de ' + taskList.length + ' revisiones fallaron')
-}
-const listos = validReviews.filter(r => r.veredicto === 'LISTO_PARA_IMPLEMENTAR').length
-const ajustes = validReviews.filter(r => r.veredicto === 'NECESITA_AJUSTES').length
-const replantear = validReviews.filter(r => r.veredicto === 'NECESITA_REPLANTEAMIENTO').length
-log('Revision: ' + listos + ' listos, ' + ajustes + ' con ajustes, ' + replantear + ' a replantear')
-
-// ── Phase 5: Auditoria cruzada ─────────────────────────────────────────────────
-phase('Auditoria')
-const taskPaths = taskList.map(function(t) { return t.path }).join(', ')
-const reviewSummary = JSON.stringify(validReviews.map(function(r) {
-  return {
-    task: r.task_path,
-    titulo: r.task_titulo,
-    veredicto: r.veredicto,
-    problemas: r.problemas,
-    ajustes: r.ajustes_propuestos
+  const validReviews = reviews.filter(Boolean)
+  if (validReviews.length < taskList.length) {
+    log('ADVERTENCIA: ' + (taskList.length - validReviews.length) + ' de ' + taskList.length + ' revisiones fallaron')
   }
-}), null, 2)
+  const listos = validReviews.filter(r => r.veredicto === 'LISTO_PARA_IMPLEMENTAR').length
+  const ajustes = validReviews.filter(r => r.veredicto === 'NECESITA_AJUSTES').length
+  const replantear = validReviews.filter(r => r.veredicto === 'NECESITA_REPLANTEAMIENTO').length
+  log('Revision (pasada ' + numeroPasada + '): ' + listos + ' listos, ' + ajustes + ' con ajustes, ' + replantear + ' a replantear')
 
-const auditResult = await agent(`
+  if (numeroPasada === 1) phase('Auditoria')
+  else log('Segunda pasada: re-auditoria cruzada')
+
+  const reviewSummary = JSON.stringify(validReviews.map(function(r) {
+    return {
+      task: r.task_path,
+      titulo: r.task_titulo,
+      veredicto: r.veredicto,
+      problemas: r.problemas,
+      ajustes: r.ajustes_propuestos
+    }
+  }), null, 2)
+
+  // Los contratos rotos detectados mecanicamente se pasan al auditor como hallazgos
+  // ya confirmados, para que no los pase por alto.
+  const contratosTexto = contratosRotos.length
+    ? '\nHallazgos pre-detectados mecanicamente (contratos producer/consumer rotos; '
+      + 'un consumidor sin productor es un error de plan, tratalos como confirmados):\n- '
+      + contratosRotos.join('\n- ') + '\n'
+    : ''
+
+  const auditResult = await agent(`
 Lee ai_docs/dev_templates/auditar_spec.md y sigue TODOS sus pasos sin saltar ninguno.
 Lee la spec en: ${specPath}
 Lee TODAS las tasks: ${taskPaths}
@@ -248,7 +314,7 @@ Lee ai_docs/core/ para contexto del proyecto.
 
 Resultados de la revision individual de cada task (ya hecha por revisores independientes):
 ${reviewSummary}
-
+${contratosTexto}
 POSTURA OBLIGATORIA:
 - Tu trabajo es ENCONTRAR PROBLEMAS, no confirmar que todo esta bien.
 - Asume que hay huecos hasta demostrar lo contrario.
@@ -263,15 +329,72 @@ Ejecuta todas las verificaciones:
 3. HUECOS: features en "Incluye" sin task, restricciones sin verificacion, integraciones faltantes
 4. COHERENCIA: tasks no contradicen spec ni entre si, estimaciones realistas
 5. DEPENDENCIAS: circulares, faltantes, orden incorrecto, no declaradas
+6. CONTRATOS: un consumidor de un contrato (API, tipo, export) sin task que lo produzca, o sin depender de ella
 
 Si hay criterios de aceptacion sin cobertura, el veredicto es NECESITA_AJUSTES minimo.
+Si hay contratos producer/consumer rotos, el veredicto es NECESITA_AJUSTES minimo.
 Si hay problemas estructurales graves, el veredicto es NECESITA_REPLANTEAMIENTO.
 
 Retorna tu veredicto estructurado.
-`, { label: 'auditoria-cruzada', phase: 'Auditoria', schema: AUDIT_SCHEMA })
+`, { label: 'auditoria-cruzada-p' + numeroPasada, phase: 'Auditoria', schema: AUDIT_SCHEMA })
 
-const veredicto = auditResult ? auditResult.veredicto : 'ERROR'
-log('Auditoria final: ' + veredicto)
+  // Un contrato roto no puede quedar aprobado aunque el auditor no lo reflejara:
+  // se incorpora como incoherencia y fuerza un veredicto adverso.
+  return { audit: aud.incorporarContratosRotos(auditResult, contratosRotos), reviews: validReviews }
+}
+
+// Corrige las tasks segun los hallazgos de la auditoria adversa, en el sitio, para
+// que la segunda pasada revise el plan corregido (no el mismo que ya fallo).
+async function corregirTasks(audit, numeroPasadaPrevia) {
+  const hallazgos = []
+    .concat(audit && audit.huecos || [])
+    .concat(audit && audit.incoherencias || [])
+    .concat(audit && audit.dependencias_problematicas || [])
+    .concat(audit && audit.overlaps || [])
+  await agent(`
+La auditoria de planificacion (pasada ${numeroPasadaPrevia}) emitio un veredicto adverso
+(${audit ? audit.veredicto : 'ERROR'}). Corrige los documentos de las tasks y, si hace falta, la
+spec en BORRADOR para resolver estos hallazgos. Trabaja sobre los archivos de planificacion.
+
+Spec madre: ${specPath}
+Tasks: ${taskPaths}
+
+Hallazgos a resolver:
+- ${hallazgos.length ? hallazgos.join('\n- ') : (audit && audit.resumen) || 'ver el resumen de la auditoria'}
+
+REGLAS:
+- Corrige SOLO los documentos de planificacion (spec y tasks). NO implementes codigo.
+- Manten la spec en BORRADOR. La aprobacion es del usuario.
+- Si un contrato producer/consumer esta roto, ajusta las dependencias o anade la task productora.
+- NO hagas preguntas. Trabaja con lo que hay.
+`, { label: 'corregir-tasks-p' + numeroPasadaPrevia, phase: 'Auditoria' })
+}
+
+// Presupuesto de pasadas: MAX_REVISION_PASSES, una simple constante. Primera pasada
+// siempre; si su veredicto es adverso y queda presupuesto, se corrigen las tasks y se
+// hace UNA segunda pasada sobre el plan corregido. No hay tercera.
+let pasadas = 1
+let resultado = await pasadaRevisionAuditoria(pasadas)
+let auditPrevia = null
+
+if (aud.necesitaOtraPasada(resultado.audit ? resultado.audit.veredicto : 'ERROR', pasadas, MAX_REVISION_PASSES)) {
+  await corregirTasks(resultado.audit, pasadas)
+  auditPrevia = resultado.audit
+  pasadas = 2
+  resultado = await pasadaRevisionAuditoria(pasadas)
+}
+
+const auditFinal = resultado.audit
+const validReviews = resultado.reviews
+const veredicto = auditFinal ? auditFinal.veredicto : 'ERROR'
+log('Auditoria final tras ' + pasadas + ' pasada' + (pasadas > 1 ? 's' : '') + ': ' + veredicto)
+
+// Si tras la ultima pasada el veredicto sigue siendo adverso, se presenta el hallazgo
+// mas severo entre las pasadas: una discrepancia entre pasadas no se esconde tras el
+// veredicto mas benevolo.
+const hallazgoMasSevero = aud.esVeredictoAdverso(veredicto)
+  ? aud.auditoriaMasSevera(auditPrevia, auditFinal)
+  : null
 
 // ── Phase 6: Aprobacion humana ────────────────────────────────────────────────
 // La spec esta en BORRADOR. El workflow NO la aprueba: presenta el plan y para.
@@ -282,9 +405,12 @@ const instrucciones = veredicto === 'APROBADO'
     + 'La spec sigue en BORRADOR: pide al usuario que la revise y escriba "apruebo" '
     + 'para cambiar su estado a APROBADA. Solo entonces edita el estado en el archivo. '
     + 'Sin aprobacion explicita del usuario, no se implementa.'
-  : 'Presenta al usuario los problemas encontrados por la auditoria (' + veredicto + ') '
-    + 'y propon como resolverlos. La spec permanece en BORRADOR hasta corregirlos y '
-    + 'obtener aprobacion explicita del usuario.'
+  : 'Presenta al usuario los problemas encontrados por la auditoria (' + veredicto + ', tras '
+    + pasadas + ' pasada' + (pasadas > 1 ? 's' : '') + ') y propon como resolverlos. '
+    + (hallazgoMasSevero && hallazgoMasSevero.resumen
+        ? 'Empieza por el hallazgo mas severo: ' + hallazgoMasSevero.resumen + ' '
+        : '')
+    + 'La spec permanece en BORRADOR hasta corregirlos y obtener aprobacion explicita del usuario.'
 log(instrucciones)
 
 return {
@@ -294,6 +420,8 @@ return {
   instrucciones: instrucciones,
   tasks: taskList,
   reviews: validReviews,
-  audit: auditResult,
-  veredicto: veredicto
+  audit: auditFinal,
+  veredicto: veredicto,
+  pasadas: pasadas,
+  hallazgo_mas_severo: hallazgoMasSevero
 }
