@@ -1,9 +1,9 @@
 export const meta = {
   name: 'implementar-spec',
-  description: 'Implementa todas las tasks de una spec, paralelizando las que escriben archivos disjuntos',
+  description: 'Implementa todas las tasks de una spec en orden topologico, una tras otra',
   phases: [
-    { title: 'Descubrimiento', detail: 'Identificar tasks, dependencias, archivos declarados y orden de ejecucion' },
-    { title: 'Implementacion', detail: 'Implementar cada task en cuanto sus dependencias estan satisfechas' },
+    { title: 'Descubrimiento', detail: 'Identificar tasks, dependencias y orden de ejecucion' },
+    { title: 'Implementacion', detail: 'Implementar cada task en orden, respetando sus dependencias' },
     { title: 'Revision', detail: 'Revision adversarial de toda la implementacion' },
   ],
 }
@@ -137,12 +137,9 @@ if (taskList.length === 0) {
   return { spec: specPath, error: 'No se encontraron tasks para esta spec. Ejecuta /planificar primero.' }
 }
 
-// Los archivos se leen de las propias tasks (fuente mecanica); lo reportado por
-// el descubrimiento solo se usa si la task no los declara en su tabla.
-const mapaArchivos = orq.mapearArchivos(taskList, '.')
-
 // Un ciclo de dependencias, o una dependencia cuyo documento no existe, no pueden
-// implementarse: son errores del plan.
+// implementarse: son errores del plan. computeWaves valida ambos y agrupa las
+// tasks en niveles topologicos que el bucle recorre en orden.
 var waves
 try {
   waves = orq.computeWaves(taskList, '.')
@@ -157,48 +154,19 @@ for (var ci = 0; ci < contratosRotos.length; ci++) {
 
 log(taskList.length + ' tasks, ' + waves.length + ' nivel(es) de dependencia')
 for (var w = 0; w < waves.length; w++) {
-  log('Nivel ' + (w + 1) + ': ' + orq.describirParticion(waves[w], mapaArchivos))
-}
-
-const conWorktree = taskList.filter(function(t) { return orq.usaWorktree(t, mapaArchivos) })
-if (conWorktree.length > 0) {
-  log(conWorktree.length + ' task(s) con efectos secundarios en el sistema de ficheros: arbol de trabajo aparte')
-  if (!orq.headResuelve()) {
-    return {
-      spec: specPath,
-      error: 'PRE_CONDICION_WORKTREE: HEAD debe resolver antes de crear un arbol de trabajo. '
-        + 'Crea el primer commit del repo ANTES de implementar tasks con efectos secundarios.'
-    }
-  }
+  log('Nivel ' + (w + 1) + ': ' + waves[w].map(function(t) { return t.titulo }).join(', '))
 }
 
 // ── Fase 2: Implementacion ────────────────────────────────────────────────────
-// Cada task arranca en cuanto SUS dependencias estan satisfechas — no espera al
-// resto de su nivel — y nunca a la vez que otra task que escriba alguno de sus
-// archivos. Los commits y los merges tocan el mismo indice de git: se serializan.
+// Las tasks se implementan una tras otra en orden topologico: cada nivel de
+// dependencia antes que el siguiente y, dentro de un nivel, una task despues de
+// otra. Cada implementador crea el commit de su propia task.
 phase('Implementacion')
 
-var colaGit = Promise.resolve()
-function enSerie(accion) {
-  const turno = colaGit.then(accion, accion)
-  colaGit = turno.catch(function() {})
-  return turno
-}
-
-function promptImplementacion(task, worktree) {
+function promptImplementacion(task) {
   const deps = (task.dependencias && task.dependencias.length > 0)
     ? '- Dependencias (ya completadas): ' + task.dependencias.join(', ')
     : '- Esta task es independiente.'
-
-  const ubicacion = worktree
-    ? '- Trabaja EXCLUSIVAMENTE dentro de ' + worktree.dir + ' (arbol de trabajo aparte, rama ' + worktree.rama + ').\n'
-      + '  Esta task tiene efectos secundarios en el sistema de ficheros y se aisla del checkout compartido.\n'
-      + '  Las rutas de la task son relativas a la raiz del proyecto: resuelvelas contra ' + worktree.dir + '.\n'
-      + '  Si una ruta relativa no resuelve, avisa y continua: puede ser un archivo nuevo legitimo.\n'
-      + '- Al terminar, haz commit DENTRO del arbol de trabajo (formato: <tipo>: <descripcion>, max 72 chars).'
-    : '- Trabajas en el checkout compartido, en paralelo con otras tasks que escriben archivos distintos.\n'
-      + '- Escribe SOLO los archivos declarados en la tabla "Archivos afectados" de tu task.\n'
-      + '- NO hagas commit ni git add: el commit lo crea el workflow cuando termines.'
 
   return '\
 Lee ai_docs/dev_templates/implementar.md y sigue su proceso completo para implementar esta task.\n\
@@ -207,7 +175,9 @@ Lee ai_docs/core/ para contexto del proyecto.\n\
 Task a implementar: ' + task.path + '\n\
 Spec madre: ' + specPath + '\n\
 \n\
-CONTEXTO DEL WORKFLOW:\n' + deps + '\n' + ubicacion + '\n\
+CONTEXTO DEL WORKFLOW:\n' + deps + '\n\
+- Las tasks se implementan una tras otra en orden; sus dependencias ya estan completadas.\n\
+- Escribe SOLO los archivos declarados en la tabla "Archivos afectados" de tu task.\n\
 \n\
 PROCESO OBLIGATORIO:\n\
 1. Lee la task completa y verifica pre-requisitos\n\
@@ -215,6 +185,7 @@ PROCESO OBLIGATORIO:\n\
 3. Implementa los cambios descritos en la task\n\
 4. Escribe tests (RED-GREEN cuando aplique)\n\
 5. Ejecuta validaciones (linting, tests, build)\n\
+6. Crea el commit de esta task\n\
 \n\
 REGLAS:\n\
 - SOLO implementa lo que dice la task\n\
@@ -222,98 +193,57 @@ REGLAS:\n\
 - Si algo falla en validaciones, corregir antes de continuar\n\
 - NO hagas preguntas. Trabaja con la informacion disponible.\n\
 \n\
-En commit_message retorna el mensaje del commit (formato: <tipo>: <descripcion>, max 72 chars).\n\
-Tipos validos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore\n\
+COMMIT (una task, un commit):\n\
+- Al terminar, haz git add de los archivos que modificaste y crea el commit de esta task.\n\
+- Mensaje: primera linea "<tipo>: <descripcion>" (max 72 chars) y un cuerpo que explique QUE cambio y POR QUE.\n\
+- Tipos validos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore\n\
+- Si no hay nada staged, termina sin error y no crees un commit vacio.\n\
 \n\
+En commit_message retorna la primera linea del mensaje del commit que creaste.\n\
 Retorna: path de la task, titulo, resultado, archivos modificados, tests creados/pasando, commit_message, hallazgos fuera de alcance.'
 }
 
-function commitear(task, resultado) {
-  const archivos = (resultado.archivos_modificados || []).join(' ')
-  if (!archivos) return null
-
-  const mensaje = resultado.commit_message || 'feat: implementar ' + resultado.task_titulo
-  return enSerie(function() {
-    return agent('\
-Crea el commit de una task ya implementada. No modifiques codigo.\n\
-\n\
-1. git add ' + archivos + ' (omite sin error los archivos que no existan o no tengan cambios)\n\
-2. git commit con el mensaje: "' + mensaje + '"\n\
-\n\
-Si no hay nada staged, no hagas commit y termina sin error.', {
-      label: 'commit-' + task.titulo.substring(0, 25),
-      phase: 'Implementacion'
-    })
-  })
-}
-
 async function implementarTask(task) {
-  const aislada = orq.usaWorktree(task, mapaArchivos)
-  var worktree = null
-
-  if (aislada) {
-    try {
-      worktree = await enSerie(function() { return orq.crearWorktree(task) })
-      log('Task ' + task.titulo + ': arbol de trabajo ' + worktree.dir)
-    } catch (e) {
-      log('Task ' + task.titulo + ': ' + e.message)
-      return { task_path: task.path, task_titulo: task.titulo, resultado: 'FALLIDA', archivos_modificados: [], notas: e.message }
-    }
-  }
-
-  const resultado = await agent(promptImplementacion(task, worktree), {
+  return agent(promptImplementacion(task), {
     label: 'impl-' + task.titulo.substring(0, 25),
     phase: 'Implementacion',
     schema: IMPL_SCHEMA
   })
-
-  if (!worktree) {
-    if (resultado) await commitear(task, resultado)
-    return resultado
-  }
-
-  // El trabajo del arbol aparte se integra en el checkout compartido; el commit
-  // ya lo hizo el implementador dentro del worktree.
-  var fusionado = false
-  try {
-    await enSerie(function() { orq.fusionarWorktree(worktree) })
-    fusionado = true
-  } catch (e) {
-    log('Task ' + task.titulo + ': ' + e.message)
-    return { task_path: task.path, task_titulo: task.titulo, resultado: 'FALLIDA', archivos_modificados: [], notas: e.message }
-  } finally {
-    await enSerie(function() { orq.eliminarWorktree(worktree, null, fusionado) })
-  }
-  return resultado
 }
 
-const allResults = await orq.despacharPorDependencias(taskList, implementarTask, {
-  archivos: mapaArchivos,
-  alIniciar: function(task) { log('Implementando: ' + task.titulo) },
-  alBloquear: function(task, deps) {
-    log('Task ' + task.titulo + ': BLOQUEADA (dependencias no completadas: ' + deps.join(', ') + ')')
-    return {
+// Recorrido topologico: los niveles en orden y, dentro de cada nivel, una task
+// tras otra. Si una dependencia previa termino FALLIDA, la task se marca
+// bloqueada sin ejecutarla — y su propio FALLIDA arrastra a quien dependa de ella.
+const allResults = []
+for (const wave of waves) {
+  for (const task of wave) {
+    const depsFallidas = (task.dependencias || []).filter(function(d) {
+      return allResults.some(function(r) { return r.task_path === d && r.resultado === 'FALLIDA' })
+    })
+
+    if (depsFallidas.length > 0) {
+      log('Task ' + task.titulo + ': BLOQUEADA (dependencias fallidas: ' + depsFallidas.join(', ') + ')')
+      allResults.push({
+        task_path: task.path,
+        task_titulo: task.titulo,
+        resultado: 'FALLIDA',
+        archivos_modificados: [],
+        notas: 'No se implemento: sus dependencias no se completaron (' + depsFallidas.join(', ') + ')'
+      })
+      continue
+    }
+
+    log('Implementando: ' + task.titulo)
+    const resultado = await implementarTask(task)
+    allResults.push(resultado || {
       task_path: task.path,
       task_titulo: task.titulo,
       resultado: 'FALLIDA',
       archivos_modificados: [],
-      notas: 'No se implemento: sus dependencias no se completaron (' + deps.join(', ') + ')'
-    }
-  }
-}).then(function(rs) {
-  return rs.map(function(r, i) {
-    if (r) return r
-    return {
-      task_path: taskList[i].path,
-      task_titulo: taskList[i].titulo,
-      resultado: 'FALLIDA',
-      archivos_modificados: [],
       notas: 'El agente no retorno resultado'
-    }
-  })
-})
-
-await colaGit
+    })
+  }
+}
 
 var completadas = 0
 var fallidas = 0
