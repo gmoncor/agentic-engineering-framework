@@ -4,49 +4,59 @@
 /**
  * SDD Review Gate — PreToolUse / BeforeTool hook sobre comandos de shell.
  *
- * AVISA (nunca deniega) al ejecutar `git commit` o `git merge` cuando no consta
- * que el codigo entregado haya pasado la revision adversarial POST-implementacion.
+ * BLOQUEA `git commit` o `git merge` cuando el diff que se va a commitear no
+ * consta revisado por la revision adversarial por task.
  *
- * POR QUE AVISA Y NO BLOQUEA
- * Bloquear exige una prueba de que la revision ocurrio, y aqui no la hay:
- *   - La unica evidencia posible es una senal que el propio flujo emite. No esta
- *     atada al diff que se commitea: dice "hubo una revision en esta sesion", no
- *     "este diff fue revisado". Bloquear con eso seria enforcement aparente.
- *   - El emisor de la senal (el flujo de implementacion) commitea cada task antes
- *     de la revision final. Con un bloqueo real no podria commitear su propio
- *     trabajo: el gate se estaria bloqueando a si mismo.
- * Un aviso honesto vale mas que un bloqueo que se puede fabricar. La frontera
- * dura, si se necesita, va en CI y en las protecciones de rama.
+ * POR QUE AHORA SI PUEDE BLOQUEAR
+ * La revision ocurre por task, ANTES del commit, y su senal guarda el hash del
+ * diff revisado. Aqui se recalcula el hash del diff cacheado (`git diff --cached`,
+ * lo que se va a commitear) y se contrasta con la senal:
+ *   - coincide            -> el diff que se commitea es el revisado: pasa.
+ *   - no hay senal         -> no consta revision de este diff: se deniega.
+ *   - el hash no coincide   -> el codigo cambio tras revisarse: se deniega.
+ * La senal ya no es una marca de conveniencia: ata el hash a un diff concreto, asi
+ * que el bloqueo es honesto, no aparente.
  *
  * Reparto de responsabilidades:
  *   - sdd-pipeline-guard.js bloquea ESCRITURAS no declaradas en el plan (PRE).
- *   - sdd-review-gate.js    avisa de COMMITS sin revision del codigo (POST).
+ *   - sdd-review-gate.js    bloquea COMMITS de un diff sin revision (POST).
  *
- * La revision PRE-implementacion (revision de tasks, auditoria de la spec)
- * valida el PLAN, no el CODIGO: no silencia este aviso.
+ * La revision PRE-implementacion (revision de tasks, auditoria de la spec) valida
+ * el PLAN, no el CODIGO: su senal no ata el diff, asi que no cuenta aqui.
  *
- * Silencia el aviso: el fichero de senal de la sesion dentro de su TTL, escrito
- * por el flujo de implementacion tras la revision (ver sdd-review-signal.js).
- *
- * Silencio total (no avisa):
+ * Degradacion segura (avisa, no bloquea):
+ *   - SDD_GUARD_SKIP=1: escape de emergencia, degrada el bloqueo a aviso.
+ *   - sin `git diff --cached` computable (nada staged, git no disponible): avisa,
+ *     no bloquea sin el diff que deberia contrastar.
+ * Silencio total (exit 0, no interviene):
  *   - el hook no esta habilitado en hooks/config.json
  *   - el payload no trae session_id (no hay sesion que correlacionar)
+ *   - el diff cacheado coincide con la senal (revision confirmada)
  */
 
+const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { readPayload, readToolCall, warn } = require('./sdd-hook-utils');
-const { DEFAULT_TTL_MS, readSignal } = require('./sdd-review-signal');
+const { readPayload, readToolCall, warn, deny, skipRequested } = require('./sdd-hook-utils');
+const { DEFAULT_TTL_MS, readSignal, hashDiff } = require('./sdd-review-signal');
 
 const SHELL_TOOLS = new Set(['Bash', 'run_command', 'shell']);
 const GUARDED_CMD_RE = /\bgit\s+(commit|merge)\b/;
 
-const AVISO = 'SDD: no consta que el codigo que vas a commitear haya sido revisado. '
-  + 'Este aviso no bloquea nada: no hay forma de probar que un diff concreto se reviso, '
-  + 'asi que el hook no puede denegar con honestidad. '
-  + 'Antes de entregar, pasa la revision adversarial POST-implementacion sobre el diff '
-  + '(la fase final del flujo de implementacion, o el paso de revision por separado) '
-  + 'y trata sus hallazgos.';
+const SIN_SENAL = 'SDD: este diff no consta revisado. La revision adversarial por task debe '
+  + 'pasar ANTES del commit y emitir su senal. Ejecuta el flujo de implementacion (revision '
+  + 'por task) o pasa la revision adversarial sobre este diff antes de commitear.';
+
+const HASH_NO_ATA = 'SDD: la revision registrada no corresponde al diff que vas a commitear '
+  + '(el codigo cambio despues de revisarse). Vuelve a pasar la revision adversarial sobre el '
+  + 'diff actual antes de commitear.';
+
+const SIN_DIFF = 'SDD: no hay diff cacheado que contrastar (nada staged, o git no disponible). '
+  + 'Este aviso no bloquea: sin el diff no se puede verificar la revision. Haz git add de lo que '
+  + 'vas a commitear y asegurate de que paso la revision adversarial.';
+
+const SKIP_AVISO = 'SDD: SDD_GUARD_SKIP activo. El bloqueo de revision queda degradado a aviso; '
+  + 'usalo solo para desbloquear una situacion puntual, no de forma permanente.';
 
 async function main() {
   const data = await readPayload();
@@ -61,12 +71,33 @@ async function main() {
   const config = loadConfig().sdd_review_gate || {};
   if (config.enabled !== true) process.exit(0);
 
+  if (skipRequested()) { warn(SKIP_AVISO, call); return; }
+
   const sessionId = data.session_id || '';
   if (!sessionId) process.exit(0);
 
-  if (readSignal(sessionId, ttlMs(config))) process.exit(0);
+  const diff = stagedDiff();
+  if (diff == null || diff.trim() === '') { warn(SIN_DIFF, call); return; }
 
-  warn(AVISO, call);
+  const signal = readSignal(sessionId, ttlMs(config));
+  if (!signal) { deny(SIN_SENAL, call); return; }
+  if (signal.diff_hash !== hashDiff(diff)) { deny(HASH_NO_ATA, call); return; }
+
+  process.exit(0);
+}
+
+// El diff que se va a commitear. SDD_STAGED_DIFF permite inyectarlo en tests y
+// entornos aislados, igual que SDD_CONFIG_PATH / SDD_SIGNAL_DIR; sin el, se lee del
+// repositorio en curso. null si git no puede resolverlo.
+function stagedDiff() {
+  if (process.env.SDD_STAGED_DIFF != null) return process.env.SDD_STAGED_DIFF;
+  try {
+    const r = spawnSync('git', ['diff', '--cached'], { cwd: process.cwd(), encoding: 'utf8', timeout: 5000 });
+    if (r.error || r.status !== 0) return null;
+    return r.stdout;
+  } catch {
+    return null;
+  }
 }
 
 // SDD_CONFIG_PATH permite apuntar a otra configuracion (tests, entornos aislados).

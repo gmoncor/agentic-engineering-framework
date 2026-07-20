@@ -1,7 +1,8 @@
 # Plantilla de Revision Adversarial Post-Implementacion
 
-> **Cuando usar:** Despues de implementar TODAS las tasks de una spec. ANTES de mergear a la rama principal.
-> **Como usar:** Copia este documento completo y pegalo en tu asistente de IA junto con la spec original y la lista de tasks completadas.
+> **Cuando usar:** Despues de implementar una task, ANTES de commitearla — el gate primario es por task. Tambien sirve como revision de integracion opcional sobre varias tasks que interactuan, antes de mergear.
+> **Como usar:** Copia este documento completo y pegalo en tu asistente de IA junto con la task (o la spec y las tasks) y el diff a revisar.
+> **Veredicto:** emite uno de `APROBADA`, `NECESITA_CORRECCIONES` o `RECHAZADA`.
 
 ---
 
@@ -20,7 +21,7 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 **Instrucciones adicionales para esta plantilla:**
 - Tu rol es ENCONTRAR PROBLEMAS, no confirmar que todo esta bien. Asume que hay bugs hasta demostrar lo contrario.
 - Revisa TODA la implementacion, no solo la ultima task. Los problemas de integracion entre tasks son los mas peligrosos.
-- NUNCA emitas veredicto APROBADO si tienes dudas. Es preferible pedir verificacion adicional que dejar pasar un problema.
+- NUNCA emitas veredicto APROBADA si tienes dudas. Es preferible NECESITA_CORRECCIONES que dejar pasar un problema.
 - Esta plantilla NO modifica codigo. Solo detecta problemas y emite un veredicto.
 
 ---
@@ -196,28 +197,32 @@ Para CADA restriccion de la spec, verificar que se respeta:
 
 ### Veredicto
 
-[APROBADO / NECESITA CORRECCIONES]
+[APROBADA / NECESITA_CORRECCIONES / RECHAZADA]
 
-**Si NECESITA CORRECCIONES:**
+- `APROBADA`: sin hallazgos BLOQUEANTES. En el flujo por task, habilita el commit.
+- `NECESITA_CORRECCIONES`: hay hallazgos corregibles con una pasada acotada (1-2 archivos, sin cambio de alcance).
+- `RECHAZADA`: hallazgos graves o cambio de alcance; la task no debe commitearse tal cual.
+
+**Si NECESITA_CORRECCIONES o RECHAZADA:**
 - Para correcciones menores (1-2 archivos, sin cambio de alcance): aplicar directamente usando `implementar.md` y re-ejecutar la revision sobre los puntos afectados
 - Para correcciones mayores (3+ archivos o cambio de alcance): crear nueva task via `tareas.md` referenciando los hallazgos, implementar, y re-ejecutar la revision completa
 - No es necesario repetir la revision completa si solo se corrigen puntos especificos
 ```
 
-**PUNTO DE ESPERA OBLIGATORIO:**
-- DETENTE y espera la respuesta del usuario
-- Si el veredicto es NECESITA CORRECCIONES, NO continues hasta que el usuario aplique los cambios
-- Si el usuario aplica correcciones, vuelve a verificar SOLO los puntos afectados
-- Si el veredicto es APROBADO, crear la PR con `revision_pr.md`
+**PUNTO DE ESPERA (revision manual/standalone):**
+- Si revisas manualmente, DETENTE y espera la respuesta del usuario
+- Si el veredicto es NECESITA_CORRECCIONES o RECHAZADA, no continues hasta aplicar los cambios
+- Si se aplican correcciones, vuelve a verificar SOLO los puntos afectados
+- Si el veredicto es APROBADA, procede al commit (o crea la PR con `revision_pr.md`)
 
 ---
 
 ## Reglas inquebrantables
 
-1. **NUNCA emitas APROBADO si hay hallazgos BLOQUEANTES** — sin excepciones
+1. **NUNCA emitas APROBADA si hay hallazgos BLOQUEANTES** — sin excepciones
 2. **NUNCA modifiques codigo** — esta plantilla es solo de revision
-3. **Revisa TODA la implementacion**, no solo la ultima task — los problemas de integracion son los mas peligrosos
+3. **Revisa a fondo lo que se te da** — el diff de una task en la revision por task, o toda la integracion cuando revises varias tasks juntas: los problemas de integracion son los mas peligrosos
 4. **Tu rol es encontrar problemas** — asumir que hay bugs hasta demostrar lo contrario
 5. **Criterios de aceptacion no cumplidos son BLOQUEANTES** — no se pueden ignorar
-6. **Si la revision se hace antes de completar todas las tasks**, DETENTE — es prematuro
+6. **En una revision de integracion, si faltan tasks por completar**, DETENTE — es prematuro
 7. **Vulnerabilidades de seguridad son siempre BLOQUEANTES** — sin importar la severidad percibida

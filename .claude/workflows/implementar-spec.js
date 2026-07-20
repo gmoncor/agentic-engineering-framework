@@ -3,8 +3,7 @@ export const meta = {
   description: 'Implementa todas las tasks de una spec en orden topologico, una tras otra',
   phases: [
     { title: 'Descubrimiento', detail: 'Identificar tasks, dependencias y orden de ejecucion' },
-    { title: 'Implementacion', detail: 'Implementar cada task en orden, respetando sus dependencias' },
-    { title: 'Revision', detail: 'Revision adversarial de toda la implementacion' },
+    { title: 'Implementacion', detail: 'Implementar cada task, revisarla y commitearla antes de pasar a la siguiente' },
   ],
 }
 
@@ -51,6 +50,7 @@ const IMPL_SCHEMA = {
     tests_creados: { type: 'number' },
     tests_pasando: { type: 'number' },
     commit_message: { type: 'string' },
+    commit_cuerpo: { type: 'string' },
     hallazgos_fuera_alcance: { type: 'array', items: { type: 'string' } },
     notas: { type: 'string' }
   },
@@ -79,18 +79,27 @@ async function cargarModulo(rutaRelativa) {
   return mod.default || mod
 }
 
-// ── Senal de revision POST-implementacion ─────────────────────────────────────
-// Tras la revision adversarial, este workflow deja constancia de que el codigo
-// entregado fue revisado. El hook sdd-review-gate.js consume esa senal para no
-// avisar. Es una senal de conveniencia, no una prueba: registra que hubo una
-// revision en esta sesion, no que el diff que luego se commitee sea el revisado.
-// El contrato vive en hooks/sdd-review-signal.js (un solo formato para emisor y
-// consumidor). Si el modulo no esta disponible (framework sin hooks instalados),
-// la emision se omite sin romper el workflow.
-async function emitirSenalRevision(contenidoRevisado) {
+// ── Git del working tree ──────────────────────────────────────────────────────
+// El workflow controla el commit de cada task (el implementador ya no commitea):
+// primero se revisa el diff, y solo si la revision aprueba se emite la senal y se
+// commitea. Se ejecuta git por child_process para no depender del shell del agente.
+async function git(argv) {
+  const cp = await import('node:child_process')
+  const r = cp.spawnSync('git', argv, { encoding: 'utf8', timeout: 15000 })
+  return { code: r.status, out: r.stdout || '', err: r.stderr || '' }
+}
+
+// ── Senal de revision POST-implementacion, por task ───────────────────────────
+// Emitida JUSTO antes de commitear una task que paso la revision adversarial. El
+// hash es el del diff cacheado que se va a commitear; el hook sdd-review-gate.js
+// recalcula ese hash y lo contrasta, asi que la senal ata el diff concreto (no es
+// una mera marca de "hubo revision"). El contrato vive en hooks/sdd-review-signal.js
+// (un solo formato para emisor y consumidor). Si el modulo no esta disponible
+// (framework sin hooks instalados), la emision se omite sin romper el workflow.
+async function emitirSenalRevision(diffRevisado) {
   try {
     const senal = await cargarModulo('hooks/sdd-review-signal.js')
-    const hash = senal.hashDiff(contenidoRevisado)
+    const hash = senal.hashDiff(diffRevisado)
     senal.writeSignal(senal.resolveSessionId(), hash)
     return hash
   } catch (e) {
@@ -149,10 +158,13 @@ for (var w = 0; w < waves.length; w++) {
   log('Nivel ' + (w + 1) + ': ' + waves[w].map(function(t) { return t.titulo }).join(', '))
 }
 
-// ── Fase 2: Implementacion ────────────────────────────────────────────────────
+// ── Fase 2: Implementacion (con revision por task antes del commit) ───────────
 // Las tasks se implementan una tras otra en orden topologico: cada nivel de
 // dependencia antes que el siguiente y, dentro de un nivel, una task despues de
-// otra. Cada implementador crea el commit de su propia task.
+// otra. Por cada task: el implementador deja los cambios en el working tree (no
+// commitea); el workflow revisa ESE diff con un agente aparte (contexto limpio);
+// si la revision aprueba, emite la senal atada al diff y crea el commit. Asi cada
+// unidad se valida antes de avanzar a la siguiente.
 phase('Implementacion')
 
 function promptImplementacion(task) {
@@ -177,7 +189,6 @@ PROCESO OBLIGATORIO:\n\
 3. Implementa los cambios descritos en la task\n\
 4. Escribe tests (RED-GREEN cuando aplique)\n\
 5. Ejecuta validaciones (linting, tests, build)\n\
-6. Crea el commit de esta task\n\
 \n\
 REGLAS:\n\
 - SOLO implementa lo que dice la task\n\
@@ -185,14 +196,15 @@ REGLAS:\n\
 - Si algo falla en validaciones, corregir antes de continuar\n\
 - NO hagas preguntas. Trabaja con la informacion disponible.\n\
 \n\
-COMMIT (una task, un commit):\n\
-- Al terminar, haz git add de los archivos que modificaste y crea el commit de esta task.\n\
-- Mensaje: primera linea "<tipo>: <descripcion>" (max 72 chars) y un cuerpo que explique QUE cambio y POR QUE.\n\
-- Tipos validos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore\n\
-- Si no hay nada staged, termina sin error y no crees un commit vacio.\n\
+NO COMMITEAR:\n\
+- Deja los cambios en el working tree. NO hagas git add ni git commit.\n\
+- El workflow revisa tu diff y, si la revision aprueba, crea el commit de la task.\n\
+- Propon el mensaje del commit: commit_message = "<tipo>: <descripcion>" (max 72 chars),\n\
+  commit_cuerpo = QUE cambio y POR QUE. Tipos validos: feat, fix, update, refactor, create,\n\
+  optimize, remove, rename, docs, test, style, chore.\n\
 \n\
-En commit_message retorna la primera linea del mensaje del commit que creaste.\n\
-Retorna: path de la task, titulo, resultado, archivos modificados, tests creados/pasando, commit_message, hallazgos fuera de alcance.'
+Retorna: path de la task, titulo, resultado, archivos modificados, tests creados/pasando,\n\
+commit_message, commit_cuerpo, hallazgos fuera de alcance.'
 }
 
 async function implementarTask(task) {
@@ -201,6 +213,102 @@ async function implementarTask(task) {
     phase: 'Implementacion',
     schema: IMPL_SCHEMA
   })
+}
+
+// Revision adversarial de UNA task: contexto limpio, solo el diff de la task.
+async function revisarDiff(task, diff) {
+  return agent('\
+Lee ai_docs/dev_templates/revision_adversarial.md y sigue sus pasos, aplicados a UNA task.\n\
+Lee la task en: ' + task.path + '\n\
+Lee ai_docs/core/ para contexto del proyecto.\n\
+\n\
+POSTURA OBLIGATORIA:\n\
+- Tu trabajo es ENCONTRAR PROBLEMAS en esta task, no confirmar que todo esta bien.\n\
+- Asume que hay bugs hasta demostrar lo contrario.\n\
+- NO modifiques codigo. Solo analiza y reporta.\n\
+- NO hagas preguntas. Trabaja con lo que hay.\n\
+\n\
+Diff de la task (lo que se va a commitear):\n\
+```diff\n' + diff + '\n```\n\
+\n\
+Revisa: correccion frente a la task, tests presentes y utiles, edge cases,\n\
+regresiones, codigo muerto y seguridad.\n\
+Emite tu veredicto: APROBADA, NECESITA_CORRECCIONES o RECHAZADA.', {
+    label: 'revision-' + task.titulo.substring(0, 20),
+    phase: 'Implementacion',
+    schema: REVISION_SCHEMA
+  })
+}
+
+// Una unica pasada de correccion de los problemas que encontro la revision. Deja
+// los cambios en el working tree; no commitea. El workflow re-revisa despues.
+async function corregirTask(task, revision) {
+  const problemas = (revision.problemas_criticos || []).concat(revision.problemas_menores || [])
+  return agent('\
+La revision adversarial encontro problemas en esta task. Corrigelos en el working tree.\n\
+Lee ai_docs/dev_templates/implementar.md para el proceso.\n\
+Task: ' + task.path + '\n\
+\n\
+Problemas a corregir:\n- ' + (problemas.length ? problemas.join('\n- ') : '(ver el resumen de la revision)') + '\n\
+Resumen de la revision: ' + (revision.resumen || '') + '\n\
+\n\
+REGLAS:\n\
+- Corrige SOLO los problemas listados, dentro de los archivos de esta task.\n\
+- Deja los cambios en el working tree. NO hagas git add ni git commit.\n\
+- Ejecuta los tests y asegurate de que pasan.\n\
+- NO hagas preguntas.', {
+    label: 'correccion-' + task.titulo.substring(0, 18),
+    phase: 'Implementacion',
+    schema: IMPL_SCHEMA
+  })
+}
+
+// Revisa el diff de la task y, si aprueba, emite la senal atada al diff y commitea.
+// Devuelve el resultado del implementador con el veredicto reflejado.
+async function revisarYComitear(task, resultado) {
+  await git(['add', '-A'])
+  var diff = (await git(['diff', '--cached'])).out
+
+  // Task sin cambios en el working tree (nada que revisar ni que commitear).
+  if (!diff || !diff.trim()) {
+    resultado.notas = (resultado.notas ? resultado.notas + ' ' : '') + '(sin cambios en el working tree: no se commitea)'
+    return resultado
+  }
+
+  var revision = await revisarDiff(task, diff)
+  var veredicto = revision ? revision.veredicto : 'ERROR'
+
+  // Una sola pasada de correccion si la revision es adversa.
+  if (veredicto !== 'APROBADA') {
+    log('Revision de ' + task.titulo + ': ' + veredicto + ' — una pasada de correccion')
+    await corregirTask(task, revision || { problemas_criticos: [], problemas_menores: [] })
+    await git(['add', '-A'])
+    diff = (await git(['diff', '--cached'])).out
+    revision = await revisarDiff(task, diff)
+    veredicto = revision ? revision.veredicto : 'ERROR'
+  }
+
+  // Sigue adversa: no se commitea. Se descarta el trabajo para no contaminar el
+  // diff de la siguiente task (git clean respeta .gitignore).
+  if (veredicto !== 'APROBADA') {
+    log('Task ' + task.titulo + ': FALLIDA (revision ' + veredicto + '), no se commitea')
+    await git(['reset', '--hard', 'HEAD'])
+    await git(['clean', '-fd'])
+    resultado.resultado = 'FALLIDA'
+    resultado.revision = revision
+    resultado.notas = (resultado.notas ? resultado.notas + ' ' : '') + '(revision adversarial: ' + veredicto + ')'
+    return resultado
+  }
+
+  // Aprobada: la senal ata el hash al diff revisado; despues se commitea.
+  const marca = await emitirSenalRevision(diff)
+  const subject = String(resultado.commit_message || ('feat: ' + task.titulo)).substring(0, 72)
+  const cuerpo = resultado.commit_cuerpo || resultado.notas || 'Implementa la task segun su especificacion.'
+  await git(['commit', '-m', subject, '-m', cuerpo])
+  log('Task ' + task.titulo + ': APROBADA y commiteada' + (marca ? ' (senal ' + marca + ')' : ''))
+  resultado.revision = revision
+  resultado.marca_revision = marca
+  return resultado
 }
 
 // Recorrido topologico: los niveles en orden y, dentro de cada nivel, una task
@@ -227,13 +335,20 @@ for (const wave of waves) {
 
     log('Implementando: ' + task.titulo)
     const resultado = await implementarTask(task)
-    allResults.push(resultado || {
-      task_path: task.path,
-      task_titulo: task.titulo,
-      resultado: 'FALLIDA',
-      archivos_modificados: [],
-      notas: 'El agente no retorno resultado'
-    })
+
+    // Sin resultado, o el propio implementador fallo: nada que revisar ni commitear.
+    if (!resultado || resultado.resultado === 'FALLIDA') {
+      allResults.push(resultado || {
+        task_path: task.path,
+        task_titulo: task.titulo,
+        resultado: 'FALLIDA',
+        archivos_modificados: [],
+        notas: 'El agente no retorno resultado'
+      })
+      continue
+    }
+
+    allResults.push(await revisarYComitear(task, resultado))
   }
 }
 
@@ -244,60 +359,10 @@ for (var ri = 0; ri < allResults.length; ri++) {
 }
 log('Implementacion: ' + completadas + ' completadas, ' + fallidas + ' fallidas de ' + taskList.length)
 
-// ── Fase 3: Revision adversarial ──────────────────────────────────────────────
-phase('Revision')
-const implSummary = JSON.stringify(allResults.map(function(r) {
-  return {
-    task: r.task_path,
-    titulo: r.task_titulo,
-    resultado: r.resultado,
-    archivos: r.archivos_modificados,
-    tests: r.tests_creados || 0,
-    commit: r.commit_message || ''
-  }
-}), null, 2)
-
-const revision = await agent('\
-Lee ai_docs/dev_templates/revision_adversarial.md y sigue TODOS sus pasos.\n\
-Lee la spec en: ' + specPath + '\n\
-Lee ai_docs/core/ para contexto del proyecto.\n\
-\n\
-POSTURA OBLIGATORIA:\n\
-- Tu trabajo es ENCONTRAR PROBLEMAS, no confirmar que todo esta bien.\n\
-- Asume que hay bugs hasta demostrar lo contrario.\n\
-- Revisa TODA la implementacion, no solo la ultima task.\n\
-- Los problemas de integracion entre tasks son los mas peligrosos.\n\
-- NO modifiques codigo. Solo analiza y reporta.\n\
-- NO hagas preguntas. Trabaja con lo que hay.\n\
-\n\
-Resumen de implementacion:\n' + implSummary + '\n\
-\n\
-Revisa:\n\
-1. Cada archivo modificado — lee el codigo actual y verifica que cumple la spec\n\
-2. Integracion entre tasks — busca conflictos, inconsistencias, imports rotos\n\
-3. Tests — que existan, que cubran los criterios de aceptacion de la spec\n\
-4. Edge cases — que esten cubiertos\n\
-5. Regresiones — que el codigo existente no se haya roto\n\
-\n\
-Retorna tu veredicto con problemas criticos, menores, aspectos positivos y resumen.', {
-  label: 'revision-adversarial',
-  phase: 'Revision',
-  schema: REVISION_SCHEMA
-})
-
-const veredicto = revision ? revision.veredicto : 'ERROR'
-log('Revision adversarial: ' + veredicto)
-
-// La senal solo se emite si la revision produjo veredicto. Registra que la
-// revision OCURRIO en esta sesion — no que haya salido limpia, ni que ate el
-// diff: sirve para que el aviso del hook no repita lo que ya se ha hecho.
-var marcaRevision = null
-if (revision) {
-  marcaRevision = await emitirSenalRevision(JSON.stringify({ spec: specPath, impl: allResults, revision: revision }))
-  if (marcaRevision) {
-    log('Revision registrada en la senal de la sesion (' + marcaRevision + ')')
-  }
-}
+// El gate primario es la revision POR TASK (ya ejecutada arriba, antes de cada
+// commit). Una revision de integracion final sobre el conjunto es opcional y
+// ligera: se puede lanzar aparte con /revision si la spec toca varias tasks que
+// interactuan. No se ejecuta aqui para no repetir lo ya revisado por task.
 
 return {
   spec: specPath,
@@ -306,8 +371,5 @@ return {
   niveles: waves.length,
   tasks_completadas: completadas,
   tasks_fallidas: fallidas,
-  implementaciones: allResults,
-  revision: revision,
-  marca_revision: marcaRevision,
-  veredicto: veredicto
+  implementaciones: allResults
 }

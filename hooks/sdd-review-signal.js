@@ -2,20 +2,23 @@
 
 // Senal de revision POST-implementacion.
 //
-// Contrato unico entre el emisor (el flujo de implementacion, tras la revision
-// adversarial del diff) y el consumidor (sdd-review-gate.js, que avisa si no
-// consta la revision). Ambos lados usan este modulo: el formato no puede divergir.
+// Contrato unico entre el emisor (el flujo de implementacion, que revisa el diff
+// de cada task antes de commitearla) y el consumidor (sdd-review-gate.js, que
+// bloquea el commit si el diff no consta revisado). Ambos lados usan este modulo:
+// el formato no puede divergir.
 //
-// QUE ES Y QUE NO ES ESTA SENAL
-// Es una senal de CONVENIENCIA, no una prueba: registra que hubo una revision en
-// esta sesion, no que el diff que se esta commiteando sea el que se reviso. El
-// hash guardado es el del contenido revisado, y nadie lo contrasta con el diff.
-// Por eso el consumidor solo avisa; si bloqueara, estaria fingiendo una garantia
-// que la senal no da.
+// QUE ATA ESTA SENAL
+// El hash guardado es el del diff de la task que paso la revision adversarial,
+// emitido JUSTO antes de commitear. El consumidor recalcula el hash del diff
+// cacheado (`git diff --cached`) y lo contrasta: si coincide, el diff que se
+// commitea es el revisado. Por eso el gate puede bloquear con honestidad — la
+// senal ata el hash a un diff concreto, no es una mera marca de "hubo revision".
 //
 // Canal unico: fichero temporal por sesion, <tmp>/sdd-review-<session_id>.json.
+// writeSignal sobreescribe el fichero en cada task: la senal vigente es siempre la
+// del ultimo diff revisado, que es el que se esta a punto de commitear.
 // El canal antiguo — una marca [SDD-POST-IMPL: <hash>] en el mensaje de commit —
-// se elimino: el mensaje de commit lo redacta el mismo agente al que el aviso
+// se elimino: el mensaje de commit lo redacta el mismo agente al que el gate
 // interpela, asi que la marca era auto-emitible y no aportaba evidencia alguna.
 
 const crypto = require('crypto');

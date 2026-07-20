@@ -105,18 +105,18 @@ Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
 | Hook | Evento | Que enforcea | Modo |
 |------|--------|-------------|------|
 | `sdd-pipeline-guard.js` | Write/Edit | **Bloquea** escribir un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de la spec APROBADA activa | Bloqueante |
-| `sdd-review-gate.js` | Bash (git commit/merge) | **Avisa** si no consta que el codigo entregado haya pasado la revision adversarial POST-implementacion. Nunca deniega | Advisory (opt-in) |
+| `sdd-review-gate.js` | Bash (git commit/merge) | **Bloquea** un `git commit`/`merge` cuyo diff no consta revisado: la revision adversarial por task emite una senal con el hash del diff, y el hook la contrasta con `git diff --cached`. Sin senal o con hash que no ata, deniega | Bloqueante (opt-in) |
 | `sdd-commit-guard.js` | Bash (git commit) | Warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Advisory |
 
 Configurados en `.claude/settings.json`. `sdd-review-gate.js` se activa poniendo `sdd_review_gate.enabled: true` en `hooks/config.json`.
 
-**El unico bloqueo real es el de escrituras.** El aviso de revision no bloquea porque no puede probar lo que afirmaria: la unica evidencia de que hubo revision es una senal de sesion que no esta atada al diff que se commitea. Bloquear con eso seria enforcement aparente. Si necesitas una frontera dura sobre lo que se entrega, ponla en CI y en las protecciones de rama.
+**Hay dos bloqueos reales: escrituras y commits sin revision.** El de escrituras (pipeline-guard) impide escribir codigo no declarado en una task. El de commits (review-gate) impide commitear un diff que no consta revisado: puede bloquear con honestidad porque la revision adversarial ocurre POR TASK, antes del commit, y su senal guarda el hash del diff revisado; el hook recalcula el hash de `git diff --cached` y lo contrasta. Sin diff cacheado computable el gate no bloquea a ciegas: degrada a aviso. Una frontera aun mas dura sobre lo que se entrega va en CI y en las protecciones de rama.
 
-**El aviso de revision solo existe en este backend** (Claude Code): su senal la emite el motor de workflows, que los demas backends no tienen. Donde no hay emisor no se cablea, porque el aviso no podria silenciarse por ninguna via legitima.
+**El bloqueo de commits solo existe en este backend** (Claude Code): su senal la emite el motor de workflows, que los demas backends no tienen. Donde no hay emisor no se cablea, porque no habria via legitima de satisfacer el gate.
 
-**Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada el bloqueo de escrituras a aviso. Es para desbloquear una situacion puntual, no para dejarlo fijo en el shell: con el activo el pipeline SDD no enforcea nada.
+**Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada ambos bloqueos a aviso. Es para desbloquear una situacion puntual, no para dejarlo fijo en el shell: con el activo el pipeline SDD no enforcea nada.
 
-Contrato de la senal de revision (emisor `/implementar-spec`, consumidor `sdd-review-gate.js`): `hooks/sdd-review-signal.js`. Es una senal de conveniencia, no una prueba criptografica. Tests de contrato: `npm test`.
+Contrato de la senal de revision (emisor `/implementar-spec`, consumidor `sdd-review-gate.js`): `hooks/sdd-review-signal.js`. El hash ata la senal al diff de la task revisada. Tests de contrato: `npm test`.
 
 ## Estilo
 
