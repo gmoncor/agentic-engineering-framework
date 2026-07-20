@@ -23,7 +23,6 @@ const DISCOVER_SCHEMA = {
           independiente: { type: 'boolean' },
           dependencias: { type: 'array', items: { type: 'string' } },
           archivos: { type: 'array', items: { type: 'string' } },
-          side_effects_fs: { type: 'boolean' },
           contratos: {
             type: 'array',
             items: {
@@ -121,9 +120,7 @@ Proceso:
    y los contratos que produce o consume
 4. Una task es independiente si NO depende de otra task de esta misma spec
 5. Las dependencias deben ser paths exactos de otras tasks (ej: ai_docs/tasks/001_crear_modelos.md)
-6. side_effects_fs es true si la task instala dependencias, corre migraciones, levanta contenedores o
-   modifica el entorno mas alla de su propio codigo
-7. Los contratos son lo que una task produce y otra consume (API, tipo, export). Formato por contrato:
+6. Los contratos son lo que una task produce y otra consume (API, tipo, export). Formato por contrato:
    tipo (produce|consume), nombre, archivo
 
 IMPORTANTE: Retorna las dependencias como paths exactos de archivos, no como titulos ni descripciones.
