@@ -1,46 +1,41 @@
-description = "Implementa TODAS las tasks de una spec: tasks independientes en paralelo, revision adversarial al final"
+description = "Implementa TODAS las tasks de una spec en orden secuencial: una task tras otra, revision adversarial de cada una antes de commitear"
 
 prompt = """
-Implementa TODAS las tasks de una spec, paralelizando donde sea posible.
+Implementa TODAS las tasks de una spec, una tras otra, en orden de dependencias.
 
 ANTES de implementar, verifica:
 
 1. Busca la spec indicada por el usuario en ai_docs/tasks/spec_*.md
 2. Verifica que tiene "Estado: APROBADA"
-3. Busca tasks derivadas que referencien esta spec en ai_docs/tasks/
+3. Busca las tasks derivadas que referencien esta spec en ai_docs/tasks/
 4. Si no existe spec aprobada o no hay tasks: DETENTE y di al usuario que ejecute /planificar primero
 
 PROCESO (ejecuta en orden):
 
-PASO 1 — DESCUBRIMIENTO
+PASO 1 — DESCUBRIMIENTO Y ORDEN
 Lee la spec y encuentra todas sus tasks en ai_docs/tasks/.
-Identifica dependencias entre tasks y los archivos que declara cada una en su tabla "Archivos afectados".
+Para cada task, extrae sus dependencias (paths de otras tasks de las que depende).
+Si una dependencia apunta a una task que no existe, DETENTE: es un error del plan; nombra la task ausente y pide corregirlo.
 Si las dependencias forman un ciclo, DETENTE: nombra las tasks del ciclo y pide corregir el plan.
-Agrupa las tasks en niveles para ENSENAR el plan: nivel 1 sin dependencias, nivel N con las suyas ya resueltas.
-Dos tasks solo pueden ir a la vez si sus archivos son disjuntos; si se solapan, se serializan (la que escribe primero, antes).
-Una task que no declara archivos va sola.
-Muestra los niveles al usuario antes de continuar, indicando que archivo obligo a serializar.
+Ordena las tasks topologicamente: cada task va despues de todas sus dependencias.
+Muestra al usuario el orden de ejecucion antes de continuar.
 
-PASO 2 — IMPLEMENTACION
-Los niveles son una vista del plan, no una barrera: lanza cada task en cuanto SUS dependencias estan hechas, sin quedarte a la cola del resto de su nivel, y nunca a la vez que otra task que escriba alguno de sus archivos.
-Para cada task:
+PASO 2 — IMPLEMENTACION (una task tras otra)
+Recorre las tasks en el orden del PASO 1. Para cada task, en este orden:
 a. Lee ai_docs/dev_templates/implementar.md y sigue su proceso completo
-b. Implementa los cambios descritos en la task
-c. Escribe tests (RED-GREEN cuando aplique)
-d. Ejecuta validaciones (linting, tests, build)
-e. Haz commit con mensaje descriptivo
-Si una task falla, las que dependan de ella no se lanzan: se reportan como bloqueadas.
+b. Lee ai_docs/core/ para el contexto del proyecto
+c. Implementa los cambios descritos en la task
+d. Escribe tests (RED-GREEN cuando aplique: el test debe fallar sin tu cambio)
+e. Ejecuta como gate el comando de test real del proyecto (p. ej. `npm test`, `pytest`, el que declare el stack) y lee su exit code. Si es distinto de 0, corrige antes de continuar; no commitees en rojo
+f. Revision adversarial de ESTA task: lee ai_docs/dev_templates/revision_adversarial.md y aplicalo SOLO al diff de esta task, con postura esceptica (busca bugs, edge cases, regresiones, codigo muerto, seguridad). Emite veredicto: APROBADA, NECESITA_CORRECCIONES o RECHAZADA
+g. Si NO es APROBADA: corrige los problemas y vuelve a revisar. Si sigue sin aprobarse, marca la task como FALLIDA y NO la commitees
+h. Si es APROBADA: haz commit de esa task. Subject "<tipo>: <descripcion>" (max 72 chars); cuerpo con QUE cambio y POR QUE. Tipos validos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore
+Si una task queda FALLIDA, las que dependan de ella NO se implementan: se reportan como bloqueadas.
 
-PASO 3 — REVISION ADVERSARIAL
-Al terminar TODAS las tasks:
-Lee ai_docs/dev_templates/revision_adversarial.md y sigue su proceso completo.
-Revisa TODA la implementacion, no solo la ultima task.
-Emite veredicto: APROBADA, NECESITA_CORRECCIONES o RECHAZADA.
-
-PASO 4 — RESUMEN
-Presenta: orden de ejecucion (que tasks fueron a la vez y cuales se serializaron, y por que archivo), tasks completadas, archivos modificados, tests creados, veredicto.
-Si APROBADA: sugiere /pr.
-Si NECESITA_CORRECCIONES: detalla que corregir.
+PASO 3 — RESUMEN
+Presenta: orden de ejecucion, tasks completadas, tasks fallidas o bloqueadas, archivos modificados, tests creados.
+Si todas las tasks se aprobaron y commitearon: sugiere /pr.
+Si alguna fallo: detalla que corregir.
 
 Solicitud del usuario:
 
