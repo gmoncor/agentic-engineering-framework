@@ -20,9 +20,7 @@ const DISCOVER_SCHEMA = {
         properties: {
           path: { type: 'string' },
           titulo: { type: 'string' },
-          independiente: { type: 'boolean' },
           dependencias: { type: 'array', items: { type: 'string' } },
-          archivos: { type: 'array', items: { type: 'string' } },
           contratos: {
             type: 'array',
             items: {
@@ -36,7 +34,7 @@ const DISCOVER_SCHEMA = {
             }
           }
         },
-        required: ['path', 'titulo', 'independiente']
+        required: ['path', 'titulo']
       }
     }
   },
@@ -115,16 +113,13 @@ Encuentra todas las tasks asociadas a la spec: ${specPath}
 Proceso:
 1. Lee la spec para obtener su titulo y criterios de aceptacion
 2. Busca en ai_docs/tasks/ todos los archivos .md (excluyendo spec_*.md) que referencien esta spec
-3. Lee cada task encontrada para extraer: titulo, si es independiente, dependencias (paths de otras tasks),
-   los archivos de su tabla "Archivos afectados", si tiene efectos secundarios en el sistema de ficheros
+3. Lee cada task encontrada para extraer: titulo, dependencias (paths de otras tasks)
    y los contratos que produce o consume
-4. Una task es independiente si NO depende de otra task de esta misma spec
-5. Las dependencias deben ser paths exactos de otras tasks (ej: ai_docs/tasks/001_crear_modelos.md)
-6. Los contratos son lo que una task produce y otra consume (API, tipo, export). Formato por contrato:
+4. Las dependencias deben ser paths exactos de otras tasks (ej: ai_docs/tasks/001_crear_modelos.md)
+5. Los contratos son lo que una task produce y otra consume (API, tipo, export). Formato por contrato:
    tipo (produce|consume), nombre, archivo
 
 IMPORTANTE: Retorna las dependencias como paths exactos de archivos, no como titulos ni descripciones.
-Los archivos, tal como aparecen en la tabla de la task (rutas relativas a la raiz del proyecto).
 
 Retorna el path de la spec, su titulo, y la lista completa de tasks.
 `, { label: 'descubrir-tasks', phase: 'Descubrimiento', schema: DISCOVER_SCHEMA })
