@@ -13,6 +13,11 @@ const { spawnSync } = require('child_process');
 const VALID_TYPES = ['feat', 'fix', 'update', 'refactor', 'create', 'optimize', 'remove', 'rename', 'docs', 'test', 'style', 'chore'];
 const SUBJECT_MAX_LEN = 72;
 
+// Tipos que cambian comportamiento: su commit documenta una decision, asi que el cuerpo con el
+// QUE y el POR QUE es esperable. docs/test/style/chore quedan exentos (suelen ser autoexplicativos).
+const FUNCTIONAL_TYPES = ['feat', 'fix', 'update', 'refactor', 'create', 'optimize', 'remove'];
+const BODY_MIN_LEN = 10;
+
 const SCAFFOLDING_DIRS = ['.cursor'];
 
 const FORBIDDEN_COAUTHOR_RE = /co-authored-by:\s*.*(?:claude|anthropic|gemini|google\s+ai|openai|codex)/i;
@@ -75,8 +80,15 @@ function messageWarnings(msg) {
   }
 
   const typeMatch = subject.match(/^(\w+)[\s(:]/);
-  if (typeMatch && !VALID_TYPES.includes(typeMatch[1].toLowerCase())) {
+  const type = typeMatch ? typeMatch[1].toLowerCase() : null;
+
+  if (type && !VALID_TYPES.includes(type)) {
     warnings.push(`COMMIT_TYPE_INVALID: tipo "${typeMatch[1]}" no esta en [${VALID_TYPES.join(', ')}]`);
+  }
+
+  if (type && FUNCTIONAL_TYPES.includes(type) && commitBody(msg).length < BODY_MIN_LEN) {
+    warnings.push('COMMIT_BODY_MISSING: el cuerpo del commit debe explicar QUE se cambio y POR QUE. '
+      + 'Un commit funcional sin cuerpo pierde valor como documentacion.');
   }
 
   if (FORBIDDEN_COAUTHOR_RE.test(msg)) {
@@ -84,6 +96,13 @@ function messageWarnings(msg) {
   }
 
   return warnings;
+}
+
+// El cuerpo es todo lo que sigue a la primera linea (el subject). git une los sucesivos -m con una
+// linea en blanco, asi que "feat: x" -m "por que" llega como "feat: x\n\npor que".
+function commitBody(msg) {
+  const nl = msg.indexOf('\n');
+  return nl === -1 ? '' : msg.slice(nl + 1).trim();
 }
 
 function extractCommitMessage(cmd) {

@@ -97,6 +97,24 @@ Formato recomendado:
 - Sin punto final en la primera linea
 - El cuerpo explica QUE y POR QUE, no COMO (el codigo ya muestra el como)
 
+**El cuerpo es obligatorio en commits funcionales** (`feat`, `fix`, `update`, `refactor`, `create`, `optimize`, `remove`). Un commit funcional sin cuerpo degrada la trazabilidad del proyecto: el subject dice que algo cambio, pero no por que se decidio. El mensaje debe ser autocontenido — comprensible para cualquier persona que lo lea meses despues sin acceso a la conversacion ni a documentacion interna. `docs`, `test`, `style` y `chore` triviales pueden quedarse en subject-only.
+
+Ejemplo negativo (subject-only, sin porque):
+
+```
+feat: anadir cache de sesiones
+```
+
+Ejemplo positivo (QUE + POR QUE):
+
+```
+feat: anadir cache de sesiones
+
+Las validaciones releian la sesion desde disco en cada request, lo que
+disparaba la latencia bajo carga. La cache en memoria con TTL corto evita
+esas relecturas sin arriesgar servir datos obsoletos.
+```
+
 ---
 
 ## Paso 4: Presentar al usuario para aprobacion

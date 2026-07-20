@@ -49,10 +49,19 @@ test('comando como argv: deny igual que como string', () => {
 });
 
 test('git commit sin --no-verify y bien formado: allow', () => {
-  const r = runHook(HOOK, shell('git commit -m "feat: anadir servicio de login"'));
+  const r = runHook(HOOK, shell('git commit -m "feat: anadir servicio de login" '
+    + '-m "centraliza la autenticacion para que cada backend no la reimplemente"'));
 
   assert.strictEqual(r.code, 0);
   assert.strictEqual(r.decision, null);
+});
+
+test('git commit funcional sin cuerpo: warn de cuerpo ausente, no deny', () => {
+  const r = runHook(HOOK, shell('git commit -m "feat: anadir servicio de login"'));
+
+  assert.strictEqual(r.decision.decision, 'warn');
+  assert.strictEqual(r.code, 0);
+  assert.match(r.decision.reason, /COMMIT_BODY_MISSING/);
 });
 
 test('git commit con tipo invalido: warn, no deny', () => {
