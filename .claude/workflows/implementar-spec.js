@@ -47,8 +47,6 @@ const IMPL_SCHEMA = {
     task_titulo: { type: 'string' },
     resultado: { type: 'string', enum: ['COMPLETADA', 'FALLIDA', 'PARCIAL'] },
     archivos_modificados: { type: 'array', items: { type: 'string' } },
-    tests_creados: { type: 'number' },
-    tests_pasando: { type: 'number' },
     commit_message: { type: 'string' },
     commit_cuerpo: { type: 'string' },
     hallazgos_fuera_alcance: { type: 'array', items: { type: 'string' } },
@@ -87,6 +85,34 @@ async function git(argv) {
   const cp = await import('node:child_process')
   const r = cp.spawnSync('git', argv, { encoding: 'utf8', timeout: 15000 })
   return { code: r.status, out: r.stdout || '', err: r.stderr || '' }
+}
+
+// ── Gate de tests: ejecuta el comando real y lee el exit code ─────────────────
+// Corre la suite del proyecto contra el working tree ANTES de revisar/commitear.
+// El exit code es la unica evidencia que cuenta: no se lee ningun numero de tests
+// auto-reportado por el implementador. Un timeout o un fallo del spawn deja code
+// distinto de 0, que evaluarGateTests trata como rojo (bloquea).
+async function ejecutarTests(comando) {
+  const cp = await import('node:child_process')
+  const r = cp.spawnSync(comando.cmd, comando.args, { encoding: 'utf8', timeout: 600000 })
+  return { code: r.status, err: (r.stderr || '').slice(-400) }
+}
+
+// Descubre y ejecuta el comando de test, y devuelve el veredicto del gate. Los
+// archivos se leen del diff staged (cambios reales), no del auto-reporte: asi la
+// exencion docs/config se decide sobre lo que de verdad se toco.
+async function gateTests(task) {
+  await git(['add', '-A'])
+  const archivos = (await git(['diff', '--cached', '--name-only'])).out
+    .split('\n').map(function(s) { return s.trim() }).filter(Boolean)
+
+  const comando = orq.descubrirComandoTest('.')
+  var exitCode = null
+  if (comando) {
+    log('Gate de tests (' + task.titulo + '): ' + comando.cmd + ' ' + comando.args.join(' ') + ' [' + comando.fuente + ']')
+    exitCode = (await ejecutarTests(comando)).code
+  }
+  return orq.evaluarGateTests({ comando: comando, exitCode: exitCode, archivos: archivos })
 }
 
 // ── Senal de revision POST-implementacion, por task ───────────────────────────
@@ -187,8 +213,8 @@ PROCESO OBLIGATORIO:\n\
 1. Lee la task completa y verifica pre-requisitos\n\
 2. Investiga el codigo existente\n\
 3. Implementa los cambios descritos en la task\n\
-4. Escribe tests (RED-GREEN cuando aplique)\n\
-5. Ejecuta validaciones (linting, tests, build)\n\
+4. Escribe tests. Para funcionalidad nueva, RED-GREEN es obligatorio: el test debe FALLAR sin tu cambio\n\
+5. Ejecuta validaciones (linting, tests, build). El workflow re-ejecuta la suite como gate antes de commitear\n\
 \n\
 REGLAS:\n\
 - SOLO implementa lo que dice la task\n\
@@ -203,7 +229,7 @@ NO COMMITEAR:\n\
   commit_cuerpo = QUE cambio y POR QUE. Tipos validos: feat, fix, update, refactor, create,\n\
   optimize, remove, rename, docs, test, style, chore.\n\
 \n\
-Retorna: path de la task, titulo, resultado, archivos modificados, tests creados/pasando,\n\
+Retorna: path de la task, titulo, resultado, archivos modificados,\n\
 commit_message, commit_cuerpo, hallazgos fuera de alcance.'
 }
 
@@ -346,6 +372,25 @@ for (const wave of waves) {
         notas: 'El agente no retorno resultado'
       })
       continue
+    }
+
+    // Gate de tests: ejecuta la suite real y lee el exit code, antes de la
+    // revision y del commit. Rojo (exit != 0) bloquea; falta de comando bloquea
+    // solo si la task toca codigo. SDD_GUARD_SKIP=1 degrada el bloqueo a aviso
+    // (escape puntual para un fallo ajeno a la task).
+    const gate = await gateTests(task)
+    resultado.gate_tests = gate
+    if (gate.estado === 'FALLIDA' && process.env.SDD_GUARD_SKIP !== '1') {
+      log('Task ' + task.titulo + ': FALLIDA (gate de tests) — ' + gate.nota + ', no se commitea')
+      await git(['reset', '--hard', 'HEAD'])
+      await git(['clean', '-fd'])
+      resultado.resultado = 'FALLIDA'
+      resultado.notas = (resultado.notas ? resultado.notas + ' ' : '') + '(gate de tests: ' + gate.nota + ')'
+      allResults.push(resultado)
+      continue
+    }
+    if (gate.estado !== 'PASA') {
+      log('Gate de tests (' + task.titulo + '): ' + gate.nota)
     }
 
     allResults.push(await revisarYComitear(task, resultado))

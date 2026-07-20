@@ -154,3 +154,85 @@ test('next-task-number: reserva numeros consecutivos sin colisiones entre proces
 
   assert.deepStrictEqual([...numeros].sort(), ['001', '002', '003']);
 });
+
+// ── Gate de tests: descubrir el comando real ─────────────────────────────────
+// El gate ejecuta el comando de test del proyecto y lee su exit code; nunca cree
+// numeros de tests auto-reportados. Aqui se prueba el descubrimiento del comando.
+
+test('descubrirComandoTest: package.json con scripts.test -> npm test', () => {
+  const raiz = tempDir('sdd-cmd-');
+  writeFile(path.join(raiz, 'package.json'), JSON.stringify({ scripts: { test: 'node --test' } }));
+
+  assert.deepStrictEqual(orq.descubrirComandoTest(raiz), { cmd: 'npm', args: ['test'], fuente: 'package.json' });
+});
+
+test('descubrirComandoTest: el placeholder por defecto de npm no cuenta como comando', () => {
+  const raiz = tempDir('sdd-cmd-');
+  writeFile(path.join(raiz, 'package.json'),
+    JSON.stringify({ scripts: { test: 'echo "Error: no test specified" && exit 1' } }));
+
+  // Bloquear por el exit 1 del placeholder seria un rojo falso: degrada a "sin comando".
+  assert.strictEqual(orq.descubrirComandoTest(raiz), null);
+});
+
+test('descubrirComandoTest: pytest.ini -> pytest', () => {
+  const raiz = tempDir('sdd-cmd-');
+  writeFile(path.join(raiz, 'pytest.ini'), '[pytest]\n');
+
+  assert.deepStrictEqual(orq.descubrirComandoTest(raiz), { cmd: 'pytest', args: [], fuente: 'pytest.ini' });
+});
+
+test('descubrirComandoTest: setup.cfg cuenta solo si declara [tool:pytest]', () => {
+  const conPytest = tempDir('sdd-cmd-');
+  writeFile(path.join(conPytest, 'setup.cfg'), '[tool:pytest]\naddopts = -q\n');
+  assert.deepStrictEqual(orq.descubrirComandoTest(conPytest), { cmd: 'pytest', args: [], fuente: 'setup.cfg' });
+
+  const sinPytest = tempDir('sdd-cmd-');
+  writeFile(path.join(sinPytest, 'setup.cfg'), '[metadata]\nname = demo\n');
+  assert.strictEqual(orq.descubrirComandoTest(sinPytest), null);
+});
+
+test('descubrirComandoTest: un comando configurado tiene prioridad sobre npm', () => {
+  const raiz = tempDir('sdd-cmd-');
+  writeFile(path.join(raiz, 'package.json'), JSON.stringify({ scripts: { test: 'node --test' } }));
+  writeFile(path.join(raiz, 'hooks', 'config.json'),
+    JSON.stringify({ sdd_test_gate: { command: 'make test' } }));
+
+  assert.deepStrictEqual(orq.descubrirComandoTest(raiz), { cmd: 'make', args: ['test'], fuente: 'hooks/config.json' });
+});
+
+test('descubrirComandoTest: proyecto sin runner -> null (el llamador decide degradar o bloquear)', () => {
+  assert.strictEqual(orq.descubrirComandoTest(tempDir('sdd-cmd-')), null);
+});
+
+// ── Gate de tests: clasificar cambios y decidir el veredicto ──────────────────
+
+test('tocaCodigoEjecutable: distingue codigo de docs/config', () => {
+  assert.strictEqual(orq.tocaCodigoEjecutable(['src/a.js']), true);
+  assert.strictEqual(orq.tocaCodigoEjecutable(['scripts/deploy.sh']), true);
+  assert.strictEqual(orq.tocaCodigoEjecutable(['README.md', 'config.json']), false);
+  assert.strictEqual(orq.tocaCodigoEjecutable(['docs/guia.md', 'src/a.js']), true);
+  assert.strictEqual(orq.tocaCodigoEjecutable([]), false);
+});
+
+test('evaluarGateTests: comando con exit 0 -> PASA (incluida la suite vacia)', () => {
+  const v = orq.evaluarGateTests({ comando: { fuente: 'package.json' }, exitCode: 0, archivos: ['src/a.js'] });
+  assert.strictEqual(v.estado, 'PASA');
+});
+
+test('evaluarGateTests: comando con exit != 0 -> FALLIDA (rojo siempre bloquea)', () => {
+  const v = orq.evaluarGateTests({ comando: { fuente: 'package.json' }, exitCode: 1, archivos: ['src/a.js'] });
+  assert.strictEqual(v.estado, 'FALLIDA');
+  assert.match(v.nota, /rojo/);
+});
+
+test('evaluarGateTests: sin comando + task que toca codigo -> FALLIDA', () => {
+  const v = orq.evaluarGateTests({ comando: null, exitCode: null, archivos: ['src/a.js'] });
+  assert.strictEqual(v.estado, 'FALLIDA');
+  assert.match(v.nota, /No se encontro comando de test/);
+});
+
+test('evaluarGateTests: sin comando + task solo docs/config -> ADVISORY (exenta)', () => {
+  const v = orq.evaluarGateTests({ comando: null, exitCode: null, archivos: ['README.md'] });
+  assert.strictEqual(v.estado, 'ADVISORY');
+});

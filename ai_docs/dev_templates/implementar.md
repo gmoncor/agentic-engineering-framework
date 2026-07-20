@@ -21,7 +21,7 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 - SOLO implementa lo que dice el documento de task. Nada mas, nada menos.
 - Si descubres un problema fuera del alcance de la task (bug, deuda tecnica, mejora), ANOTALO para otra task. No lo corrijas ahora.
 - Si necesitas modificar un archivo que no esta en la lista de "Archivos afectados" de la task, DETENTE y consulta al usuario.
-- Los tests se escriben DURANTE la implementacion, no despues. Protocolo RED-GREEN cuando aplique.
+- Los tests se escriben DURANTE la implementacion, no despues. Para funcionalidad nueva, el protocolo RED-GREEN es OBLIGATORIO (ver Paso 4).
 
 ---
 
@@ -114,11 +114,17 @@ Los tests se escriben DURANTE la implementacion, no al final. Para cada funciona
 | Caso limite | Valores en los bordes del rango valido | SI |
 | Caso negativo | Datos invalidos que deben rechazarse | SI |
 
-### Protocolo RED-GREEN (si se corrige un bug o se implementa logica critica)
+### Protocolo RED-GREEN (OBLIGATORIO para funcionalidad nueva y correccion de bugs)
 
-1. **RED** — Escribir test que verifique el comportamiento esperado. Ejecutar. Debe FALLAR (porque el codigo aun no existe o no funciona)
-2. **GREEN** — Implementar el codigo. Ejecutar test. Debe PASAR
-3. **Verificar** — Ejecutar TODOS los tests del proyecto para confirmar que nada se rompio
+Para toda funcionalidad nueva y toda correccion de bug, RED-GREEN es obligatorio. No opcional. Exento solo: docs, config y refactors puros (sin cambio de comportamiento observable).
+
+1. **RED** — Escribir el test ANTES del codigo. Ejecutarlo y verificar que FALLA sin tu cambio. Un test que pasa sin el cambio no prueba nada: mata al mutante o no es un test de regresion. Si no lo ves fallar, no lo has probado.
+2. **GREEN** — Implementar el codigo minimo que hace pasar el test. Ejecutar. Debe PASAR.
+3. **Verificar** — Ejecutar TODOS los tests del proyecto para confirmar que nada se rompio.
+
+**Kill-the-mutant:** el criterio de un test de regresion util es que falle al revertir el fix. Si el test sigue verde con el codigo viejo, esta midiendo otra cosa; reescribelo hasta que el RED sea real.
+
+El workflow `/implementar-spec` re-ejecuta la suite del proyecto como gate mecanico antes de commitear cada task: lee el exit code del comando de test real, no un recuento auto-declarado. Una suite en rojo bloquea el commit.
 
 ### Si no hay framework de testing
 
