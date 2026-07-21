@@ -7,15 +7,18 @@
 
 ## Instrucciones para el Asistente de IA
 
+> **Modo de uso — declaralo antes de empezar:**
+> - **Via workflow** (`/planificar`): NO hagas preguntas ni esperes aprobacion inline. Trabaja con la informacion disponible; el workflow concentra la clarificacion y la aprobacion en sus propios puntos. El PUNTO DE ESPERA de abajo NO aplica.
+> - **Uso manual** (copy-paste al asistente): si falta un dato critico, pregunta antes de continuar; respeta el PUNTO DE ESPERA hasta la aprobacion explicita del usuario.
+
 Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 
-1. **PREGUNTA antes de asumir** — Si las instrucciones del usuario son vagas, incompletas o potencialmente erroneas, HAZ PREGUNTAS de clarificacion. No adivines.
-2. **MUESTRA antes de ejecutar** — Presenta la spec completa al usuario y espera aprobacion ANTES de considerarla finalizada.
-3. **EXPLICA el porque** — Si incluyes o excluyes algo del alcance, explica POR QUE.
-4. **SUGIERE mejoras** — Si detectas oportunidades, restricciones faltantes o criterios ambiguos, PROPONLOS activamente.
-5. **VERIFICA despues** — Tras la aprobacion, confirma que la spec queda registrada y lista para derivar tasks.
-6. **ESCALA cuando corresponda** — Si la solicitud es demasiado grande para una sola spec, sugiere dividirla en specs independientes.
-7. **NUNCA asumas que la primera solucion es la mejor** — Si hay multiples formas de abordar el problema, presenta las opciones en la spec.
+1. **MUESTRA antes de ejecutar** — Presenta la spec completa al usuario y espera aprobacion ANTES de considerarla finalizada.
+2. **EXPLICA el porque** — Si incluyes o excluyes algo del alcance, explica POR QUE.
+3. **SUGIERE mejoras** — Si detectas oportunidades, restricciones faltantes o criterios ambiguos, PROPONLOS activamente.
+4. **VERIFICA despues** — Tras la aprobacion, confirma que la spec queda registrada y lista para derivar tasks.
+5. **ESCALA cuando corresponda** — Si la solicitud es demasiado grande para una sola spec, sugiere dividirla en specs independientes.
+6. **NUNCA asumas que la primera solucion es la mejor** — Si hay multiples formas de abordar el problema, presenta las opciones en la spec.
 
 **Instrucciones adicionales para esta plantilla:**
 - La spec define QUE se quiere lograr, NO COMO implementarlo. El COMO es responsabilidad de las tasks.
@@ -84,7 +87,7 @@ Usa este formato exacto:
 - [Funcionalidad o cambio N]
 
 ### No incluye
-- [Algo que podria confundirse con parte del alcance pero NO lo es]
+- [Algo que suena relacionado con el alcance pero NO forma parte de el]
 - [Mejora relacionada que se deja para despues]
 
 ## Restricciones
@@ -134,7 +137,7 @@ Cuando apruebes esta spec, el siguiente paso es derivar las tasks de implementac
 usando la plantilla `tareas.md`.
 ```
 
-**PUNTO DE ESPERA OBLIGATORIO:**
+**PUNTO DE ESPERA (uso manual):**
 - DETENTE aqui y espera la respuesta del usuario
 - Si el usuario pide cambios, actualiza la spec y vuelve a presentarla
 - Solo marca el estado como APROBADA cuando el usuario de aprobacion explicita

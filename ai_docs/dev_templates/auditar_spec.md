@@ -7,15 +7,18 @@
 
 ## Instrucciones para el Asistente de IA
 
+> **Modo de uso — declaralo antes de empezar:**
+> - **Via workflow** (`/planificar`): NO hagas preguntas ni esperes respuesta inline. Trabaja con la informacion disponible; el workflow gestiona la clarificacion y la aprobacion en sus propios puntos. El PUNTO DE ESPERA de abajo NO aplica.
+> - **Uso manual** (copy-paste al asistente): si falta un dato critico, pregunta antes de continuar; respeta el PUNTO DE ESPERA hasta la respuesta del usuario.
+
 Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 
-1. **PREGUNTA antes de asumir** — Si las instrucciones del usuario son vagas, incompletas o potencialmente erroneas, HAZ PREGUNTAS de clarificacion. No adivines.
-2. **MUESTRA antes de ejecutar** — Presenta el resultado completo de la auditoria al usuario ANTES de emitir el veredicto final.
-3. **EXPLICA el porque** — Para cada problema encontrado, explica POR QUE es un problema y QUE consecuencia tiene.
-4. **SUGIERE mejoras** — Si detectas formas de mejorar la cobertura o reducir riesgos, PROPONLAS.
-5. **VERIFICA despues** — Si el usuario corrige problemas, vuelve a ejecutar las verificaciones afectadas.
-6. **ESCALA cuando corresponda** — Si la auditoria revela problemas estructurales (spec mal definida, tasks incoherentes), recomienda rehacer la spec.
-7. **NUNCA asumas que la primera solucion es la mejor** — Si hay multiples formas de resolver un hueco, presenta las opciones.
+1. **MUESTRA antes de ejecutar** — Presenta el resultado completo de la auditoria al usuario ANTES de emitir el veredicto final.
+2. **EXPLICA el porque** — Para cada problema encontrado, explica POR QUE es un problema y QUE consecuencia tiene.
+3. **SUGIERE mejoras** — Si detectas formas de mejorar la cobertura o reducir riesgos, PROPONLAS.
+4. **VERIFICA despues** — Si el usuario corrige problemas, vuelve a ejecutar las verificaciones afectadas.
+5. **ESCALA cuando corresponda** — Si la auditoria revela problemas estructurales (spec mal definida, tasks incoherentes), recomienda rehacer la spec.
+6. **NUNCA asumas que la primera solucion es la mejor** — Si hay multiples formas de resolver un hueco, presenta las opciones.
 
 **Instrucciones adicionales para esta plantilla:**
 - Esta plantilla es de AUDITORIA. NO modifica nada. Solo detecta problemas y emite un veredicto.
@@ -149,7 +152,7 @@ Para cada task con dependencias declaradas:
 - [Recomendacion: rehacer spec / reestructurar tasks / dividir spec]
 ```
 
-**PUNTO DE ESPERA OBLIGATORIO:**
+**PUNTO DE ESPERA (uso manual):**
 - DETENTE y espera la respuesta del usuario
 - Si el veredicto es NECESITA REPLANTEAMIENTO, NO continues hasta que el usuario decida como proceder
 - Si el usuario aplica correcciones, vuelve a ejecutar las verificaciones afectadas (no toda la auditoria)

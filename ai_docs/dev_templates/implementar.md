@@ -7,15 +7,18 @@
 
 ## Instrucciones para el Asistente de IA
 
+> **Modo de uso — declaralo antes de empezar:**
+> - **Via workflow** (`/implementar-spec`, `/implementar`): NO hagas preguntas ni presentes el plan para aprobacion inline. Implementa la task tal como esta declarada; el workflow revisa el diff y commitea. Los pasos de "presentar al usuario" de abajo NO detienen el trabajo.
+> - **Uso manual** (copy-paste al asistente): si falta un dato critico o necesitas tocar un archivo fuera de "Archivos afectados", detente y consulta antes de continuar.
+
 Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 
-1. **PREGUNTA antes de asumir** — Si las instrucciones del usuario son vagas, incompletas o potencialmente erroneas, HAZ PREGUNTAS de clarificacion. No adivines.
-2. **MUESTRA antes de ejecutar** — Presenta el plan de implementacion al usuario ANTES de modificar codigo.
-3. **EXPLICA el porque** — Para cada decision de implementacion, explica POR QUE elegiste esa solucion.
-4. **SUGIERE mejoras** — Si detectas una forma mejor de implementar algo, PROPONLA antes de hacerlo.
-5. **VERIFICA despues** — Tras cada cambio significativo, ejecuta linting y tests para verificar que nada se rompio.
-6. **ESCALA cuando corresponda** — Si durante la implementacion descubres que el alcance es mayor de lo esperado, DETENTE y comunica al usuario.
-7. **NUNCA asumas que la primera solucion es la mejor** — Si hay alternativas, mencionalas antes de implementar.
+1. **MUESTRA antes de ejecutar** — Presenta el plan de implementacion al usuario ANTES de modificar codigo.
+2. **EXPLICA el porque** — Para cada decision de implementacion, explica POR QUE elegiste esa solucion.
+3. **SUGIERE mejoras** — Si detectas una forma mejor de implementar algo, PROPONLA antes de hacerlo.
+4. **VERIFICA despues** — Tras cada cambio significativo, ejecuta linting y tests para verificar que nada se rompio.
+5. **ESCALA cuando corresponda** — Si durante la implementacion descubres que el alcance es mayor de lo esperado, DETENTE y comunica al usuario.
+6. **NUNCA asumas que la primera solucion es la mejor** — Si hay alternativas, mencionalas antes de implementar.
 
 **Instrucciones adicionales para esta plantilla:**
 - SOLO implementa lo que dice el documento de task. Nada mas, nada menos.

@@ -7,15 +7,18 @@
 
 ## Instrucciones para el Asistente de IA
 
+> **Modo de uso — declaralo antes de empezar:**
+> - **Via workflow** (`/planificar`): NO hagas preguntas ni esperes aprobacion inline. Trabaja con la informacion disponible; el workflow concentra la clarificacion y la aprobacion en sus propios puntos. El PUNTO DE ESPERA de abajo NO aplica.
+> - **Uso manual** (copy-paste al asistente): si falta un dato critico, pregunta antes de continuar; respeta el PUNTO DE ESPERA hasta la aprobacion explicita del usuario.
+
 Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 
-1. **PREGUNTA antes de asumir** — Si las instrucciones del usuario son vagas, incompletas o potencialmente erroneas, HAZ PREGUNTAS de clarificacion. No adivines.
-2. **MUESTRA antes de ejecutar** — Presenta la lista completa de tasks al usuario y espera aprobacion ANTES de crear los archivos.
-3. **EXPLICA el porque** — Para cada task, explica por que es una unidad independiente y por que tiene ese alcance.
-4. **SUGIERE mejoras** — Si detectas que una task es demasiado grande o que dos tasks deberian fusionarse, PROPONLO.
-5. **VERIFICA despues** — Tras crear las tasks, confirma que cubren toda la spec sin huecos ni overlaps.
-6. **ESCALA cuando corresponda** — Si la spec genera mas de 10 tasks, sugiere dividir la spec en specs mas pequenas.
-7. **NUNCA asumas que la primera solucion es la mejor** — Si hay multiples formas de dividir el trabajo, presenta las opciones.
+1. **MUESTRA antes de ejecutar** — Presenta la lista completa de tasks al usuario y espera aprobacion ANTES de crear los archivos.
+2. **EXPLICA el porque** — Para cada task, explica por que es una unidad independiente y por que tiene ese alcance.
+3. **SUGIERE mejoras** — Si detectas que una task es demasiado grande o que dos tasks deberian fusionarse, PROPONLO.
+4. **VERIFICA despues** — Tras crear las tasks, confirma que cubren toda la spec sin huecos ni overlaps.
+5. **ESCALA cuando corresponda** — Si la spec genera mas de 10 tasks, sugiere dividir la spec en specs mas pequenas.
+6. **NUNCA asumas que la primera solucion es la mejor** — Si hay multiples formas de dividir el trabajo, presenta las opciones.
 
 **Instrucciones adicionales para esta plantilla:**
 - Cada task debe poder ejecutarse de forma INDEPENDIENTE. Si dos tasks dependen una de la otra, documentar la dependencia explicitamente.
@@ -173,7 +176,7 @@ Aprobar la lista de tasks? Si se aprueba, cada task se guarda como
 archivo individual en ai_docs/tasks/NNN_descriptor.md
 ```
 
-**PUNTO DE ESPERA OBLIGATORIO:**
+**PUNTO DE ESPERA (uso manual):**
 - DETENTE y espera aprobacion del usuario
 - Si el usuario pide cambios, ajusta y vuelve a presentar
 - Solo crea los archivos de task despues de la aprobacion

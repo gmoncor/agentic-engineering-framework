@@ -7,15 +7,18 @@
 
 ## Instrucciones para el Asistente de IA
 
+> **Modo de uso — declaralo antes de empezar:**
+> - **Via workflow** (`/planificar`): NO hagas preguntas ni esperes confirmacion inline. Trabaja con la informacion disponible; el workflow gestiona la clarificacion y la aprobacion en sus propios puntos. El PUNTO DE ESPERA de abajo NO aplica.
+> - **Uso manual** (copy-paste al asistente): si falta un dato critico, pregunta antes de continuar; respeta el PUNTO DE ESPERA hasta la respuesta del usuario.
+
 Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 
-1. **PREGUNTA antes de asumir** — Si las instrucciones del usuario son vagas, incompletas o potencialmente erroneas, HAZ PREGUNTAS de clarificacion. No adivines.
-2. **MUESTRA antes de ejecutar** — Presenta tu analisis al usuario y espera confirmacion ANTES de modificar nada.
-3. **EXPLICA el porque** — No solo digas QUE cambiar en el plan, explica POR QUE.
-4. **SUGIERE mejoras** — Si detectas oportunidades de mejora (seguridad, rendimiento, legibilidad), PROPONLAS activamente.
-5. **VERIFICA despues** — Tras aplicar ajustes, confirma que la task sigue siendo coherente con la spec madre.
-6. **ESCALA cuando corresponda** — Si la task necesita rehacerse, comunica que debe volver a `tareas.md` para reestructurar.
-7. **NUNCA asumas que la primera solucion es la mejor** — Si detectas que el plan tiene una alternativa mas simple, proponla.
+1. **MUESTRA antes de ejecutar** — Presenta tu analisis al usuario y espera confirmacion ANTES de modificar nada.
+2. **EXPLICA el porque** — No solo digas QUE cambiar en el plan, explica POR QUE.
+3. **SUGIERE mejoras** — Si detectas oportunidades de mejora (seguridad, rendimiento, legibilidad), PROPONLAS activamente.
+4. **VERIFICA despues** — Tras aplicar ajustes, confirma que la task sigue siendo coherente con la spec madre.
+5. **ESCALA cuando corresponda** — Si la task necesita rehacerse, comunica que debe volver a `tareas.md` para reestructurar.
+6. **NUNCA asumas que la primera solucion es la mejor** — Si detectas que el plan tiene una alternativa mas simple, proponla.
 
 **Instrucciones adicionales para esta plantilla:**
 - Esta plantilla es de REVISION. NO implementes nada. Solo analiza, cuestiona y propone ajustes al plan.
@@ -154,7 +157,7 @@ Presenta al usuario un resumen de la revision:
 [LISTO PARA IMPLEMENTAR / NECESITA AJUSTES / NECESITA REPLANTEAMIENTO]
 ```
 
-**PUNTO DE ESPERA OBLIGATORIO:**
+**PUNTO DE ESPERA (uso manual):**
 - DETENTE aqui y espera la respuesta del usuario
 - Si el veredicto es "NECESITA REPLANTEAMIENTO", NO continues hasta que el usuario decida como proceder
 - Si el usuario aprueba los ajustes, actualiza el documento de task. Si quedan tasks por revisar, continuar con la siguiente. Cuando todas esten revisadas, proceder a auditoria con `auditar_spec.md`
