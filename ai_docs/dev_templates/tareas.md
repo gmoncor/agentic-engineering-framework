@@ -1,6 +1,6 @@
 # Plantilla de Derivacion de Tasks desde Spec
 
-> **Cuando usar:** Despues de que una spec ha sido APROBADA. Para derivar tasks granulares e independientes.
+> **Cuando usar:** Despues de que una spec ha sido APROBADA. Para derivar tasks granulares y ordenarlas por dependencias.
 > **Como usar:** Copia este documento completo y pegalo en tu asistente de IA junto con la spec aprobada.
 
 ---
@@ -14,15 +14,15 @@
 Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 
 1. **MUESTRA antes de ejecutar** — Presenta la lista completa de tasks al usuario y espera aprobacion ANTES de crear los archivos.
-2. **EXPLICA el porque** — Para cada task, explica por que es una unidad independiente y por que tiene ese alcance.
+2. **EXPLICA el porque** — Para cada task, explica por que tiene ese alcance y de que otras tasks depende.
 3. **SUGIERE mejoras** — Si detectas que una task es demasiado grande o que dos tasks deberian fusionarse, PROPONLO.
 4. **VERIFICA despues** — Tras crear las tasks, confirma que cubren toda la spec sin huecos ni overlaps.
 5. **ESCALA cuando corresponda** — Si la spec genera mas de 10 tasks, sugiere dividir la spec en specs mas pequenas.
 6. **NUNCA asumas que la primera solucion es la mejor** — Si hay multiples formas de dividir el trabajo, presenta las opciones.
 
 **Instrucciones adicionales para esta plantilla:**
-- Cada task debe poder ejecutarse de forma INDEPENDIENTE. Si dos tasks dependen una de la otra, documentar la dependencia explicitamente.
-- Si dos tasks tocan el mismo archivo, SIEMPRE indicar la dependencia y el orden de ejecucion.
+- Cada task debe tener un alcance acotado. Si dos tasks dependen una de la otra, documenta la dependencia explicitamente.
+- Si dos tasks tocan el mismo archivo, SIEMPRE indica la dependencia y el orden de ejecucion.
 - NUNCA crees una task que requiera conocer el resultado de otra task para empezar, a menos que la dependencia este documentada.
 - Las tasks definen COMO implementar. La spec define QUE. No repitas el QUE en cada task.
 
@@ -38,9 +38,9 @@ Antes de crear tasks, verifica:
 
 ---
 
-## Paso 2: Identificar modulos independientes
+## Paso 2: Agrupar cambios en tasks
 
-Analiza la spec y agrupa los cambios en modulos o funcionalidades que se pueden implementar de forma separada.
+Analiza la spec y agrupa los cambios en modulos o funcionalidades que se puedan implementar por separado.
 
 **Criterios para separar en tasks:**
 
@@ -56,7 +56,7 @@ Analiza la spec y agrupa los cambios en modulos o funcionalidades que se pueden 
 | Criterio | Ejemplo |
 |----------|---------|
 | Cambios en el mismo archivo por la misma razon | Agregar campo + validacion del campo |
-| Un cambio no tiene sentido sin el otro | Crear tabla + crear migración |
+| Un cambio no tiene sentido sin el otro | Crear tabla + crear migracion |
 | Total menor a 50 lineas | No vale la pena separar |
 
 ---
@@ -66,83 +66,100 @@ Analiza la spec y agrupa los cambios en modulos o funcionalidades que se pueden 
 Para cada task, usa este formato:
 
 ```markdown
-# Task: [Titulo descriptivo]
+# Task: <titulo accionable>
 
-**Spec madre:** [Titulo de la spec]
+**Spec madre:** <titulo de la spec>
 **Estado:** PENDIENTE
-**Dependencias:** [Lista de tasks que deben completarse antes, o "Ninguna"]
-**Independiente:** [SI / NO — SI si no tiene dependencias de otras tasks]
-**Efectos secundarios en el sistema de ficheros:** [SI / NO — SI si instala dependencias, corre migraciones, levanta contenedores o altera el entorno mas alla de su propio codigo]
-**Tamano estimado:** [min]-[max] lineas en [N] archivos
+**Dependencias:** <tasks que deben completarse antes, o "Ninguna">
+**Tamano estimado:** <min>-<max> lineas en <N> archivos
 
 ## Objetivo
 
-[1-2 frases: que se implementa y por que. Referencia a la spec, no repitas el contexto completo.]
+<1-2 frases: que se implementa y por que. Referencia a la spec, no repitas el contexto completo.>
 
 ## Archivos afectados
 
 | Archivo | Accion | Descripcion del cambio |
 |---------|--------|----------------------|
-| `ruta/archivo.ext` | CREAR / MODIFICAR / ELIMINAR | [Que se hace en este archivo] |
+| `ruta/archivo.ext` | CREAR / MODIFICAR / ELIMINAR | <que se hace en este archivo> |
 
-Esta tabla es la fuente de verdad de que archivos escribe la task. La usan el guard
-que bloquea escrituras no planificadas y la implementacion en paralelo, que solo
-lanza a la vez tasks cuyos archivos son disjuntos. Una task que no declara archivos
-no se paraleliza con ninguna otra.
+Esta tabla es la fuente de verdad de que archivos escribe la task. La usa el guard
+que bloquea escrituras no declaradas: si la task intenta escribir un archivo que no
+figura aqui, el guard la detiene. Manten la cabecera y el formato de las celdas.
+
+## Wiring esperado
+
+<Opcional. Solo si la task CREA archivos nuevos. Indica quien los importa, registra
+o invoca para que no queden huerfanos. Omite esta seccion si la task no crea archivos.>
 
 ## Contratos
 
-[Opcional. Solo si esta task produce algo que otra consume, o al reves.]
+<Opcional. Solo si esta task produce algo que otra consume, o al reves.>
 
 | Tipo | Nombre | Archivo |
 |------|--------|---------|
-| PRODUCE / CONSUME | [API, tipo, funcion exportada] | `ruta/archivo.ext` |
+| PRODUCE / CONSUME | <API, tipo, funcion exportada> | `ruta/archivo.ext` |
 
-Si esta task CONSUME un contrato, debe declarar como dependencia la task que lo PRODUCE.
+Si esta task CONSUME un contrato, declara como dependencia la task que lo PRODUCE.
 
 ## Plan de implementacion
 
-1. [Paso concreto 1]
-2. [Paso concreto 2]
-3. [Paso N]
+1. <paso concreto 1>
+2. <paso concreto 2>
+3. <paso N>
 
 ## Criterios de exito
 
-- [ ] [Criterio verificable 1 — derivado de la spec]
-- [ ] [Criterio verificable 2]
-- [ ] Tests escritos y pasando
+Minimo 3, todos verificables (test, comando o inspeccion concreta):
 
-## Edge cases
+- [ ] <criterio medible 1 — derivado de la spec>
+- [ ] <criterio medible 2>
+- [ ] <criterio medible 3>
 
-- [Caso limite 1: que pasa si X]
-- [Caso limite 2: que pasa si Y]
-- [Caso limite 3: que pasa si Z]
+## Casos limite minimos
+
+Minimo 3:
+
+- <caso limite 1: que pasa si X>
+- <caso limite 2: que pasa si Y>
+- <caso limite 3: que pasa si Z>
+
+## Criterios de calidad de ingenieria
+
+<N/A si la task solo toca docs o config y no codigo ejecutable.>
+
+- [ ] Cleanup exhaustivo de comentarios.
+- [ ] Sin dead/legacy code.
+- [ ] DRY/KISS/early returns aplicados.
+- [ ] TDD reutilizando infra existente.
 ```
 
 **Reglas para cada task:**
 - El titulo debe ser accionable: "Crear endpoint de registro" no "Registro"
-- Minimo 3 edge cases por task si involucra logica de negocio
-- El tamano estimado debe ser realista. Si supera 400 lineas, dividir la task
+- Minimo 3 casos limite por task si involucra logica de negocio
+- El tamano estimado debe ser realista. Si supera 400 lineas, divide la task
 - Cada task genera al menos un commit
 
 ---
 
-## Paso 4: Definir orden de ejecucion
+## Paso 4: Definir el orden de ejecucion
 
-Despues de crear todas las tasks, construye un mapa de dependencias. Determina que puede ir a la vez y que tiene que ir despues:
+Con todas las tasks creadas, construye un mapa de dependencias y derivalo a un orden
+lineal (orden topologico): cada task se coloca despues de aquellas de las que depende.
 
-```
-Nivel 1: Task A, Task C, Task E  [sin dependencias — independientes entre si]
-Nivel 2: Task B, Task D           [dependen de tasks del Nivel 1]
-Nivel 3: Task F                   [depende de tasks del Nivel 2]
-```
+Ejemplo:
 
-Los niveles son una vista del plan, no una barrera de ejecucion: cada task arranca en cuanto SUS dependencias estan satisfechas, sin quedarse a la cola del resto de su nivel. Dos tasks solo corren a la vez si sus tablas "Archivos afectados" son disjuntas; si comparten un archivo, se serializan.
+- Task A, Task C y Task E no dependen de nadie.
+- Task B depende de Task A. Task D depende de Task C.
+- Task F depende de Task B.
+
+Un orden valido: `A -> C -> E -> B -> D -> F`. Las tasks se implementan una tras otra
+en ese orden; nunca se empieza una task antes de que sus dependencias esten completas.
 
 **Reglas de dependencia:**
-- Dos tasks son independientes SI no comparten archivos Y no tienen dependencia de datos
-- Si dos tasks tocan el mismo archivo, una depende de la otra (indicar cual va primero)
-- Si una task crea algo que otra task consume (API, modelo, tipo), hay dependencia
+- Si una task crea algo que otra consume (API, modelo, tipo), la consumidora depende de la productora
+- Si dos tasks tocan el mismo archivo, una depende de la otra: decide cual va primero
+- Una task sin dependencias puede colocarse en cualquier punto donde nada la preceda
 
 ---
 
@@ -151,26 +168,20 @@ Los niveles son una vista del plan, no una barrera de ejecucion: cada task arran
 Presenta al usuario un resumen con este formato:
 
 ```
-## Tasks derivadas de: [Titulo de la spec]
+## Tasks derivadas de: <titulo de la spec>
 
-**Total:** [N] tasks
-**Independientes:** [N] tasks sin dependencias mutuas
-**Con dependencias:** [N] tasks con dependencias
+**Total:** <N> tasks
 
 ### Orden de ejecucion
 
-| Grupo | Tasks | Dependencia |
-|-------|-------|-------------|
-| 1 | Task A, Task C | Ninguna (independientes) |
-| 2 | Task B, Task D | Grupo 1 |
-| 3 | Task F | Grupo 2 |
+<Task A -> Task C -> Task E -> Task B -> Task D -> Task F  (orden topologico, una tras otra)>
 
 ### Resumen por task
 
-| # | Titulo | Archivos | Tamano | Independiente |
-|---|--------|----------|--------|---------------|
-| 1 | [Titulo] | [N] | [min-max]L | SI/NO |
-| 2 | [Titulo] | [N] | [min-max]L | SI/NO |
+| # | Titulo | Archivos | Tamano | Dependencias |
+|---|--------|----------|--------|--------------|
+| 1 | <titulo> | <N> | <min-max>L | Ninguna |
+| 2 | <titulo> | <N> | <min-max>L | Task 1 |
 
 Aprobar la lista de tasks? Si se aprueba, cada task se guarda como
 archivo individual en ai_docs/tasks/NNN_descriptor.md
@@ -204,8 +215,8 @@ El siguiente paso es revisar cada task individualmente con `revisar_tarea.md`.
 
 1. **NUNCA derives tasks de una spec no aprobada** — la spec debe tener estado APROBADA
 2. **NUNCA crees una task que toque mas de 6 archivos** — si es mas grande, dividirla
-3. **Cada task debe ser independiente** — si depende de otra, la dependencia debe estar documentada
+3. **Cada task tiene un alcance acotado** — si depende de otra, la dependencia debe estar documentada
 4. **NUNCA repitas el contexto completo de la spec** en cada task — referencia la spec madre
 5. **Si dos tasks tocan el mismo archivo**, una depende de la otra — documentar el orden
 6. **Cada task genera al menos un commit** — si es tan pequena que no justifica commit, fusionarla con otra
-7. **Minimo 3 edge cases** por task que involucre logica de negocio
+7. **Minimo 3 casos limite** por task que involucre logica de negocio

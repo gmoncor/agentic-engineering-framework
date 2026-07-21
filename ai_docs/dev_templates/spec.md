@@ -68,6 +68,7 @@ Usa este formato exacto:
 # Spec: [Titulo descriptivo]
 
 **Alcance:** [PEQUENO / MEDIANO / GRANDE]
+**Tamano estimado:** <N archivos>, <min>-<max> lineas en total
 **Fecha:** [YYYY-MM-DD]
 **Estado:** BORRADOR
 
@@ -97,6 +98,8 @@ Usa este formato exacto:
 
 ## Criterios de aceptacion
 
+Minimo 3, todos medibles:
+
 | # | Criterio | Verificacion |
 |---|----------|-------------|
 | 1 | [Comportamiento esperado medible] | [Como se verifica: test, comando, inspeccion manual] |
@@ -111,7 +114,7 @@ Usa este formato exacto:
 ```
 
 **Reglas de redaccion:**
-- Cada criterio de aceptacion debe ser MEDIBLE. "Funciona correctamente" no es un criterio. "Devuelve 200 con el usuario creado cuando se envia email valido" si lo es.
+- Debe haber al menos 3 criterios de aceptacion, cada uno MEDIBLE. "Funciona correctamente" no es un criterio. "Devuelve 200 con el usuario creado cuando se envia email valido" si lo es.
 - La seccion "No incluye" es obligatoria. Previene scope creep.
 - Las restricciones deben ser verificables. "Buen rendimiento" no es una restriccion. "Respuesta en menos de 200ms para el 95% de requests" si lo es.
 

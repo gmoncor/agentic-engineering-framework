@@ -38,8 +38,8 @@ Criterios de aceptacion: [N]
 Restricciones: [N]
 
 Tasks:
-  - Task NNN: [Titulo] — [Independiente: SI/NO] — [Dependencias: lista o ninguna]
-  - Task NNN: [Titulo] — [Independiente: SI/NO] — [Dependencias: lista o ninguna]
+  - Task NNN: [Titulo] — Dependencias: [lista o ninguna]
+  - Task NNN: [Titulo] — Dependencias: [lista o ninguna]
   ...
 Total tasks: [N]
 ```
@@ -81,7 +81,7 @@ Buscar partes de la spec que no estan cubiertas por ninguna task:
 1. **Funcionalidades mencionadas en "Incluye" sin task correspondiente**
 2. **Restricciones de la spec sin verificacion en ninguna task**
 3. **Integraciones entre modulos** que ninguna task aborda (ej: Task A crea la API, Task B crea la UI, pero nadie conecta la UI a la API)
-4. **Testing:** hay tasks que crean funcionalidad sin tests planificados?
+4. **Testing (hueco BLOQUEANTE):** cualquier task que toca codigo ejecutable sin tests planificados es un hueco BLOQUEANTE. Reportalo y emite como minimo el veredicto NECESITA AJUSTES. Excepcion: tasks que solo tocan docs o config estan exentas.
 5. **Migraciones o cambios de datos** mencionados en la spec sin task que los ejecute
 
 ---
@@ -109,7 +109,7 @@ Para cada task con dependencias declaradas:
 
 **Buscar dependencias no declaradas:**
 - Task que usa un tipo/modelo/API creado por otra task sin declarar la dependencia
-- Tasks marcadas como independientes que en realidad comparten archivos
+- Tasks que comparten un archivo sin declarar el orden de dependencia entre ellas
 
 ---
 
@@ -164,7 +164,8 @@ Para cada task con dependencias declaradas:
 
 1. **NUNCA modifiques la spec ni las tasks** — esta plantilla es solo de auditoria
 2. **NUNCA emitas APROBADO si hay criterios de aceptacion sin cobertura** — es un BLOQUEANTE
-3. **NUNCA ignores overlaps problematicos** — generan conflictos de merge y trabajo duplicado
-4. **El rol del auditor es encontrar problemas** — asumir que hay huecos hasta demostrar lo contrario
-5. **Si la spec no esta aprobada**, DETENTE. No audites tasks de una spec en borrador
-6. **Dependencias no declaradas son tan graves como huecos** — documentarlas como hallazgo
+3. **NUNCA emitas APROBADO si una task que toca codigo ejecutable no planifica tests** — es un hueco BLOQUEANTE (docs/config exentas)
+4. **NUNCA ignores overlaps problematicos** — generan conflictos de merge y trabajo duplicado
+5. **El rol del auditor es encontrar problemas** — asumir que hay huecos hasta demostrar lo contrario
+6. **Si la spec no esta aprobada**, DETENTE. No audites tasks de una spec en borrador
+7. **Dependencias no declaradas son tan graves como huecos** — documentarlas como hallazgo
