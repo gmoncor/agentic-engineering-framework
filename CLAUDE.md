@@ -59,7 +59,7 @@ proyecto/
 │   ├── commands/       # 12 comandos SDD
 │   ├── skills/         # 8 skills (auto-activacion)
 │   ├── workflows/      # planificar.js + implementar-spec.js + lib/ (orquestacion)
-│   └── settings.json   # model: claude-opus-4-8 + hooks
+│   └── settings.json   # model default sugerido: claude-opus-4-8 + hooks
 ├── hooks/              # 5 hooks (pipeline-guard + review-gate + commit-guard + read-before-edit + turn-budget)
 ├── scripts/            # next-task-number.sh (numeracion de tasks sin colisiones)
 ├── ai_docs/
@@ -96,7 +96,9 @@ Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
 
 ## Modelo por defecto
 
-`settings.json` fija `"model": "claude-opus-4-8"` como default de sesion. Opus 4.8 es el modelo mas capaz para planificacion y revision exhaustiva. Override puntual: `/model sonnet` si necesitas velocidad en tareas mecanicas.
+`settings.json` trae `"model": "claude-opus-4-8"` como default **sugerido** de sesion: Opus 4.8 es el modelo mas capaz para planificacion y revision exhaustiva. Pero ningun modelo esta impuesto por el framework — el default es tuyo y lo ajustas a tu presupuesto (`/model sonnet` para velocidad puntual, o edita `settings.json`).
+
+Los agentes heredan ese default salvo el `implementador`, fijado a `model: sonnet`: ejecuta trabajo mecanico (codigo + tests) donde el modelo mas caro no aporta, asi que el patron es **capaz para el gate, barato para ejecutar**. `planificador` y `revisor` heredan el default capaz, del que depende su razonamiento. Si prefieres un unico modelo para todo, devuelve el implementador a `model: inherit`.
 
 ## Hooks (enforcement mecanico)
 

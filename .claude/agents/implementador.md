@@ -1,7 +1,7 @@
 ---
 name: implementador
 description: "Ejecuta tasks individuales. Escribe codigo, tests y ejecuta validaciones. Se activa en el paso 4 del flujo SDD."
-model: inherit
+model: sonnet
 tools:
   - Read
   - Edit
