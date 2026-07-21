@@ -68,7 +68,7 @@ Principios del flujo:
 
 ## Prerequisitos
 
-- **Node.js >= 20** — requerido por los hooks de enforcement (`sdd-pipeline-guard.js`, `sdd-review-gate.js`, `sdd-commit-guard.js`). Sin Node.js, los hooks fallan silenciosamente y no hay enforcement del pipeline SDD. Verificar con `node --version`
+- **Node.js >= 20** — requerido por los hooks de enforcement (`sdd-pipeline-guard.js`, `sdd-review-gate.js`, `sdd-commit-guard.js`, `sdd-read-before-edit.js`, `sdd-turn-budget.js`). Sin Node.js, los hooks fallan silenciosamente y no hay enforcement del pipeline SDD. Verificar con `node --version`
 
 ## Instalacion
 
@@ -94,7 +94,7 @@ Copia estas carpetas y archivos a la raiz de tu proyecto:
 
 ```
 .claude/          # agentes, comandos, skills, workflows, settings
-hooks/            # 3 hooks (pipeline-guard + review-gate + commit-guard)
+hooks/            # 5 hooks (pipeline-guard + review-gate + commit-guard + read-before-edit + turn-budget)
 ai_docs/          # plantillas + carpetas para tus docs
 CLAUDE.md         # instrucciones del sistema
 ```
@@ -127,7 +127,7 @@ Copia a la raiz de tu proyecto:
 agents/               # agentes Gemini (4)
 commands/              # comandos Gemini (.toml, 12)
 skills/                # skills Gemini (8)
-hooks/                 # hooks de enforcement (3)
+hooks/                 # hooks de enforcement (4)
 GEMINI.md              # instrucciones sistema
 gemini-extension.json  # manifest
 ai_docs/               # plantillas + docs de tu proyecto
@@ -194,7 +194,7 @@ No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` par
 | Comandos | `.claude/commands/` (12) | `commands/` (12) | — (entregados como skills) | — (entregados como skills) |
 | Agentes | `.claude/agents/` (4) | `agents/` (4) | `.codex/agents/` (4, `.toml`) | `.agents/plugins/sdd/agents/` (4) |
 | Skills | `.claude/skills/` (8) | `skills/` (8) | `.agents/skills/` (17) | `.agents/skills/` (17) |
-| Hooks | `hooks/` (3, wired en settings) | `hooks/` (3, wired en `hooks/hooks.json`) | `hooks/` (2, wired en `.codex/hooks.json`) | `hooks/` (2, wired en `.agents/hooks.json`) |
+| Hooks | `hooks/` (5, wired en settings) | `hooks/` (4, wired en `hooks/hooks.json`) | `hooks/` (2, wired en `.codex/hooks.json`) | `hooks/` (4, wired en `.agents/hooks.json`) |
 | Workflows | `.claude/workflows/` (2) | — (el orquestador implementa en orden) | — (idem) | — (idem) |
 | Contexto | `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` | `AGENTS.md` |
 | Templates | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) |
@@ -393,6 +393,8 @@ El directorio `hooks/` contiene hooks compartidos entre ambas CLIs que refuerzan
 | `sdd-pipeline-guard.js` | Write/Edit | **Bloquea** la escritura de un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de la spec APROBADA activa | Bloqueante |
 | `sdd-review-gate.js` | git commit / git merge | **Bloquea** un commit/merge cuyo diff no consta revisado: la revision por task emite una senal con el hash del diff y el hook la contrasta con lo staged. Sin senal o con hash que no ata, deniega | Bloqueante (opt-in, solo Claude Code) |
 | `sdd-commit-guard.js` | git commit | Verifica formato de commit (subject ≤72, tipo valido entre 12 tipos, sin Co-Authored-By IA) | Advisory |
+| `sdd-read-before-edit.js` | Read/Write/Edit | Avisa al escribir un archivo existente sin haberlo leido antes en la sesion. Nunca bloquea; se autolimita a silencio en backends que no exponen el evento de lectura | Advisory |
+| `sdd-turn-budget.js` | Todas las tool calls | Cuenta las acciones sin commit y avisa al superar cada umbral (`git commit` resetea el contador). Umbrales y `mode` configurables; `mode: enforce` convierte los avisos en bloqueo | Advisory |
 
 Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`). El gate de revision (`sdd-review-gate.js`) se cablea **unicamente en Claude Code**; los demas backends no lo cargan.
 
