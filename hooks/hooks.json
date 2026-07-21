@@ -32,6 +32,16 @@
             "command": "node hooks/sdd-read-before-edit.js"
           }
         ]
+      },
+      {
+        "_comment": "Advisory: cuenta las acciones sin commit y avisa al superar cada umbral. El matcher amplio incluye run_command para detectar el commit que resetea el contador. Si esta CLI no expone session_id, el hook se autolimita a silencio (sin donde persistir el contador).",
+        "matcher": "read_file|write_file|edit_file|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node hooks/sdd-turn-budget.js"
+          }
+        ]
       }
     ]
   }

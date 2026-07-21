@@ -8,5 +8,13 @@
   "sdd_read_before_edit": {
     "enabled": true,
     "mode": "advisory"
+  },
+  "_comment_turn_budget": "sdd-turn-budget cuenta las acciones sin commit y avisa al superar cada umbral (warn_at, block_at, hard_stop_at). El contador se resetea al detectar 'git commit'. mode 'advisory' (default) solo avisa; 'enforce' hace que block_at y hard_stop_at DENIEGUEN la accion. hard_stop pide interrumpir y esperar input del usuario. Sin session_id o con enabled: false, se autolimita a silencio.",
+  "sdd_turn_budget": {
+    "enabled": true,
+    "mode": "advisory",
+    "warn_at": 30,
+    "block_at": 60,
+    "hard_stop_at": 90
   }
 }

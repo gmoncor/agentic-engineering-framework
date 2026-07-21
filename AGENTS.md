@@ -131,15 +131,16 @@ skills, en cambio, se cargan directamente desde la raiz de personalizaciones.
 
 Comprueba el bundle con `agy plugin validate .agents/plugins/sdd`.
 
-**Hooks.** `.agents/hooks.json` registra tres hooks `PreToolUse`, con las mismas reglas y el mismo
-codigo que los demas backends (`hooks/sdd-pipeline-guard.js`, `hooks/sdd-commit-guard.js` y
-`hooks/sdd-read-before-edit.js`):
+**Hooks.** `.agents/hooks.json` registra cuatro hooks `PreToolUse`, con las mismas reglas y el mismo
+codigo que los demas backends (`hooks/sdd-pipeline-guard.js`, `hooks/sdd-commit-guard.js`,
+`hooks/sdd-read-before-edit.js` y `hooks/sdd-turn-budget.js`):
 
 | Matcher | Hook | Que hace |
 |---------|------|----------|
 | `write_to_file`, `replace_file_content`, `multi_replace_file_content`, `create_file` | `sdd-pipeline-guard.js` | **Deniega** escribir un archivo que ninguna task de una spec APROBADA declara |
 | `run_command` | `sdd-commit-guard.js` | Avisa de commits mal formados y de fugas de andamiaje |
 | `read_file`, `view_file`, `write_to_file`, `replace_file_content`, `multi_replace_file_content`, `create_file` | `sdd-read-before-edit.js` | Avisa al escribir un archivo existente sin haberlo leido antes. Rastrea las lecturas via `read_file`/`view_file`; si esta CLI no dispara ese evento, se autolimita a silencio |
+| `read_file`, `view_file`, `write_to_file`, `replace_file_content`, `multi_replace_file_content`, `create_file`, `run_command` | `sdd-turn-budget.js` | Cuenta las acciones sin commit y avisa al superar cada umbral. `git commit` resetea el contador. Si la CLI no expone `session_id`, se autolimita a silencio |
 
 Dos detalles del contrato de esta CLI, distintos de los otros backends:
 

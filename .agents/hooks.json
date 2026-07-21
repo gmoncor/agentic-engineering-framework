@@ -43,5 +43,20 @@
         ]
       }
     ]
+  },
+  "sdd-turn-budget": {
+    "PreToolUse": [
+      {
+        "_comment": "Advisory: cuenta las acciones sin commit y avisa al superar cada umbral. El matcher amplio incluye run_command para detectar el commit que resetea el contador. Si esta CLI no expone session_id, el hook se autolimita a silencio. El comando corre desde .agents/, de ahi el ../hooks/.",
+        "matcher": "read_file|view_file|write_to_file|replace_file_content|multi_replace_file_content|create_file|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ../hooks/sdd-turn-budget.js",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
   }
 }
