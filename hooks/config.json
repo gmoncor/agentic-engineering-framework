@@ -3,5 +3,10 @@
   "sdd_review_gate": {
     "enabled": false,
     "ttl_hours": 4
+  },
+  "_comment_read_before_edit": "sdd-read-before-edit AVISA (nunca bloquea) al escribir un archivo existente sin haberlo leido antes en la sesion. enabled controla on/off (default true). mode admite solo 'advisory': cualquier otro valor lo silencia — el hook no bloquea por diseno.",
+  "sdd_read_before_edit": {
+    "enabled": true,
+    "mode": "advisory"
   }
 }

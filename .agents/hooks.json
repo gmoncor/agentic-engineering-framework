@@ -28,5 +28,20 @@
         ]
       }
     ]
+  },
+  "sdd-read-before-edit": {
+    "PreToolUse": [
+      {
+        "_comment": "Advisory: avisa al escribir un archivo existente sin haberlo leido antes en la sesion. Rastrea las lecturas via read_file/view_file; si esta CLI no dispara el evento de lectura, el rastreador no se alimenta y el hook se autolimita a silencio (sin falsos positivos). El comando corre desde .agents/, de ahi el ../hooks/.",
+        "matcher": "read_file|view_file|write_to_file|replace_file_content|multi_replace_file_content|create_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ../hooks/sdd-read-before-edit.js",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
   }
 }

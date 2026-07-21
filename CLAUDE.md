@@ -60,7 +60,7 @@ proyecto/
 │   ├── skills/         # 8 skills (auto-activacion)
 │   ├── workflows/      # planificar.js + implementar-spec.js + lib/ (orquestacion)
 │   └── settings.json   # model: claude-opus-4-8 + hooks
-├── hooks/              # 3 hooks (pipeline-guard + review-gate + commit-guard)
+├── hooks/              # 4 hooks (pipeline-guard + review-gate + commit-guard + read-before-edit)
 ├── scripts/            # next-task-number.sh (numeracion de tasks sin colisiones)
 ├── ai_docs/
 │   ├── core/           # vision, planificacion, roadmap
@@ -105,6 +105,7 @@ Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
 | `sdd-pipeline-guard.js` | Write/Edit | **Bloquea** escribir un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de la spec APROBADA activa | Bloqueante |
 | `sdd-review-gate.js` | Bash (git commit/merge) | **Bloquea** un `git commit`/`merge` cuyo diff no consta revisado: la revision adversarial por task emite una senal con el hash del diff, y el hook la contrasta con `git diff --cached`. Sin senal o con hash que no ata, deniega | Bloqueante (opt-in) |
 | `sdd-commit-guard.js` | Bash (git commit) | Warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Advisory |
+| `sdd-read-before-edit.js` | Read/Write/Edit | Warn al escribir un archivo existente sin haberlo leido antes en la sesion (rastrea las lecturas en un fichero por sesion). Nunca bloquea; se autolimita a silencio en backends que no exponen el evento de lectura | Advisory |
 
 Configurados en `.claude/settings.json`. `sdd-review-gate.js` se activa poniendo `sdd_review_gate.enabled: true` en `hooks/config.json`.
 

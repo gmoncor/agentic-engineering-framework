@@ -24,6 +24,15 @@
         ]
       },
       {
+        "matcher": "Read|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/hooks/sdd-read-before-edit.js\""
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {
