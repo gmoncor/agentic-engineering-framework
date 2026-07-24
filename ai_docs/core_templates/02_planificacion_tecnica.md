@@ -248,7 +248,7 @@ C) La planificacion esta completa
 
 Si `ai_docs/core/planificacion_tecnica.md` ya existe, leerlo primero. Usarlo como base a actualizar: preservar decisiones y secciones que sigan vigentes, anadir lo nuevo, senalar conflictos entre lo existente y lo nuevo en vez de mezclarlos en silencio. Si no existe, generar desde cero.
 
-Solo despues de la aprobacion, generar con este formato:
+Solo despues de la aprobacion, generar con este formato. El documento final DEBE incluir al final una seccion `## Registro de revision` con el bloque de autocritica generado (los puntos identificados, incluso si el usuario no los refino) y la eleccion textual del usuario en cada ronda (ej. `Usuario eligio: C — la planificacion esta completa`). Si hubo varias rondas de refinamiento, listarlas todas en orden, no solo la ultima.
 
 ```markdown
 # Planificacion Tecnica
@@ -316,6 +316,12 @@ Solo despues de la aprobacion, generar con este formato:
 ## Riesgos Tecnicos Identificados
 - [Riesgo 1]: [estrategia de mitigacion]
 - [Riesgo 2]: [estrategia de mitigacion]
+
+---
+
+## Registro de revision
+- **Autocritica:** [Bloque de autocritica generado]
+- **Usuario eligio:** [Eleccion textual de cada ronda, en orden]
 ```
 
 ---

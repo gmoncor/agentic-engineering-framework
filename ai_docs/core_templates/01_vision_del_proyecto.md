@@ -190,7 +190,7 @@ C) El documento esta completo tal cual
 
 Si `ai_docs/core/vision_del_proyecto.md` ya existe, leerlo primero. Usarlo como base a actualizar: preservar decisiones y secciones que sigan vigentes, anadir lo nuevo, senalar conflictos entre lo existente y lo nuevo en vez de mezclarlos en silencio. Si no existe, generar desde cero.
 
-Solo despues de la aprobacion del usuario, generar el documento con este formato:
+Solo despues de la aprobacion del usuario, generar el documento con este formato. El documento final DEBE incluir al final una seccion `## Registro de revision` con el bloque de autocritica generado en el Paso 9 (los puntos identificados, incluso si el usuario no los refino) y la eleccion textual del usuario en cada ronda (ej. `Usuario eligio: C — el documento esta completo`). Si hubo varias rondas de refinamiento, listarlas todas en orden, no solo la ultima.
 
 ```markdown
 # Vision del Proyecto
@@ -245,6 +245,10 @@ Solo despues de la aprobacion del usuario, generar el documento con este formato
 ## Features de Valor Anadido (Fase 2+)
 - [Feature 1]: [Valor para el usuario]
 - [Feature 2]: [Valor para el usuario]
+
+## Registro de revision
+- **Autocritica:** [Bloque de autocritica del Paso 9]
+- **Usuario eligio:** [Eleccion textual de cada ronda, en orden]
 ```
 
 ---

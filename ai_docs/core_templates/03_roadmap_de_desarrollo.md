@@ -144,6 +144,12 @@ Si `ai_docs/core/roadmap.md` ya existe, leerlo primero. Usarlo como base a actua
 **Meta:** Cubrir requisitos que no encajaron en fases anteriores
 - [ ] Contrastar documentos de planificacion con lo implementado
 - [ ] Implementar funcionalidades menores restantes
+
+---
+
+## Registro de revision
+- **Autocritica:** [Bloque de autocritica del Paso 4]
+- **Usuario eligio:** [Eleccion textual de cada ronda, en orden]
 ```
 
 **Reglas de calidad:**
@@ -192,7 +198,7 @@ B) Cambiar algo especifico
 C) El roadmap esta completo
 ```
 
-**ESPERAR respuesta. Si elige A o B, iterar. Si elige C, generar el documento final.**
+**ESPERAR respuesta. Si elige A o B, iterar. Si elige C, generar el documento final.** El documento final DEBE incluir al final una seccion `## Registro de revision` con el bloque de autocritica generado (los problemas, mejoras y gaps identificados, incluso si el usuario no los refino) y la eleccion textual del usuario en cada ronda (ej. `Usuario eligio: C — el roadmap esta completo`). Si hubo varias rondas de refinamiento, listarlas todas en orden, no solo la ultima.
 
 ---
 
