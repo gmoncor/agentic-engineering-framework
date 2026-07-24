@@ -61,7 +61,7 @@ proyecto/
 ├── ai_docs/
 │   ├── core/           # vision, planificacion, roadmap
 │   ├── core_templates/ # 4 plantillas de planificacion inicial (01-04)
-│   ├── dev_templates/  # 12 plantillas SSOT
+│   ├── dev_templates/  # 13 plantillas SSOT
 │   ├── tasks/          # specs + tasks (NNN_descriptor.md)
 │   └── refs/           # documentacion externa
 ├── GEMINI.md           # este archivo
@@ -90,6 +90,7 @@ Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
 | `hacer_commit.md` | Proceso de commit |
 | `revision_pr.md` | Creacion de PRs |
 | `resolver_problema.md` | Analisis de problemas y recomendaciones |
+| `actualizar_framework.md` | Actualizar un proyecto ya instalado a una version mas reciente |
 
 ## Modelo por defecto
 

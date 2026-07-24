@@ -78,8 +78,10 @@ dependencia real (que necesita el resultado de que) y deja que el orquestador la
 - Tasks: `ai_docs/tasks/NNN_descriptor.md`. Cada task referencia su spec madre y declara sus
   archivos en la tabla "Archivos afectados" (`| ruta | CREAR/MODIFICAR/ELIMINAR | descripcion |`).
 - Los formatos viven en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
-- Las 12 plantillas operativas de `ai_docs/dev_templates/` son la fuente unica de cada proceso:
+- Las plantillas operativas de `ai_docs/dev_templates/` son la fuente unica de cada proceso:
   las skills y los agentes las siguen paso a paso, no las reescriben.
+- `ai_docs/dev_templates/actualizar_framework.md` documenta como traer los cambios del framework
+  a un proyecto ya instalado, sin tocar tus specs ni tus tasks.
 
 ## Reglas clave
 

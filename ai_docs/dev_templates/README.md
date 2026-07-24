@@ -93,6 +93,7 @@ Solicitud del usuario
 | **Pull Request** | `revision_pr.md` | Despues de la revision adversarial, para crear la PR final | Para revision de codigo sin PR (usa `limpieza_de_codigo.md`) |
 | **Correccion de bugs** | `correccion_de_bugs.md` | Cuando algo no funciona o tiene comportamiento inesperado | Para mejoras o features nuevos (eso es una spec) |
 | **Resolver problema** | `resolver_problema.md` | Cuando dudas entre opciones o necesitas analisis de trade-offs | Para implementar (usa `implementar.md`) |
+| **Actualizar framework** | `actualizar_framework.md` | Cuando tu proyecto ya tiene el framework instalado y quieres traer una version mas reciente | Para instalarlo por primera vez (usa el instalador del framework) |
 
 ### Documentacion Core del Proyecto (`core_templates/`)
 

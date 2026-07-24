@@ -20,7 +20,7 @@
 ### Contenido publico (lo que se distribuye)
 - **README.md:** Punto de entrada — explica que es, como usar, estructura, quick start
 - **LICENSE:** CC-BY 4.0
-- **ai_docs/dev_templates/:** 12 plantillas operativas + README
+- **ai_docs/dev_templates/:** 13 plantillas operativas + README
 - **ai_docs/core_templates/:** 4 plantillas de planificacion inicial + README
 
 > Estos conteos los verifica el canary de paridad (`node --test tests/backend-parity.test.js`): si una plantilla se anade o se elimina sin actualizar el documento, el test falla.

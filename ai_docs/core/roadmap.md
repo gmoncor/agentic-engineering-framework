@@ -73,7 +73,7 @@
 
 **Meta:** El framework esta disponible en ingles para audiencia internacional
 
-- [ ] Traducir las 12 plantillas operativas
+- [ ] Traducir las 13 plantillas operativas
 - [ ] Traducir las 4 plantillas de planificacion inicial
 - [ ] Traducir READMEs
 - [ ] Traducir documentos de ejemplo en core/
