@@ -10,6 +10,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 - **CLI de instalacion y actualizacion (`bin/cli.js`).** Instala o actualiza el framework con `npx github:gmoncor/agentic-engineering-framework install --backend <backend>` (o `update` para actualizar). Soporta los cuatro backends (Claude Code, Gemini CLI, Codex, Antigravity) y `all`. Sin `--backend`, muestra un prompt interactivo. Cross-platform: es Node puro, sin bash. `update` sobrescribe solo las rutas propiedad del framework, sin tocar `ai_docs/core/`, `ai_docs/tasks/` ni `ai_docs/refs/`
 - `scripts/backend-manifest.json`: manifiesto unico que mapea cada backend a sus rutas de instalacion, consumido por el CLI
+- Marcador de version `<!-- sdd-framework: X.Y.Z -->` al pie de `CLAUDE.md`, `GEMINI.md` y `AGENTS.md`, para cotejar la version instalada contra el CHANGELOG
 
 ### Changed
 

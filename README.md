@@ -91,6 +91,8 @@ Copia `.claude/` (agentes, comandos, skills, workflows, settings), `hooks/`, `CL
 > **Importante:** El CLI copia `hooks/` junto con `.claude/` — sin ella, los hooks de `.claude/settings.json` apuntarian a archivos inexistentes.
 >
 > **Nota:** `ai_docs/core/` incluye 3 documentos de ejemplo (dogfooding del framework) solo si clonas el repo completo; el CLI crea la carpeta vacia. Usa las plantillas de `ai_docs/core_templates/` para los tuyos.
+>
+> **Version instalada:** el archivo de contexto incluye un marcador de version al pie (`<!-- sdd-framework: X.Y.Z -->`). Cotejalo contra el `CHANGELOG.md` del repositorio para saber si hay actualizaciones.
 
 **Alternativa manual — proyecto nuevo (clonar y empezar):**
 ```bash
@@ -110,6 +112,8 @@ npx github:gmoncor/agentic-engineering-framework install --backend gemini
 ```
 Copia `agents/`, `commands/`, `skills/`, `hooks/`, `gemini-extension.json`, `GEMINI.md` y las plantillas de `ai_docs/`. Equivale a copiar los archivos a mano.
 
+> **Version instalada:** el archivo de contexto incluye un marcador de version al pie (`<!-- sdd-framework: X.Y.Z -->`). Cotejalo contra el `CHANGELOG.md` del repositorio para saber si hay actualizaciones.
+>
 > **Distinto de la extension nativa.** `gemini extensions install` instala la extension dentro del CLI de Gemini (gestionada con `gemini extensions list/update`); el comando de arriba copia los archivos del framework directamente a tu proyecto. Son dos vias independientes que coexisten.
 
 **Extension nativa (alternativa, si prefieres el gestor de extensiones de Gemini):**
@@ -133,6 +137,8 @@ npx github:gmoncor/agentic-engineering-framework install --backend codex
 ```
 Copia `AGENTS.md`, `.codex/` (config, agentes, hooks, reglas), `.agents/skills/`, `hooks/` y `ai_docs/`.
 
+> **Version instalada:** el archivo de contexto incluye un marcador de version al pie (`<!-- sdd-framework: X.Y.Z -->`). Cotejalo contra el `CHANGELOG.md` del repositorio para saber si hay actualizaciones.
+
 Codex descubre los agentes y las skills solos. Los comandos del flujo (planificar, implementar,
 revisar, estado...) se entregan como **skills**: describe lo que quieres y la skill entra sola, o
 nombrala. Los slash commands versionables estan deprecados en Codex, por eso no existen aqui.
@@ -151,6 +157,8 @@ raiz que ya usa el framework, asi que reutiliza el contexto y las skills sin dup
 npx github:gmoncor/agentic-engineering-framework install --backend antigravity
 ```
 Copia `AGENTS.md`, `.agents/` (skills, plugin de subagentes, hooks), `hooks/` y `ai_docs/`.
+
+> **Version instalada:** el archivo de contexto incluye un marcador de version al pie (`<!-- sdd-framework: X.Y.Z -->`). Cotejalo contra el `CHANGELOG.md` del repositorio para saber si hay actualizaciones.
 
 Valida el bundle con `agy plugin validate .agents/plugins/sdd`. El bloqueo de escrituras no
 planificadas es real, no advisory. Detalle del cableado y sus limites en `AGENTS.md`.

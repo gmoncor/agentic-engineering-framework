@@ -186,3 +186,5 @@ tal cual. Revisalas antes de darlas por validas.
 - Comunicacion: clara, directa, sin hedging. Nada de adular ni de rellenar.
 - Commits: `<tipo>: <descripcion>` (tipos: feat, fix, update, refactor, create, optimize, remove,
   rename, docs, test, style, chore). Sin coautoria de IA en el mensaje.
+
+<!-- sdd-framework: 3.0.0 -->

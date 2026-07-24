@@ -130,3 +130,5 @@ Opcionales: el framework funciona sin ellas. Estan escritas para un stack concre
 - Cada task toca maximo 6 archivos — si supera, dividir
 - Auditoria cruzada obligatoria cuando hay 3+ tasks
 - Evaluar alternativas antes de decidir la solucion
+
+<!-- sdd-framework: 3.0.0 -->
