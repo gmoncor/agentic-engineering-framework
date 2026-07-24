@@ -1,6 +1,6 @@
 # Plantilla de Revision Adversarial Post-Implementacion
 
-> **Cuando usar:** Despues de implementar una task, ANTES de commitearla — el gate primario es por task. Tambien sirve como revision de integracion opcional sobre varias tasks que interactuan, antes de mergear.
+> **Cuando usar:** Despues de implementar una task, ANTES de commitearla — el gate primario es por task. Tambien sirve como revision de integracion opcional sobre varias tasks que interactuan, antes de mergear, y como cierre de spec completa (verificando convergencia entre el resultado real de todas las tasks y la spec original).
 > **Como usar:** Copia este documento completo y pegalo en tu asistente de IA junto con la task (o la spec y las tasks) y el diff a revisar.
 > **Veredicto:** emite uno de `APROBADA`, `NECESITA_CORRECCIONES` o `RECHAZADA`.
 
@@ -152,6 +152,20 @@ Para CADA criterio de aceptacion de la spec, verificar que se cumple:
 | 2 | [Criterio de la spec] | SI / NO / PARCIAL | [Test que lo verifica / Como se comprobo] |
 
 **Si hay criterios NO cumplidos o PARCIALES:** listarlos como hallazgo BLOQUEANTE.
+
+---
+
+### Paso 4bis: Verificar convergencia de cierre de spec
+
+> Aplicable solo en modo integracion/spec completa (no en revisiones de task individual).
+
+Antes de emitir el veredicto final de la spec:
+
+1. **Reconciliar resultado real por task.** Para cada task del roadmap, verificar su estado final (`COMPLETADA`, `FALLIDA`, `PARCIAL`). Una task `FALLIDA` o `PARCIAL` implica que sus criterios asignados carecen de cobertura, aunque el plan los asignara — el veredicto de la spec DEBE reflejarlo.
+2. **Recuperar la tabla criterio-task.** Usar la tabla de asignacion del Paso 2 de la spec (la que mapea cada criterio de exito a la task responsable). Si la spec no tiene esa tabla (formato antiguo), reconstruirla a partir de los criterios de exito y el roadmap de tasks. Confirmar que cada criterio tiene al menos una task `COMPLETADA` que lo cubre. Criterio sin task completada = criterio SIN COBERTURA.
+3. **Barrido de "No incluye".** Verificar contra el codigo final que las exclusiones declaradas en la spec (seccion "No incluye" / "Fuera de alcance") realmente NO se implementaron. Implementacion no solicitada es tan grave como omision. Si la spec no declara exclusiones, este sub-paso se salta.
+
+Si algun criterio queda sin cobertura o se detecto implementacion fuera de alcance, el veredicto de la spec es BLOQUEANTE con lista explicita de gaps.
 
 ---
 
