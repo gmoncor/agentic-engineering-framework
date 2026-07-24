@@ -8,15 +8,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ### Added
 
-- `scripts/update-framework.sh`: script opt-in para actualizar el framework por linea de comandos. Clona la version pedida (tag, branch o commit; `main` si no se indica una) y sobrescribe solo las rutas propiedad del framework, sin tocar `ai_docs/core/`, `ai_docs/tasks/` ni `ai_docs/refs/`. Idempotente — reejecutarlo no duplica ni rompe nada. Complementa, no sustituye, la copia manual documentada en "Actualizacion"
+- **CLI de instalacion y actualizacion (`bin/cli.js`).** Instala o actualiza el framework con `npx github:gmoncor/agentic-engineering-framework install --backend <backend>` (o `update` para actualizar). Soporta los cuatro backends (Claude Code, Gemini CLI, Codex, Antigravity) y `all`. Sin `--backend`, muestra un prompt interactivo. Cross-platform: es Node puro, sin bash. `update` sobrescribe solo las rutas propiedad del framework, sin tocar `ai_docs/core/`, `ai_docs/tasks/` ni `ai_docs/refs/`
+- `scripts/backend-manifest.json`: manifiesto unico que mapea cada backend a sus rutas de instalacion, consumido por el CLI
 
 ### Changed
 
+- **Instalacion y actualizacion lideran con el CLI.** Las secciones correspondientes del README arrancan con `npx github:gmoncor/agentic-engineering-framework install|update`; la copia manual de archivos queda documentada como alternativa
 - **Implementacion lineal.** `/implementar-spec` implementa las tasks una tras otra en orden de dependencias —implementa, revisa y commitea cada task antes de pasar a la siguiente— en lugar de agruparlas en oleadas paralelas. La revision del PLAN (`/planificar`) sigue corriendo en paralelo; solo cambia la implementacion. La documentacion (`CLAUDE.md`, `AGENTS.md`, `README.md`) describia la implementacion como paralela por oleadas y particion por dueno de archivo; ahora describe el flujo lineal real
 - **`sdd-review-gate.js` pasa de avisar a bloquear.** La revision adversarial ocurre por task, antes del commit, y su senal guarda el hash del diff revisado; el gate recalcula el hash de `git diff --cached` y deniega si no hay senal o el hash no ata lo staged. Cuando no hay diff cacheado computable degrada a aviso, y `SDD_GUARD_SKIP=1` sigue siendo el escape puntual
 
 ### Breaking
 
+- **`scripts/update-framework.sh` eliminado, reemplazado por el CLI.** Usa `npx github:gmoncor/agentic-engineering-framework update --backend <backend>` en su lugar. Si lo habias copiado a tu proyecto, tu copia local sigue funcionando pero ya no se actualiza junto con el framework
 - **El gate de revision pasa de advisory a bloqueante.** Con `sdd_review_gate.enabled: true`, un `git commit`/`merge` cuyo diff no conste revisado ahora se deniega (antes solo avisaba). La via para satisfacerlo es pasar la revision adversarial por task; el escape puntual sigue siendo `SDD_GUARD_SKIP=1`
 
 ## [3.0.0] - 2026-07-13
