@@ -158,6 +158,27 @@ test('install --backend claude copia rutas comunes y de backend, y crea director
   }
 });
 
+test('install --backend claude es idempotente: ejecutarlo dos veces seguidas produce el mismo resultado', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['CLAUDE.md'], claude: ['.claude'] },
+    { 'CLAUDE.md': 'contexto', '.claude/agents/planificador.md': 'agente' },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+
+  const primera = ejecutar(['install', '--backend', 'claude'], opts);
+  assert.strictEqual(primera.codigo, 0);
+  const segunda = ejecutar(['install', '--backend', 'claude'], opts);
+  assert.strictEqual(segunda.codigo, 0);
+
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'), 'contexto');
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, '.claude', 'agents', 'planificador.md'), 'utf8'),
+    'agente',
+  );
+  assert.deepStrictEqual(fs.readdirSync(path.join(proyecto, '.claude', 'agents')), ['planificador.md']);
+});
+
 test('ruta ausente en el manifiesto se salta con mensaje y continua con el resto', () => {
   const paquete = crearPaqueteFixture(
     { common: ['CLAUDE.md', '.agents'], claude: [] },
