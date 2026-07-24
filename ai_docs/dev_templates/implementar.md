@@ -133,6 +133,17 @@ El workflow `/implementar-spec` re-ejecuta la suite del proyecto como gate mecan
 
 Sugiere configurarlo con `core_templates/04_setup_testing.md`. Si el usuario decide no configurarlo, documentar como se verifico manualmente.
 
+### Checklist de migraciones (solo si la task toca schema o migraciones)
+
+Si la task NO toca migraciones ni schema, este checklist no aplica.
+
+| Verificacion | Estado |
+|-------------|--------|
+| La migracion preserva las filas existentes (sin DROP TABLE sin respaldo) | SI / NO / N/A |
+| Si hay cambio de tipo o rename de columna, existe un paso de backfill | SI / NO / N/A |
+| La migracion se probo contra datos no vacios (no solo contra una base de datos limpia) | SI / NO / N/A |
+| La migracion es reversible o tiene documentado por que no lo es | SI / NO / N/A |
+
 ---
 
 ## Paso 5: Ejecutar validaciones
