@@ -268,6 +268,40 @@ El roadmap (`ai_docs/core/roadmap.md`) es el mapa que guia toda la planificacion
 
 **Como generarlo:** Copia `ai_docs/core_templates/03_roadmap_de_desarrollo.md` en tu LLM junto con la vision y planificacion tecnica. El LLM generara un roadmap basado en las dependencias reales de tu stack. Revisa el orden, cuestiona las fases, y ajusta antes de aprobar
 
+### Ejemplo completo: de /planificar a /pr
+
+> Ejemplo ficticio para ilustrar el flujo. Los archivos, endpoints y comandos de test son inventados.
+
+Un vistazo rapido a como se conectan los pasos, desde la solicitud inicial hasta la PR final: la spec fija el contrato, las tasks lo reparten en cambios atomicos, y la revision valida cada uno antes de comitear. Los pasos siguientes muestran el detalle de cada etapa.
+
+**1. Solicitud al asistente:**
+
+"Quiero un endpoint GET /api/health que devuelva `{ status: "ok" }` con test e2e."
+
+**2. Fragmento de spec generada (`/planificar`):**
+
+| # | Criterio de exito | Verificacion |
+|---|---|---|
+| 1 | GET /api/health retorna 200 con `{ status: "ok" }` | `curl localhost:3000/api/health` |
+| 2 | Test e2e cubre respuesta 200 y body exacto | test runner del proyecto en verde |
+| 3 | Ruta registrada en el router principal | `grep "/api/health" src/routes/index.ts` |
+| 4 | Sin dependencias nuevas anadidas al proyecto | `git diff package.json` vacio |
+
+**3. Tasks derivadas** (el auditor cruzado verifica que cada criterio tenga cobertura):
+
+| Task | Archivos | Depende de |
+|---|---|---|
+| 01 Endpoint health | `src/routes/health.ts`, `src/routes/index.ts` | -- |
+| 02 Test e2e health | `tests/e2e/health.test.ts` | 01 |
+
+**4. Auditoria cruzada:** "Cada criterio tiene task asignada, cobertura verificable. APROBADA."
+
+**5. Implementacion (`/implementar-spec`):** ejecuta las tasks en orden de dependencias, una tras otra, con revision adversarial antes de cada commit — dos commits lineales resultan: `feat: add GET /api/health endpoint`, `test: add e2e test for /api/health`.
+
+**6. Cierre (`/pr`):** PR abierto con los 2 commits y una descripcion autogenerada a partir de la spec y las tasks implementadas.
+
+Todo el flujo — planificacion, implementacion y cierre — queda trazado en los commits y la spec, sin pasos manuales adicionales.
+
 ---
 
 ## Flujo de trabajo diario
