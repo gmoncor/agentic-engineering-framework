@@ -57,7 +57,7 @@ proyecto/
 ├── agents/             # planificador, revisor, implementador, asesor
 ├── commands/           # 12 comandos SDD (.toml)
 ├── skills/             # 8 skills (auto-activacion)
-├── hooks/              # 3 hooks (pipeline-guard + review-gate + commit-guard)
+├── hooks/              # 4 hooks (pipeline-guard + commit-guard + read-before-edit + turn-budget)
 ├── ai_docs/
 │   ├── core/           # vision, planificacion, roadmap
 │   ├── core_templates/ # 4 plantillas de planificacion inicial (01-04)
@@ -101,6 +101,8 @@ La extension no fija modelo: usa el que tengas configurado en el CLI (`gemini` a
 |------|--------|-------------|------|
 | `sdd-pipeline-guard.js` | write_file/edit_file | **Bloquea** escribir un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de la spec APROBADA activa | Bloqueante |
 | `sdd-commit-guard.js` | run_command (git commit) | Warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Advisory |
+| `sdd-read-before-edit.js` | write_file/edit_file | Warn al escribir un archivo existente sin haberlo leido antes en la sesion. Se autolimita a silencio en backends que no exponen el evento de lectura | Advisory |
+| `sdd-turn-budget.js` | Todas las tool calls | Cuenta las acciones sin commit y avisa al superar cada umbral (warn/block/hard_stop). `git commit` resetea el contador | Advisory (default) |
 
 Configurados en `hooks/hooks.json`. Las rutas se resuelven desde la raiz del proyecto, asi que `hooks/` tiene que estar copiado ahi (tambien si instalas la extension).
 
