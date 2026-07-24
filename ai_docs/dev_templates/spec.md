@@ -32,6 +32,8 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 
 Lee la solicitud del usuario y evalua si tiene suficiente informacion para redactar una spec.
 
+**Chequeo de drift core-codigo:** Si `ai_docs/core/` existe, verificar alineacion con el estado actual del proyecto: comparar las funcionalidades listadas en vision/planificacion con lo que ya existe en el codigo (archivos, estructura, features visibles). Si `ai_docs/core/` no existe o el proyecto aun no tiene codigo, no hay drift posible — continuar normalmente. Si hay divergencias significativas (features ya implementadas que core no refleja, stack cambiado, restricciones superadas), senalar al usuario: "Los documentos de core pueden estar desactualizados respecto al codigo actual. Considerar actualizarlos antes de especificar." Esto es un aviso, no un bloqueo: continuar igualmente si el usuario decide no actualizar.
+
 **Preguntas minimas que deben tener respuesta (explicita o implicita):**
 
 | Pregunta | Si no esta clara |
