@@ -6,6 +6,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/update-framework.sh`: script opt-in para actualizar el framework por linea de comandos. Clona la version pedida (tag, branch o commit; `main` si no se indica una) y sobrescribe solo las rutas propiedad del framework, sin tocar `ai_docs/core/`, `ai_docs/tasks/` ni `ai_docs/refs/`. Idempotente — reejecutarlo no duplica ni rompe nada. Complementa, no sustituye, la copia manual documentada en "Actualizacion"
+
 ### Changed
 
 - **Implementacion lineal.** `/implementar-spec` implementa las tasks una tras otra en orden de dependencias —implementa, revisa y commitea cada task antes de pasar a la siguiente— en lugar de agruparlas en oleadas paralelas. La revision del PLAN (`/planificar`) sigue corriendo en paralelo; solo cambia la implementacion. La documentacion (`CLAUDE.md`, `AGENTS.md`, `README.md`) describia la implementacion como paralela por oleadas y particion por dueno de archivo; ahora describe el flujo lineal real

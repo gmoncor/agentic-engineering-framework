@@ -446,6 +446,13 @@ git pull origin main
 # NO sobrescribas ai_docs/core/, ai_docs/tasks/ ni ai_docs/refs/ — esos son TUS documentos
 ```
 
+**Script (opt-in, si tienes git):** copiar las carpetas a mano es tedioso y propenso a error. `scripts/update-framework.sh` hace lo mismo mecanicamente — clona la version que le pidas y sobrescribe solo las rutas del framework, sin tocar `ai_docs/core/`, `ai_docs/tasks/` ni `ai_docs/refs/`. No sustituye a la copia manual de arriba, es una alternativa:
+```bash
+scripts/update-framework.sh main       # ultima version de main
+scripts/update-framework.sh v3.1.0     # un tag concreto
+scripts/update-framework.sh --help     # uso y rutas que toca
+```
+
 **Que se actualiza y que no:**
 | Se actualiza (del framework) | NO se toca (tuyo) |
 |------|------|
