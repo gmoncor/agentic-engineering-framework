@@ -217,7 +217,7 @@ Roadmap (fases + specs)
 1. Crear un documento de spec que detalle el alcance, criterios de aceptacion y restricciones
 2. Derivar tasks atomicas de la spec (cada task = un cambio independiente)
 3. Revisar cada task (alcance minimo, dependencias, edge cases)
-4. Implementar tasks independientes en paralelo donde sea posible
+4. Implementar las tasks una tras otra en orden de dependencias
 5. Revision adversarial post-implementacion de la spec completa
 
 ---

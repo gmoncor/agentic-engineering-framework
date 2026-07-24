@@ -66,7 +66,7 @@ Para cada par de tasks que interactuan (una produce algo que la otra consume):
 
 ### 2.2 Conflictos de merge
 
-Si las tasks se implementaron en paralelo, verificar:
+Si multiples tasks tocaron archivos compartidos, verificar:
 
 - Archivos tocados por mas de una task: hay conflictos?
 - Imports anadidos por tasks diferentes: hay duplicados o conflictos?
