@@ -188,6 +188,8 @@ C) El documento esta completo tal cual
 
 ## Paso 10: Generar documento final
 
+Si `ai_docs/core/vision_del_proyecto.md` ya existe, leerlo primero. Usarlo como base a actualizar: preservar decisiones y secciones que sigan vigentes, anadir lo nuevo, senalar conflictos entre lo existente y lo nuevo en vez de mezclarlos en silencio. Si no existe, generar desde cero.
+
 Solo despues de la aprobacion del usuario, generar el documento con este formato:
 
 ```markdown
