@@ -111,6 +111,9 @@ Para cada task, revisar los edge cases documentados y buscar los no documentados
 - Concurrencia (dos usuarios haciendo lo mismo al mismo tiempo)
 - Fallo a mitad de operacion (que queda en que estado?)
 - Permisos (usuario sin autorizacion intenta la operacion)
+- **Completitud CRUD:** si la task crea un recurso, verificar que tambien existen las operaciones de lectura, edicion y eliminacion (o que estan planificadas en otra task). No dejar entidades con solo CREATE.
+- **Basicos transversales:** ruta inexistente retorna 404 (no 500 ni pagina en blanco). Healthcheck/status endpoint existe si hay deployment. Imagenes o assets con fallback si la fuente falla.
+- **Higiene de contenedores/ORM (si aplica):** Dockerfile no corre como root (`USER` declarado). `.dockerignore` excluye `node_modules/`, `.git/`, `.env`. Errores de ORM (Prisma, Drizzle, SQLAlchemy) no se exponen crudos al usuario — se capturan y retornan mensaje generico.
 
 ### 3.3 Codigo muerto y restos de desarrollo
 
