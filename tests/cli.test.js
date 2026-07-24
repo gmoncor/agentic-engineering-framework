@@ -227,3 +227,139 @@ test('no nombra al meta-repo ni jerga interna (anti-fuga)', () => {
   const contenido = fs.readFileSync(CLI, 'utf8');
   assert.doesNotMatch(contenido, /meta-repo|meta-task-planner|AI-Coding/i);
 });
+
+test('update --help muestra uso del subcomando y sale sin error', () => {
+  const { codigo, stdout } = ejecutar(['update', '--help'], { cwd: dirTemporal() });
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /Uso: agentic-engineering-framework update/);
+});
+
+test('update con --backend invalido sale con codigo 1 y no copia nada', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['CLAUDE.md'], claude: ['.claude'] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  const { codigo, stderr } = ejecutar(['update', '--backend', 'cursor'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+  assert.strictEqual(codigo, 1);
+  assert.match(stderr, /Backend invalido/);
+  assert.deepStrictEqual(fs.readdirSync(proyecto), []);
+});
+
+test('update sin --backend y stdin no-TTY sale con codigo 1 sin colgarse', () => {
+  const paquete = crearPaqueteFixture({ common: [], claude: [] });
+  const proyecto = dirTemporal();
+  const { codigo, stderr } = ejecutar(['update'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+    input: '',
+  });
+  assert.strictEqual(codigo, 1);
+  assert.strictEqual(
+    stderr,
+    'Indica el backend con --backend <nombre>. El prompt interactivo requiere un terminal.\n',
+  );
+  assert.deepStrictEqual(fs.readdirSync(proyecto), []);
+});
+
+test('update --backend claude preserva intacto el contenido de ai_docs/core', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['CLAUDE.md', 'hooks'], claude: ['.claude'] },
+    {
+      'CLAUDE.md': 'contexto nuevo',
+      'hooks/sdd-commit-guard.js': 'hook nuevo',
+      '.claude/agents/planificador.md': 'agente nuevo',
+    },
+  );
+  const proyecto = dirTemporal();
+  fs.mkdirSync(path.join(proyecto, 'ai_docs', 'core'), { recursive: true });
+  fs.writeFileSync(path.join(proyecto, 'ai_docs', 'core', 'test.md'), 'MIO SIN TOCAR');
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /Rutas actualizadas/);
+  assert.match(stdout, /Framework actualizado desde version/);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'ai_docs', 'core', 'test.md'), 'utf8'),
+    'MIO SIN TOCAR',
+  );
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'), 'contexto nuevo');
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'hooks', 'sdd-commit-guard.js'), 'utf8'),
+    'hook nuevo',
+  );
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, '.claude', 'agents', 'planificador.md'), 'utf8'),
+    'agente nuevo',
+  );
+  assert.ok(
+    !fs.existsSync(path.join(proyecto, 'ai_docs', 'tasks')),
+    'update no debe crear directorios del proyecto que no existian',
+  );
+});
+
+test('update sobre un directorio sin instalacion previa funciona como copia limpia', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['CLAUDE.md'], claude: ['.claude'] },
+    { 'CLAUDE.md': 'contexto', '.claude/agents/planificador.md': 'agente' },
+  );
+  const proyecto = dirTemporal();
+
+  const { codigo } = ejecutar(['update', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'), 'contexto');
+  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'agents', 'planificador.md')));
+});
+
+test('update --backend all anade las rutas de los backends nuevos sobre una instalacion parcial', () => {
+  const paquete = crearPaqueteFixture(
+    {
+      common: ['CLAUDE.md'],
+      claude: ['.claude'],
+      gemini: ['GEMINI.md'],
+      codex: ['AGENTS.md'],
+      antigravity: [],
+    },
+    {
+      'CLAUDE.md': 'contexto',
+      '.claude/agents/planificador.md': 'agente',
+      'GEMINI.md': 'gemini',
+      'AGENTS.md': 'agents',
+    },
+  );
+  const proyecto = dirTemporal();
+  fs.mkdirSync(path.join(proyecto, '.claude', 'agents'), { recursive: true });
+  fs.writeFileSync(path.join(proyecto, '.claude', 'agents', 'planificador.md'), 'agente viejo');
+  fs.writeFileSync(path.join(proyecto, 'CLAUDE.md'), 'contexto viejo');
+
+  const { codigo } = ejecutar(['update', '--backend', 'all'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.ok(fs.existsSync(path.join(proyecto, 'GEMINI.md')), 'debe anadir la ruta nueva de gemini');
+  assert.ok(fs.existsSync(path.join(proyecto, 'AGENTS.md')), 'debe anadir la ruta nueva de codex');
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'), 'contexto');
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, '.claude', 'agents', 'planificador.md'), 'utf8'),
+    'agente',
+  );
+});
+
+test('update comparte la funcion de copia con install (sin duplicar logica)', () => {
+  const contenido = fs.readFileSync(CLI, 'utf8');
+  const coincidencias = contenido.match(/copiarRutas\w*|copyFramework/g) || [];
+  assert.ok(coincidencias.length >= 2, 'la funcion de copia debe estar definida e invocada por ambos subcomandos');
+});

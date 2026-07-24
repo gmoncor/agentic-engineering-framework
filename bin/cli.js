@@ -27,13 +27,25 @@ function mostrarAyuda() {
 
 Subcomandos:
   install --backend <claude|gemini|codex|antigravity|all>   Instala el framework en el directorio actual.
-  update                                                     Actualiza el framework instalado (proximamente).
+  update --backend <claude|gemini|codex|antigravity|all>    Actualiza el framework instalado, sin tocar ai_docs/core/, ai_docs/tasks/ ni ai_docs/refs/.
   --help                                                     Muestra esta ayuda.
   --version                                                  Muestra la version instalada.
 
 Ejemplos:
   npx github:gmoncor/agentic-engineering-framework install --backend claude
-  npx github:gmoncor/agentic-engineering-framework install`);
+  npx github:gmoncor/agentic-engineering-framework update --backend claude`);
+}
+
+function mostrarAyudaInstall() {
+  console.log(`Uso: agentic-engineering-framework install --backend <claude|gemini|codex|antigravity|all>
+
+Instala el framework en el directorio actual: copia las rutas del backend elegido y crea ai_docs/{core,tasks,refs}/ si no existen.`);
+}
+
+function mostrarAyudaUpdate() {
+  console.log(`Uso: agentic-engineering-framework update --backend <claude|gemini|codex|antigravity|all>
+
+Actualiza el framework instalado en el directorio actual: copia las rutas del backend elegido sin tocar ai_docs/core/, ai_docs/tasks/ ni ai_docs/refs/.`);
 }
 
 function obtenerVersion() {
@@ -105,6 +117,33 @@ async function preguntarBackend() {
   return porNumero || respuesta;
 }
 
+/** Resuelve y valida el backend desde --backend o, en su ausencia, por prompt interactivo. */
+async function resolverBackend(args) {
+  let backend = parseFlag(args, '--backend');
+  if (backend === undefined) {
+    backend = await preguntarBackend();
+  }
+  if (!BACKENDS_VALIDOS.includes(backend)) {
+    process.stderr.write(`Backend invalido: '${backend}'. Backends validos: ${BACKENDS_VALIDOS.join(', ')}.\n`);
+    process.exit(1);
+  }
+  return backend;
+}
+
+/** Copia las rutas del backend elegido segun el manifiesto. Comun a install y update. */
+function copiarRutasFramework(backend, opciones = {}) {
+  const manifestPath = path.join(PACKAGE_ROOT, 'scripts', 'backend-manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const rutas = rutasParaBackend(manifest, backend);
+
+  const resultados = rutas.map(copiarRuta);
+  const copiadas = resultados.filter(r => r.copiada).map(r => r.ruta);
+  const saltadas = resultados.filter(r => !r.copiada).map(r => r.ruta);
+  const creados = opciones.crearDirsUsuario ? crearDirectoriosDelProyecto() : [];
+
+  return { copiadas, saltadas, creados };
+}
+
 function reportarInstalacion(copiadas, saltadas, creados) {
   if (copiadas.length) {
     console.log('Rutas copiadas:');
@@ -121,26 +160,28 @@ function reportarInstalacion(copiadas, saltadas, creados) {
   console.log("Framework instalado. Configura ai_docs/core/ con las plantillas de ai_docs/core_templates/. Ejecuta 'npm test' para verificar los hooks.");
 }
 
+function reportarActualizacion(copiadas, saltadas, version) {
+  if (copiadas.length) {
+    console.log('Rutas actualizadas:');
+    copiadas.forEach(ruta => console.log(`  - ${ruta}`));
+  }
+  if (saltadas.length) {
+    console.log('Rutas saltadas (no existen en el origen):');
+    saltadas.forEach(ruta => console.log(`  - ${ruta}`));
+  }
+  console.log(`Framework actualizado desde version ${version}. Rutas del proyecto (ai_docs/core/, ai_docs/tasks/, ai_docs/refs/) no se han tocado. Ejecuta 'npm test' para verificar los hooks.`);
+}
+
 async function cmdInstall(args) {
-  let backend = parseFlag(args, '--backend');
-  if (backend === undefined) {
-    backend = await preguntarBackend();
-  }
-  if (!BACKENDS_VALIDOS.includes(backend)) {
-    process.stderr.write(`Backend invalido: '${backend}'. Backends validos: ${BACKENDS_VALIDOS.join(', ')}.\n`);
-    process.exit(1);
-  }
-
-  const manifestPath = path.join(PACKAGE_ROOT, 'scripts', 'backend-manifest.json');
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  const rutas = rutasParaBackend(manifest, backend);
-
-  const resultados = rutas.map(copiarRuta);
-  const copiadas = resultados.filter(r => r.copiada).map(r => r.ruta);
-  const saltadas = resultados.filter(r => !r.copiada).map(r => r.ruta);
-  const creados = crearDirectoriosDelProyecto();
-
+  const backend = await resolverBackend(args);
+  const { copiadas, saltadas, creados } = copiarRutasFramework(backend, { crearDirsUsuario: true });
   reportarInstalacion(copiadas, saltadas, creados);
+}
+
+async function cmdUpdate(args) {
+  const backend = await resolverBackend(args);
+  const { copiadas, saltadas } = copiarRutasFramework(backend, { crearDirsUsuario: false });
+  reportarActualizacion(copiadas, saltadas, obtenerVersion());
 }
 
 async function main() {
@@ -159,11 +200,19 @@ async function main() {
     return;
   }
   if (subcomando === 'install') {
+    if (resto.includes('--help') || resto.includes('-h')) {
+      mostrarAyudaInstall();
+      return;
+    }
     await cmdInstall(resto);
     return;
   }
   if (subcomando === 'update') {
-    console.log("El subcomando 'update' todavia no esta disponible en esta version del CLI.");
+    if (resto.includes('--help') || resto.includes('-h')) {
+      mostrarAyudaUpdate();
+      return;
+    }
+    await cmdUpdate(resto);
     return;
   }
 
