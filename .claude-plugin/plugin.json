@@ -2,7 +2,7 @@
   "name": "agentic-engineering-framework",
   "displayName": "Agentic Engineering Framework",
   "version": "3.0.0",
-  "description": "Framework SDD (Spec-Driven Development) para desarrollo asistido por IA. Planificacion exhaustiva, implementacion por oleadas (tasks independientes en paralelo), revision adversarial.",
+  "description": "Framework SDD (Spec-Driven Development) para desarrollo asistido por IA. Planificacion exhaustiva, implementacion lineal (una task tras otra en orden de dependencias), revision adversarial.",
   "author": {
     "name": "Guillermo Montero",
     "url": "https://github.com/gmoncor"

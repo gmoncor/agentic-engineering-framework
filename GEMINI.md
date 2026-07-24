@@ -1,6 +1,6 @@
 # SDD (Spec-Driven Development) — Framework de Desarrollo
 
-> Flujo basado en especificaciones. Planificacion exhaustiva antes de implementar. Tasks independientes se implementan en paralelo dentro de cada spec.
+> Flujo basado en especificaciones. Planificacion exhaustiva antes de implementar. Implementacion lineal: una task tras otra, en orden de dependencias, dentro de cada spec.
 
 ## Flujo SDD
 
@@ -12,7 +12,7 @@
 5. /pr                — Crea la PR con los cambios
 ```
 
-**Planificacion exhaustiva, implementacion paralela segura.** El comando `/planificar` ejecuta el ciclo completo de planificacion. `/implementar-spec` lanza cada task en cuanto SUS dependencias estan satisfechas (no espera al resto de su nivel) y nunca a la vez que otra task que escriba alguno de sus archivos: lo que hace seguro el paralelismo es la particion por dueno de archivo. Revision adversarial al final.
+**Planificacion exhaustiva, implementacion lineal.** El comando `/planificar` ejecuta el ciclo completo de planificacion. `/implementar-spec` implementa las tasks una tras otra en orden de dependencias, con revision adversarial por task antes del commit.
 
 ## Comandos disponibles
 
@@ -22,7 +22,7 @@
 | `/spec` | — | Crea una spec individual (paso aislado) |
 | `/tareas` | — | Deriva tasks de una spec (paso aislado) |
 | `/auditar` | — | Audita coherencia spec + tasks (paso aislado) |
-| `/implementar-spec` | 4 | Implementa tasks por oleadas (paralelo) + revision adversarial |
+| `/implementar-spec` | 4 | Implementa tasks en orden de dependencias + revision por task |
 | `/implementar` | 4 | Implementa UNA task individual (control manual) |
 | `/revision` | 5 | Revision adversarial post-implementacion (paso aislado) |
 | `/estado` | — | Muestra estado del proyecto (specs, tasks, progreso) |
@@ -44,7 +44,7 @@
 
 1. **Toda solicitud empieza con planificacion** — /planificar antes de /implementar
 2. **Planificacion exhaustiva** — cada task revisada, spec auditada, huecos detectados ANTES de codigo
-3. **Implementacion por oleadas** — tasks independientes en paralelo, tasks con dependencias en orden, cada una con su commit
+3. **Implementacion lineal** — una task tras otra en orden de dependencias; revision adversarial antes de cada commit. Una task, un commit
 4. **Revision adversarial obligatoria** — el paso 5 verifica la implementacion completa antes de mergear
 5. **Tasks atomicas** — una task, un cambio acotado, un commit
 6. **Roadmap global** — el plan de trabajo vive en `ai_docs/core/` y guia cada planificacion
@@ -122,7 +122,7 @@ Opcionales: el framework funciona sin ellas. Estan escritas para un stack concre
 ## Limites del framework
 
 - Planificacion completa (spec + tasks + revision + auditoria) antes de implementar
-- Implementacion por oleadas — tasks independientes en paralelo, dependencias en orden
+- Implementacion lineal — una task tras otra, en orden de dependencias
 - Las tasks se derivan solo de specs con estado APROBADA
 - Revision adversarial (paso 5) antes de mergear
 - Cada task toca maximo 6 archivos — si supera, dividir
