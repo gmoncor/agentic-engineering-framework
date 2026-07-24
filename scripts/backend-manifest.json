@@ -1,0 +1,30 @@
+{
+  "common": [
+    "ai_docs/core_templates",
+    "ai_docs/dev_templates",
+    "hooks",
+    "scripts",
+    "package.json",
+    "CHANGELOG.md"
+  ],
+  "claude": [
+    ".claude",
+    "CLAUDE.md"
+  ],
+  "gemini": [
+    "agents",
+    "commands",
+    "skills",
+    "gemini-extension.json",
+    "GEMINI.md"
+  ],
+  "codex": [
+    ".codex",
+    ".agents/skills",
+    "AGENTS.md"
+  ],
+  "antigravity": [
+    ".agents",
+    "AGENTS.md"
+  ]
+}
