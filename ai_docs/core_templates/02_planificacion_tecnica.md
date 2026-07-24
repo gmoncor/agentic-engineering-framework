@@ -62,6 +62,14 @@ Basandote en la vision del proyecto, generar todas las paginas que la app necesi
 
 **Si la app es API/Backend puro:** En lugar de paginas, listar endpoints organizados por recurso/dominio.
 
+**Si el proyecto NO es una app web:** Identificar la unidad organizativa equivalente a "pagina" segun el tipo de proyecto:
+- CLI: comandos y subcomandos
+- Libreria: modulos/exports publicos de su superficie
+- App movil: pantallas/vistas
+- API/Backend puro: endpoints (ver punto anterior)
+
+Para cada unidad, aplicar el mismo patron de analisis que las paginas web: listar la funcionalidad que ofrece y los datos que necesita. No forzar las categorias "universales" web (landing, paginas legales, autenticacion) — sustituirlas por su equivalente si el proyecto lo tiene (ej. un CLI puede tener autenticacion via token, una libreria puede no tener ninguna) o declarar explicitamente que no aplica.
+
 ### 1.3 Navegacion
 
 Definir como el usuario se mueve por la app:

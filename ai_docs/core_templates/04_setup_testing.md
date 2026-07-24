@@ -197,6 +197,22 @@ php artisan pest:install
 
 ---
 
+### Otro stack / lenguaje
+
+Si el stack del proyecto no es ninguno de los anteriores (Go, Rust, Ruby, u otro):
+
+1. **Buscar el framework de testing idiomatico del lenguaje** — el que la comunidad de ese lenguaje usa por defecto (ej. `go test` en Go, `cargo test` en Rust, RSpec o Minitest en Ruby).
+2. **Si ya hay uno instalado y configurado, documentarlo y no reemplazarlo** — misma regla que con los stacks listados arriba.
+3. **Si no hay ninguno, aplicar el mismo patron que las secciones anteriores:**
+   - Instalar el framework idiomatico
+   - Configurar paths de tests y coverage
+   - Anadir el script de ejecucion al manifiesto del proyecto (`Makefile`, `Cargo.toml`, `Rakefile`, u otro)
+   - Crear un test de ejemplo que pase
+4. **Si no se encuentra un framework de testing establecido para el lenguaje**, declararlo explicitamente ("sin framework de testing encontrado") y sugerir verificacion manual — no inventar ni forzar uno.
+5. **Documentar lo encontrado o instalado** (nombre del framework y comando de test) para que el resto de plantillas sepan que comando usar.
+
+---
+
 ## Paso 3: Verificacion
 
 Despues de instalar, verificar que todo funciona:
