@@ -4,6 +4,9 @@
   "description": "Framework SDD (Spec-Driven Development) para desarrollo asistido por IA. Planificacion exhaustiva, implementacion por oleadas (tasks independientes en paralelo), revision adversarial.",
   "private": true,
   "license": "CC-BY-4.0",
+  "bin": {
+    "agentic-engineering-framework": "./bin/cli.js"
+  },
   "author": {
     "name": "Guillermo Montero",
     "url": "https://github.com/gmoncor"
