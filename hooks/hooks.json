@@ -14,7 +14,7 @@
         ]
       },
       {
-        "_comment": "Advisory: verifica formato de commit y previene fugas de andamiaje.",
+        "_comment": "Bloqueante en --no-verify (git commit/push): saltarse los ganchos de calidad no tiene uso legitimo. Advisory en el resto: verifica formato de commit y previene fugas de andamiaje.",
         "matcher": "run_command",
         "hooks": [
           {

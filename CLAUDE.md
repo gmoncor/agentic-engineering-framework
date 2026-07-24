@@ -106,7 +106,7 @@ Los agentes heredan ese default salvo el `implementador`, fijado a `model: sonne
 |------|--------|-------------|------|
 | `sdd-pipeline-guard.js` | Write/Edit | **Bloquea** escribir un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de la spec APROBADA activa | Bloqueante |
 | `sdd-review-gate.js` | Bash (git commit/merge) | **Bloquea** un `git commit`/`merge` cuyo diff no consta revisado: la revision adversarial por task emite una senal con el hash del diff, y el hook la contrasta con `git diff --cached`. Sin senal o con hash que no ata, deniega | Bloqueante (opt-in) |
-| `sdd-commit-guard.js` | Bash (git commit) | Warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Advisory |
+| `sdd-commit-guard.js` | Bash (git commit/push) | **Bloquea** `--no-verify` (y el alias corto `-n` en commit); warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Bloqueante en `--no-verify`, advisory en el resto |
 | `sdd-read-before-edit.js` | Read/Write/Edit | Warn al escribir un archivo existente sin haberlo leido antes en la sesion (rastrea las lecturas en un fichero por sesion). Nunca bloquea; se autolimita a silencio en backends que no exponen el evento de lectura | Advisory |
 | `sdd-turn-budget.js` | Todas las tool calls | Cuenta las acciones sin commit y avisa al superar cada umbral (warn/block/hard_stop). `git commit` resetea el contador. HARD_STOP pide interrumpir y esperar input del usuario. Configurable (umbrales + `mode`); `mode: enforce` convierte block/hard_stop en bloqueo | Advisory (default) |
 

@@ -1,7 +1,8 @@
 'use strict';
 
-// Contrato de sdd-commit-guard.js: avisa de commits mal formados, sea cual sea la CLI que lo llame.
-// Las tres familias de payload entregan el comando en un sitio distinto:
+// Contrato de sdd-commit-guard.js: deniega --no-verify, avisa del resto de commits mal formados,
+// sea cual sea la CLI que lo llame. Las tres familias de payload entregan el comando en un sitio
+// distinto:
 //   - Claude Code / Gemini CLI: tool_input.command
 //   - Antigravity CLI:          toolCall.args.CommandLine (y solo admite allow|deny|ask|force_ask)
 
@@ -15,6 +16,42 @@ const COAUTORIA = 'git commit -m "feat: algo" -m "Co-Authored-By: Claude <norepl
 
 const bash = command => ({ tool_name: 'Bash', tool_input: { command } });
 const agy = command => ({ toolCall: { name: 'run_command', args: { CommandLine: command } } });
+
+test('git commit --no-verify: deny', () => {
+  const r = runHook(HOOK, bash('git commit --no-verify -m "fix: algo"'));
+
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.code, 2);
+  assert.match(r.decision.reason, /--no-verify/);
+});
+
+test('git commit -n (alias corto): deny', () => {
+  const r = runHook(HOOK, bash('git commit -n -m "fix: algo"'));
+
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.code, 2);
+});
+
+test('git push --no-verify: deny', () => {
+  const r = runHook(HOOK, bash('git push --no-verify origin main'));
+
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.code, 2);
+});
+
+test('Antigravity: git commit --no-verify -> deny expresado sin exit code de bloqueo', () => {
+  const r = runHook(HOOK, agy('git commit --no-verify -m "fix: algo"'));
+
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.code, 0);
+});
+
+test('SDD_GUARD_SKIP=1 con --no-verify: warn en vez de deny', () => {
+  const r = runHook(HOOK, bash('git commit --no-verify -m "fix: algo"'), { SDD_GUARD_SKIP: '1' });
+
+  assert.strictEqual(r.decision.decision, 'warn');
+  assert.strictEqual(r.code, 0);
+});
 
 test('Claude Code / Gemini CLI: commit con coautoria de IA -> warn', () => {
   const r = runHook(HOOK, bash(COAUTORIA));
