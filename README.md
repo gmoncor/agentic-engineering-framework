@@ -72,10 +72,27 @@ Principios del flujo:
 
 ## Instalacion
 
+**Via CLI (recomendado):**
+
+```bash
+npx github:gmoncor/agentic-engineering-framework install --backend <claude|gemini|codex|antigravity|all>
+```
+
+Copia las rutas del backend elegido (segun `scripts/backend-manifest.json`) y crea `ai_docs/{core,tasks,refs}/` si no existen. Sin `--backend`, pregunta interactivamente que backend instalar (requiere terminal). Usa `all` para instalar los cuatro a la vez. Requiere `npx` con Node.js >= 20 (ver Prerequisitos) y acceso al repo.
+
 ### Claude Code
 
-**Opcion 1 — Proyecto nuevo (clonar y empezar):**
+**Via CLI:**
+```bash
+npx github:gmoncor/agentic-engineering-framework install --backend claude
+```
+Copia `.claude/` (agentes, comandos, skills, workflows, settings), `hooks/`, `CLAUDE.md` y las plantillas de `ai_docs/`.
 
+> **Importante:** El CLI copia `hooks/` junto con `.claude/` — sin ella, los hooks de `.claude/settings.json` apuntarian a archivos inexistentes.
+>
+> **Nota:** `ai_docs/core/` incluye 3 documentos de ejemplo (dogfooding del framework) solo si clonas el repo completo; el CLI crea la carpeta vacia. Usa las plantillas de `ai_docs/core_templates/` para los tuyos.
+
+**Alternativa manual — proyecto nuevo (clonar y empezar):**
 ```bash
 git clone https://github.com/gmoncor/agentic-engineering-framework.git mi-proyecto
 cd mi-proyecto
@@ -83,73 +100,38 @@ rm -rf .git && git init   # tu propio repo, no un fork
 claude                     # abre Claude Code — los comandos estan listos
 ```
 
-Al abrir Claude Code dentro del proyecto, se carga automaticamente:
-- `CLAUDE.md` como instrucciones del sistema
-- `.claude/settings.json` con el modelo y los hooks
-- Los 12 comandos, 4 agentes, 8 skills y los 2 workflows
-
-**Opcion 2 — Proyecto existente (copiar lo necesario):**
-
-Copia estas carpetas y archivos a la raiz de tu proyecto:
-
-```
-.claude/          # agentes, comandos, skills, workflows, settings
-hooks/            # 5 hooks (pipeline-guard + review-gate + commit-guard + read-before-edit + turn-budget)
-ai_docs/          # plantillas + carpetas para tus docs
-CLAUDE.md         # instrucciones del sistema
-```
-
-> **Importante:** Copia tambien `hooks/` — sin el, los hooks de `.claude/settings.json` apuntaran a archivos que no existen y Claude Code mostrara errores al inicio.
->
-> **Nota:** `ai_docs/core/` incluye 3 documentos de ejemplo (dogfooding del framework). Borralos y crea los tuyos usando las plantillas de `ai_docs/core_templates/`.
-
-**Opcion 3 — Solo plantillas (sin integracion):**
-
-Si no usas Claude Code, copia solo `ai_docs/` y usa las plantillas por copy-paste en cualquier LLM.
+**Alternativa manual — proyecto existente:** copia `.claude/`, `hooks/`, `ai_docs/` y `CLAUDE.md` a la raiz de tu proyecto.
 
 ### Gemini CLI
 
-**Opcion 1 — Extension (recomendada):**
+**Via CLI (framework):**
+```bash
+npx github:gmoncor/agentic-engineering-framework install --backend gemini
+```
+Copia `agents/`, `commands/`, `skills/`, `hooks/`, `gemini-extension.json`, `GEMINI.md` y las plantillas de `ai_docs/`. Equivale a copiar los archivos a mano.
 
+> **Distinto de la extension nativa.** `gemini extensions install` instala la extension dentro del CLI de Gemini (gestionada con `gemini extensions list/update`); el comando de arriba copia los archivos del framework directamente a tu proyecto. Son dos vias independientes que coexisten.
+
+**Extension nativa (alternativa, si prefieres el gestor de extensiones de Gemini):**
 ```bash
 gemini extensions install https://github.com/gmoncor/agentic-engineering-framework
 ```
+Instala los 12 comandos, 4 agentes y 8 skills. Comprueba con `gemini extensions list`.
 
-Esto instala los 12 comandos, 4 agentes y 8 skills. Comprueba con `gemini extensions list`.
+> **Los hooks no viajan con la extension.** `hooks/hooks.json` los invoca con rutas relativas a la raiz del proyecto, asi que copia tambien la carpeta `hooks/` ahi (via CLI del framework o a mano). Sin ella no hay enforcement: el pipeline se convierte en una sugerencia.
 
-> **Los hooks no viajan con la extension.** `hooks/hooks.json` los invoca con rutas relativas a la raiz del proyecto, asi que copia tambien la carpeta `hooks/` ahi. Sin ella no hay enforcement: el pipeline se convierte en una sugerencia.
-
-**Opcion 2 — Manual:**
-
-Copia a la raiz de tu proyecto:
-
-```
-agents/               # agentes Gemini (4)
-commands/              # comandos Gemini (.toml, 12)
-skills/                # skills Gemini (8)
-hooks/                 # hooks de enforcement (4)
-GEMINI.md              # instrucciones sistema
-gemini-extension.json  # manifest
-ai_docs/               # plantillas + docs de tu proyecto
-```
+**Alternativa manual:** copia `agents/`, `commands/`, `skills/`, `hooks/`, `GEMINI.md`, `gemini-extension.json` y `ai_docs/` a la raiz de tu proyecto.
 
 ### Codex
 
 Requisito: el CLI de Codex instalado (`npm i -g @openai/codex`). Sin CLI no hay integracion nativa:
 los agentes, las skills y los hooks no se cargan. En ese caso usa las plantillas por copy-paste.
 
-Copia a la raiz de tu proyecto:
-
+**Via CLI:**
+```bash
+npx github:gmoncor/agentic-engineering-framework install --backend codex
 ```
-AGENTS.md              # instrucciones del proyecto (contexto compartido)
-.codex/config.toml     # modelo, sandbox y politica de aprobacion
-.codex/agents/         # agentes (4, .toml)
-.codex/hooks.json      # hooks de enforcement
-.codex/rules/          # politica de ejecucion (experimental)
-.agents/skills/        # skills (17, auto-activacion por description)
-hooks/                 # hooks de enforcement (guards)
-ai_docs/               # plantillas + docs de tu proyecto
-```
+Copia `AGENTS.md`, `.codex/` (config, agentes, hooks, reglas), `.agents/skills/`, `hooks/` y `ai_docs/`.
 
 Codex descubre los agentes y las skills solos. Los comandos del flujo (planificar, implementar,
 revisar, estado...) se entregan como **skills**: describe lo que quieres y la skill entra sola, o
@@ -157,28 +139,27 @@ nombrala. Los slash commands versionables estan deprecados en Codex, por eso no 
 
 Codex te pedira confiar (trust) en los hooks del proyecto la primera vez. Revisa `hooks/` antes.
 
+**Alternativa manual:** copia `AGENTS.md`, `.codex/config.toml`, `.codex/agents/`, `.codex/hooks.json`, `.codex/rules/`, `.agents/skills/`, `hooks/` y `ai_docs/` a la raiz de tu proyecto.
+
 ### Antigravity
 
 Requisito: el CLI de Antigravity (`agy`). Descubre sus personalizaciones en `.agents/`, la misma
 raiz que ya usa el framework, asi que reutiliza el contexto y las skills sin duplicarlos.
 
-Copia a la raiz de tu proyecto:
-
+**Via CLI:**
+```bash
+npx github:gmoncor/agentic-engineering-framework install --backend antigravity
 ```
-AGENTS.md              # instrucciones del proyecto (contexto compartido)
-.agents/skills/        # skills (17, auto-activacion por description)
-.agents/plugins/sdd/   # subagentes (4) + manifiesto del bundle
-.agents/hooks.json     # registro de los hooks
-hooks/                 # hooks de enforcement (guards)
-ai_docs/               # plantillas + docs de tu proyecto
-```
+Copia `AGENTS.md`, `.agents/` (skills, plugin de subagentes, hooks), `hooks/` y `ai_docs/`.
 
 Valida el bundle con `agy plugin validate .agents/plugins/sdd`. El bloqueo de escrituras no
 planificadas es real, no advisory. Detalle del cableado y sus limites en `AGENTS.md`.
 
+**Alternativa manual:** copia `AGENTS.md`, `.agents/skills/`, `.agents/plugins/sdd/`, `.agents/hooks.json`, `hooks/` y `ai_docs/` a la raiz de tu proyecto.
+
 ### Sin CLI (copy-paste)
 
-Funciona con cualquier LLM: ChatGPT, Copilot, Cursor, Windsurf, o cualquier otro.
+Funciona con cualquier LLM: ChatGPT, Copilot, Cursor, Windsurf, o cualquier otro sin integracion nativa.
 
 1. Copia la carpeta `ai_docs/` a tu proyecto
 2. Abre la plantilla que necesites de `ai_docs/dev_templates/`
@@ -199,6 +180,10 @@ No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` par
 | Contexto | `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` | `AGENTS.md` |
 | Templates | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) |
 | Core templates | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) |
+
+Las rutas coinciden con `scripts/backend-manifest.json`, que ademas marca `scripts/`, `package.json`
+y `CHANGELOG.md` como comunes a todos los backends: son infraestructura del CLI y metadatos, no
+componentes del flujo SDD, por eso la tabla no los lista.
 
 Los cuatro backends exponen el mismo conjunto de agentes y de pasos del flujo. Un test de paridad
 (`tests/backend-parity.test.js`, incluido en `npm test`) falla si uno se queda atras.
@@ -431,12 +416,20 @@ El directorio `.cursor/rules/` contiene 43 reglas que replican el comportamiento
 
 Para recibir cambios nuevos del framework:
 
-**Gemini CLI (extension):**
+**Via CLI (recomendado):**
+```bash
+npx github:gmoncor/agentic-engineering-framework update --backend <claude|gemini|codex|antigravity|all>
 ```
+Sobrescribe las rutas del backend elegido segun `scripts/backend-manifest.json`, sin tocar
+`ai_docs/core/`, `ai_docs/tasks/` ni `ai_docs/refs/` — esos son tuyos.
+
+**Gemini CLI (extension):**
+```bash
 gemini extensions update sdd-framework
 ```
+Via nativa si instalaste la extension de Gemini en vez del CLI del framework.
 
-**Claude Code / manual:**
+**Manual (sin npx/git):**
 ```bash
 # Desde el repo del framework (si lo clonaste):
 git pull origin main
@@ -444,13 +437,6 @@ git pull origin main
 # Para un proyecto existente:
 # Copia las carpetas actualizadas (.claude/, hooks/, CLAUDE.md, ai_docs/dev_templates/, ai_docs/core_templates/)
 # NO sobrescribas ai_docs/core/, ai_docs/tasks/ ni ai_docs/refs/ — esos son TUS documentos
-```
-
-**Script (opt-in, si tienes git):** copiar las carpetas a mano es tedioso y propenso a error. `scripts/update-framework.sh` hace lo mismo mecanicamente — clona la version que le pidas y sobrescribe solo las rutas del framework, sin tocar `ai_docs/core/`, `ai_docs/tasks/` ni `ai_docs/refs/`. No sustituye a la copia manual de arriba, es una alternativa:
-```bash
-scripts/update-framework.sh main       # ultima version de main
-scripts/update-framework.sh v3.1.0     # un tag concreto
-scripts/update-framework.sh --help     # uso y rutas que toca
 ```
 
 **Que se actualiza y que no:**
