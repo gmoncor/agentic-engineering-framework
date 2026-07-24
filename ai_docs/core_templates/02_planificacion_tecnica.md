@@ -84,16 +84,22 @@ Antes de continuar, verificar:
 
 ## Fase 2: Modelo de Datos
 
+### 2.0 Leer el schema real antes de proponer
+
+Antes de mapear datos, buscar archivos de schema, migraciones o modelos ORM existentes en el proyecto (`schema.prisma`, `models.py`, `migrations/`, `*.entity.ts`, `drizzle/schema.ts`, o equivalentes del stack detectado en Fase 1):
+- **Si se encuentran:** leerlos y documentar las tablas/modelos existentes con sus campos y relaciones. Usarlos como base para el resto de la Fase 2 — reutilizar los nombres existentes, no reinventarlos ni "corregirlos".
+- **Si no se encuentran** (proyecto nuevo o sin base de datos): declararlo explicitamente ("No se encontro schema existente; proponiendo desde cero") y continuar con el flujo normal.
+
 ### 2.1 Mapeo feature-a-datos
 
-Para cada funcionalidad MVP, responder:
-- Que datos necesita almacenar esta funcionalidad?
-- Que tablas o colecciones son necesarias?
+Partiendo del schema encontrado en 2.0 (o desde cero si no existia), para cada funcionalidad MVP responder:
+- Que datos necesita almacenar esta funcionalidad? (si ya existe una tabla/modelo que lo cubre, reutilizarla)
+- Que tablas o colecciones son necesarias, ademas de las existentes?
 - Como se relacionan entre si?
 
 **Formato para cada tabla:**
 ```
-Tabla: [nombre]
+Tabla: [nombre — el existente si ya estaba en el schema, o uno nuevo]
 - Proposito: [para que sirve — conectar con una funcionalidad MVP]
 - Campos clave: [listar los mas importantes]
 - Relaciones: [con que otras tablas se conecta]
