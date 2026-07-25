@@ -43,7 +43,7 @@ Sin modelo de negocio. Proyecto open source bajo licencia CC-BY 4.0.
 ## Funcionalidades MVP por Rol
 
 ### Desarrollador individual
-- Puede planificar una tarea antes de implementarla (documento_de_tarea)
+- Puede planificar una tarea antes de implementarla (tareas)
 - Puede diagnosticar bugs con metodologia estructurada (correccion_de_bugs)
 - Puede revisar y limpiar codigo con criterios claros (limpieza_de_codigo)
 - Puede escribir tests con patron AAA y priorizacion (testing_basico)

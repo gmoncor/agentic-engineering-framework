@@ -24,7 +24,8 @@ labels: bug
 ## Entorno
 
 - **Version del framework:** <!-- ver "version" en .claude-plugin/plugin.json -->
-- **CLI:** <!-- Claude Code / Gemini CLI / Cursor / copy-paste -->
+- **CLI:** <!-- Claude Code / Gemini CLI / Codex /
+  Antigravity / Cursor / copy-paste -->
 - **Version de la CLI:**
 - **Node.js:** <!-- salida de: node --version (el framework requiere >= 20) -->
 - **Sistema operativo:**

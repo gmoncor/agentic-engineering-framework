@@ -19,7 +19,7 @@ labels: enhancement
 
 ## Impacto
 
-- [ ] Requiere cambios en las dos CLIs (Claude Code y Gemini CLI)
+- [ ] Requiere cambios en los cuatro backends (Claude Code, Gemini CLI, Codex y Antigravity)
 - [ ] Rompe la compatibilidad con proyectos que ya usan el framework
 - [ ] Solo afecta a la documentacion
 

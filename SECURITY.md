@@ -29,7 +29,7 @@ Entra en alcance el codigo y la configuracion que este repositorio ejecuta o ins
 
 Queda fuera de alcance:
 
-- Vulnerabilidades de las CLIs de terceros (Claude Code, Gemini CLI, Cursor). Reportalas a sus mantenedores
+- Vulnerabilidades de las CLIs de terceros (Claude Code, Gemini CLI, Codex, Antigravity, Cursor). Reportalas a sus mantenedores
 - El codigo que tu asistente de IA genere en tu proyecto
 
 ## Aviso sobre el codigo generado

@@ -22,6 +22,7 @@ Las plantillas guian al asistente de IA, pero la calidad del resultado depende d
 - **Itera** — la primera version nunca es la mejor. Cuestiona decisiones, pide alternativas
 - **No confies ciegamente** — tu eres el ingeniero, el LLM es la herramienta
 - **Configura `ai_docs/core/` primero** — sin vision, planificacion y roadmap, las plantillas trabajan a ciegas
+- **Dogfooding real** — Claude Code es el backend con verificacion diaria propia del autor. Gemini CLI, Codex y Antigravity estan implementados, con hooks cableados y tests de paridad en verde, pero sin dogfooding propio. Todos los backends tienen el mismo nivel de exigencia de paridad
 
 ---
 
@@ -495,7 +496,7 @@ git pull origin main
 
 ## Contribuir
 
-Las contribuciones son bienvenidas. Lee **[CONTRIBUTING.md](CONTRIBUTING.md)** antes de abrir una Pull Request: explica como reportar bugs, como proponer mejoras, el estilo de commits y la regla de paridad entre las dos CLIs.
+Las contribuciones son bienvenidas. Lee **[CONTRIBUTING.md](CONTRIBUTING.md)** antes de abrir una Pull Request: explica como reportar bugs, como proponer mejoras, el estilo de commits y la regla de paridad entre los cuatro backends.
 
 Resumen: abre un issue → haz fork → crea una rama → abre la PR rellenando la plantilla.
 

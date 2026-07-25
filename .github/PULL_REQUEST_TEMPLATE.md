@@ -13,7 +13,7 @@
 # Checklist
 
 - [ ] El cambio tiene un unico proposito (no mezcla feature, refactor y formato)
-- [ ] Si toca un agente, comando o skill, el cambio equivalente esta aplicado en **las dos CLIs** (Claude Code y Gemini CLI)
+- [ ] Si toca un agente, comando o skill, el cambio equivalente esta aplicado en **los cuatro backends** (Claude Code, Gemini CLI, Codex y Antigravity)
 - [ ] Documentacion actualizada (`README.md`, `CLAUDE.md`, `GEMINI.md`) si el comportamiento cambia
 - [ ] Entrada anadida en `CHANGELOG.md` bajo `## [Unreleased]`
 - [ ] Los hooks (`hooks/*.js`) se ejecutan sin error con Node >= 20

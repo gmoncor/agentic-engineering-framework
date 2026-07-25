@@ -14,7 +14,7 @@ Abre un issue con la plantilla **Bug report**. Un buen reporte incluye:
 
 - Que esperabas que pasara y que paso en su lugar
 - Pasos exactos de reproduccion
-- Version del framework (`.claude-plugin/plugin.json`), CLI usada (Claude Code, Gemini CLI, copy-paste) y version de Node
+- Version del framework (`.claude-plugin/plugin.json`), CLI usada (Claude Code, Gemini CLI, Codex, Antigravity, copy-paste) y version de Node
 - Salida literal del error, si la hay
 
 Si el problema afecta a la seguridad, **no abras un issue publico**: sigue el proceso de `SECURITY.md`.
@@ -77,6 +77,10 @@ node --test tests/backend-parity.test.js
 El canary compara el conjunto de nombres logicos de agentes y de pasos del flujo de cada backend, y falla nombrando lo que falta y donde. No compara el contenido de los ficheros: que las dos versiones de un mismo paso describan el mismo proceso es cosa de la revision de la PR. Una PR que solo actualiza una de las CLIs deja el framework incoherente.
 
 En Codex los slash commands versionables estan deprecados: cada comando se entrega como skill, y las skills cuyo nombre coincide con un comando (`bugfix`, `commit`, `pr`) son una sola, con el uso a peticion explicita como seccion adicional. La logica de la skill manda sobre la del comando.
+
+Codex y Antigravity no soportan el frontmatter `argument-hint`. Las skills que lo usan (`bugfix`, `commit`, `pr`) compensan con una seccion `## Uso a peticion explicita` en el cuerpo del skill para esos dos backends. Esta es la unica divergencia de contenido permitida entre backends; el resto de cada skill debe ser identico y puede verificarse con `diff`.
+
+El autor usa Claude Code a diario como backend principal. Los otros tres backends (Gemini CLI, Codex y Antigravity) estan implementados, cableados y con tests de paridad en verde, pero no reciben verificacion diaria propia. Esto no implica menor soporte: la paridad completa entre los cuatro es un requisito del proyecto.
 
 ## Sandbox de Codex
 

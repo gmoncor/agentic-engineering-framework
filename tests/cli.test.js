@@ -8,8 +8,7 @@
 // o ai_docs/tasks/, que son del proyecto), que cuelgue esperando input en
 // un pipe/CI, o que aborte al primer archivo ausente del manifiesto. Estos
 // tests montan un PACKAGE_ROOT ficticio via SDD_FRAMEWORK_ROOT (sin red) y
-// comprueban esos limites, siguiendo el mismo patron que
-// tests/update-framework.test.js para el script hermano.
+// comprueban esos limites.
 
 const test = require('node:test');
 const assert = require('node:assert');
