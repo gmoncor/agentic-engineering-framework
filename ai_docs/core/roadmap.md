@@ -31,7 +31,7 @@
 
 **Meta:** Un desarrollador puede usar las plantillas operativas del dia a dia copiando y pegando
 
-**Contenido (las 6 iniciales; hoy `ai_docs/dev_templates/` tiene 12):**
+**Contenido (las 6 iniciales; hoy `ai_docs/dev_templates/` tiene 13):**
 - [x] tareas.md — derivacion de tasks antes de implementar (nacio como documento_de_tarea.md)
 - [x] correccion_de_bugs.md — diagnostico y correccion estructurada
 - [x] limpieza_de_codigo.md — revision de calidad post-implementacion

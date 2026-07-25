@@ -186,7 +186,7 @@ No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` par
 | Hooks | `hooks/` (5, wired en settings) | `hooks/` (4, wired en `hooks/hooks.json`) | `hooks/` (2, wired en `.codex/hooks.json`) | `hooks/` (4, wired en `.agents/hooks.json`) |
 | Workflows | `.claude/workflows/` (2) | — (el orquestador implementa en orden) | — (idem) | — (idem) |
 | Contexto | `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` | `AGENTS.md` |
-| Templates | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) | `ai_docs/dev_templates/` (12) |
+| Templates | `ai_docs/dev_templates/` (13) | `ai_docs/dev_templates/` (13) | `ai_docs/dev_templates/` (13) | `ai_docs/dev_templates/` (13) |
 | Core templates | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) |
 
 Las rutas coinciden con `scripts/backend-manifest.json`, que ademas marca `scripts/`, `package.json`
@@ -396,6 +396,7 @@ Son las instrucciones que le das al LLM. Se copian tal cual — no se modifican.
 | `hacer_commit.md` | /commit | Commit limpio |
 | `revision_pr.md` | /pr | Crear o revisar una PR |
 | `resolver_problema.md` | /asesor | Analizar problemas y recomendar soluciones |
+| `actualizar_framework.md` | — | Traer una version mas reciente del framework ya instalado |
 
 ### `core/` — Documentacion de tu proyecto
 
