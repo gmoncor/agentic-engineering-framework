@@ -38,4 +38,4 @@ Este framework es un conjunto de plantillas e instrucciones que **guian** al asi
 
 El codigo generado por un LLM puede contener vulnerabilidades, dependencias inseguras o secretos expuestos, incluso siguiendo el flujo al completo. **Revisa, testea y audita todo lo que llegue a produccion.** La responsabilidad sobre el codigo que mergeas es tuya.
 
-Del mismo modo, los hooks del framework son **advisory**: avisan, no bloquean. No los trates como un control de seguridad.
+Del mismo modo, la mayoria de los hooks del framework son **advisory**: no bloquean, solo avisan; no los trates como un control de seguridad. Tres guards SI bloquean: `sdd-pipeline-guard` (impide implementar sin spec aprobada), `sdd-review-gate` (impide commit sin revision, opt-in), y `sdd-commit-guard` (impide `git commit --no-verify` / `git push --no-verify`). Son controles de proceso, no de seguridad del codigo generado. Consulta la tabla de hooks en el README para detalles.

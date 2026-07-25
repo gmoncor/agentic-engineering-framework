@@ -419,7 +419,7 @@ El directorio `hooks/` contiene hooks compartidos entre ambas CLIs que refuerzan
 |------|--------|----------|------|
 | `sdd-pipeline-guard.js` | Write/Edit | **Bloquea** la escritura de un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de la spec APROBADA activa | Bloqueante |
 | `sdd-review-gate.js` | git commit / git merge | **Bloquea** un commit/merge cuyo diff no consta revisado: la revision por task emite una senal con el hash del diff y el hook la contrasta con lo staged. Sin senal o con hash que no ata, deniega | Bloqueante (opt-in, solo Claude Code) |
-| `sdd-commit-guard.js` | git commit | Verifica formato de commit (subject ≤72, tipo valido entre 12 tipos, sin Co-Authored-By IA) | Advisory |
+| `sdd-commit-guard.js` | git commit / git push | **Bloquea** `--no-verify` (y el alias corto `-n` en commit); avisa si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Advisory / Bloqueante (`--no-verify`) |
 | `sdd-read-before-edit.js` | Read/Write/Edit | Avisa al escribir un archivo existente sin haberlo leido antes en la sesion. Nunca bloquea; se autolimita a silencio en backends que no exponen el evento de lectura | Advisory |
 | `sdd-turn-budget.js` | Todas las tool calls | Cuenta las acciones sin commit y avisa al superar cada umbral (`git commit` resetea el contador). Umbrales y `mode` configurables; `mode: enforce` convierte los avisos en bloqueo | Advisory |
 

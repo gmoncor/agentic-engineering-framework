@@ -39,15 +39,17 @@ Abre un issue con la plantilla **Feature request** antes de escribir codigo. Des
 - **Nombres de archivo y de rama:** solo ASCII, sin acentos. Los ficheros, ademas, en snake_case y descriptivos
 - **Finales de linea:** LF. `.gitattributes` los normaliza automaticamente; no lo desactives
 
-El hook `sdd-commit-guard.js` avisa si un commit incumple estas reglas.
+El hook `sdd-commit-guard.js` avisa si un commit incumple estas reglas, y **bloquea** si el commit (o el push) usa `--no-verify`/`-n` para saltarselas.
 
-## Dos guards que bloquean: escrituras y revision
+## Tres guards que bloquean: escrituras, revision y `--no-verify`
 
 `sdd-pipeline-guard.js` bloquea escribir archivos que ninguna task de la spec activa declara. Si te bloquea, la respuesta por defecto es **arreglar el plan**: declara el archivo en la tabla "Archivos afectados" de la task.
 
 `sdd-review-gate.js` (opt-in, solo Claude Code) **bloquea** un commit cuyo diff no consta revisado. La revision adversarial ocurre POR TASK, antes del commit, y emite una senal con el hash del diff revisado; el hook recalcula el hash de `git diff --cached` y lo contrasta. Sin senal, o con un hash que no ata lo staged, deniega. Cuando no hay diff cacheado computable degrada a aviso, para no bloquear a ciegas. La via para satisfacerlo es pasar la revision adversarial (`/revision` o la revision por task de `/implementar-spec`). Solo se cablea en Claude Code, el unico backend cuyo flujo emite la senal.
 
-`SDD_GUARD_SKIP=1` degrada ambos bloqueos (escrituras y revision) a aviso. Es un escape **puntual** para desbloquear una urgencia:
+`sdd-commit-guard.js` es advisory para el resto de reglas (subject, tipo, Co-Authored-By), pero **bloquea** especificamente `git commit --no-verify`/`-n` y `git push --no-verify`: no hay forma legitima de saltarse el resto de guards por esa via.
+
+`SDD_GUARD_SKIP=1` degrada los tres bloqueos (escrituras, revision y `--no-verify`) a aviso. Es un escape **puntual** para desbloquear una urgencia:
 
 ```bash
 SDD_GUARD_SKIP=1 git commit -m "fix: restaurar el servicio caido"

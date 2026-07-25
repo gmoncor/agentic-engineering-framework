@@ -11,12 +11,22 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 - **CLI de instalacion y actualizacion (`bin/cli.js`).** Instala o actualiza el framework con `npx github:gmoncor/agentic-engineering-framework install --backend <backend>` (o `update` para actualizar). Soporta los cuatro backends (Claude Code, Gemini CLI, Codex, Antigravity) y `all`. Sin `--backend`, muestra un prompt interactivo. Cross-platform: es Node puro, sin bash. `update` sobrescribe solo las rutas propiedad del framework, sin tocar `ai_docs/core/`, `ai_docs/tasks/` ni `ai_docs/refs/`
 - `scripts/backend-manifest.json`: manifiesto unico que mapea cada backend a sus rutas de instalacion, consumido por el CLI
 - Marcador de version `<!-- sdd-framework: X.Y.Z -->` al pie de `CLAUDE.md`, `GEMINI.md` y `AGENTS.md`, para cotejar la version instalada contra el CHANGELOG
+- `tests/backend-parity-content.test.js`: canary que verifica que las skills identicas-por-diseno coinciden byte a byte entre `.claude/skills`, `skills` y `.agents/skills`, y detecta fuga de jerga o paths internos de gestion en el contenido distribuido del framework
+- Plantilla `actualizar_framework.md`: flujo de 6 pasos para sincronizar un proyecto ya instalado a una version mas reciente del framework (detectar version, revisar CHANGELOG, aplicar cambios, actualizar marcador, verificar). Referenciada desde `CLAUDE.md`, `GEMINI.md`, `AGENTS.md` y el README de `dev_templates/`
+- Deteccion de drift entre `ai_docs/core/` y el codigo real antes de especificar: el flujo de `/spec` compara las funcionalidades descritas (vision, planificacion) con el estado real del proyecto y senala divergencias (features ya implementadas que core no refleja, stack cambiado)
 
 ### Changed
 
 - **Instalacion y actualizacion lideran con el CLI.** Las secciones correspondientes del README arrancan con `npx github:gmoncor/agentic-engineering-framework install|update`; la copia manual de archivos queda documentada como alternativa
 - **Implementacion lineal.** `/implementar-spec` implementa las tasks una tras otra en orden de dependencias —implementa, revisa y commitea cada task antes de pasar a la siguiente— en lugar de agruparlas en oleadas paralelas. La revision del PLAN (`/planificar`) sigue corriendo en paralelo; solo cambia la implementacion. La documentacion (`CLAUDE.md`, `AGENTS.md`, `README.md`) describia la implementacion como paralela por oleadas y particion por dueno de archivo; ahora describe el flujo lineal real
 - **`sdd-review-gate.js` pasa de avisar a bloquear.** La revision adversarial ocurre por task, antes del commit, y su senal guarda el hash del diff revisado; el gate recalcula el hash de `git diff --cached` y deniega si no hay senal o el hash no ata lo staged. Cuando no hay diff cacheado computable degrada a aviso, y `SDD_GUARD_SKIP=1` sigue siendo el escape puntual
+- `revision_adversarial.md` incorpora el Paso 4bis: valida que la especificacion mantiene coherencia (tareas, alcance, exclusiones) tras las correcciones aplicadas en el Paso 4, antes de proceder al cierre en el Paso 5
+- El README anade una subseccion en Quick Start con un ejemplo completo de flujo, de `/planificar` a `/pr`: un caso ficticio end-to-end (endpoint de health check) que ilustra como se conectan spec, tasks, auditoria cruzada, implementacion y PR
+
+### Fixed
+
+- **`sdd-commit-guard.js` no impedia saltarse sus propias reglas.** Solo advertia sobre subjects largos o mensajes vacios, pero no detectaba `--no-verify`/`-n` en `git commit` o `git push`. Ahora bloquea ambos, reutilizando la logica ya existente en `sdd-commit-rules.js`
+- Correccion de conteo de plantillas en la documentacion, asociada a la incorporacion de `actualizar_framework.md`
 
 ### Breaking
 
