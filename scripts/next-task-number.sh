@@ -23,17 +23,35 @@ LOCK_CADUCA=60      # segundos: un lock mas viejo es de un proceso muerto
 
 mkdir -p "$TASKS_DIR"
 
-lock_caducado() {
-  [ -d "$LOCK_DIR" ] || return 1
-  local edad
-  edad=$(( $(date +%s) - $(stat -c %Y "$LOCK_DIR" 2>/dev/null || echo 0) ))
-  [ "$edad" -gt "$LOCK_CADUCA" ]
+# Decide si hay que dejar pasar el intento de mkdir: o bien el lock ya
+# desaparecio (se lee en una unica llamada a stat, sin el hueco entre
+# "existe?" y "leer mtime" del check en dos pasos anterior, que permitia
+# que otro proceso liberase o recreara el lock justo en medio) o bien
+# sigue ahi pero es mas viejo que LOCK_CADUCA. Cuando stat falla el lock
+# ya esta liberado por su dueno: no hay nada que limpiar, asi que no se
+# fuerza un rmdir (que podria borrar un lock legitimo recien creado por
+# otro proceso) ni se asume una antiguedad de decadas via epoch 0.
+LOCK_NECESITA_RMDIR=0
+lock_liberable() {
+  local mtime
+  if ! mtime=$(stat -c %Y "$LOCK_DIR" 2>/dev/null); then
+    LOCK_NECESITA_RMDIR=0
+    return 0
+  fi
+  local edad=$(( $(date +%s) - mtime ))
+  if [ "$edad" -gt "$LOCK_CADUCA" ]; then
+    LOCK_NECESITA_RMDIR=1
+    return 0
+  fi
+  return 1
 }
 
 intento=0
 until mkdir "$LOCK_DIR" 2>/dev/null; do
-  if lock_caducado; then
-    rmdir "$LOCK_DIR" 2>/dev/null || true
+  if lock_liberable; then
+    if [ "$LOCK_NECESITA_RMDIR" = 1 ]; then
+      rmdir "$LOCK_DIR" 2>/dev/null || true
+    fi
     continue
   fi
   intento=$((intento + 1))
