@@ -14,6 +14,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 - `tests/backend-parity-content.test.js`: canary que verifica que las skills identicas-por-diseno coinciden byte a byte entre `.claude/skills`, `skills` y `.agents/skills`, y detecta fuga de jerga o paths internos de gestion en el contenido distribuido del framework
 - Plantilla `actualizar_framework.md`: flujo de 6 pasos para sincronizar un proyecto ya instalado a una version mas reciente del framework (detectar version, revisar CHANGELOG, aplicar cambios, actualizar marcador, verificar). Referenciada desde `CLAUDE.md`, `GEMINI.md`, `AGENTS.md` y el README de `dev_templates/`
 - Deteccion de drift entre `ai_docs/core/` y el codigo real antes de especificar: el flujo de `/spec` compara las funcionalidades descritas (vision, planificacion) con el estado real del proyecto y senala divergencias (features ya implementadas que core no refleja, stack cambiado)
+- **Skill `auditar-sesion`** (exclusiva de Claude Code): reporta coste, duracion, tasa de acierto de cache y friccion por hook de una sesion, leyendo las transcripciones nativas bajo `~/.claude/projects/<hash>/`. Tolera transcripciones ausentes, libreria ausente o lineas mal formadas sin abortar; ofrece filtrado por fecha o "mas reciente" cuando hay mas de 50 transcripciones. No calcula metricas de concurrencia/fan-out
+- `.claude/workflows/lib/session-analyzer.js`: libreria sin dependencias que parsea transcripciones JSONL nativas de Claude Code (`parseTranscript`) y deriva coste por modelo, duracion de sesion, tasa de acierto de cache y friccion agrupada por hook y codigo de error (`computeMetrics`)
+- Campo opcional `code` (identificador corto en MAYUSCULAS_CON_GUION_BAJO) en la salida JSON de `warn()`/`deny()` de los hooks, para poder clasificar por severidad sin depender del texto libre en espanol. Retrocompatible: si se omite, la salida no cambia. `sdd-turn-budget.js` es el primer consumidor: emite `TURN_BUDGET_WARN`, `TURN_BUDGET_BLOCK` y `TURN_BUDGET_HARD_STOP`
+- Proteccion de archivos de configuracion editados a mano durante `update`: se guarda un hash de los archivos protegidos (`hooks/config.json`, `.claude/settings.json`, `CLAUDE.md`, `GEMINI.md`, `AGENTS.md`) y, si el contenido en disco ya no coincide con el hash guardado, `update` salta ese archivo en lugar de sobrescribirlo, avisando cuales omitio
+- `update` sincroniza el marcador `<!-- sdd-framework: X.Y.Z -->` de los archivos de contexto del proyecto con la version del paquete fuente en cada instalacion o actualizacion; no toca el marcador de un archivo que fue saltado por la proteccion de ediciones locales, y no falla ni inserta el marcador en un archivo que no lo tiene
+- Instalacion granular del backend Claude Code: `install`/`update --backend claude` aceptan `--skip <nombre,nombre>` para omitir componentes opcionales concretos (asesor, auditar-sesion, bugfix, cleanup, testing, pr); los nombres no reconocidos avisan por stderr sin detener la instalacion, y el flag se ignora (con aviso) en los demas backends
+- Nota opcional de aislamiento de spec en un worktree dedicado (`git worktree add -b spec/<nombre> ../spec-<nombre> main`), documentada en el comando de implementacion de Claude Code (no se replica en el backend Gemini)
+- Paso opcional de limpieza de worktree y rama tras el merge de una PR revisada en un worktree dedicado, anadido a la plantilla de revision de PR
 
 ### Changed
 
@@ -22,11 +30,32 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 - **`sdd-review-gate.js` pasa de avisar a bloquear.** La revision adversarial ocurre por task, antes del commit, y su senal guarda el hash del diff revisado; el gate recalcula el hash de `git diff --cached` y deniega si no hay senal o el hash no ata lo staged. Cuando no hay diff cacheado computable degrada a aviso, y `SDD_GUARD_SKIP=1` sigue siendo el escape puntual
 - `revision_adversarial.md` incorpora el Paso 4bis: valida que la especificacion mantiene coherencia (tareas, alcance, exclusiones) tras las correcciones aplicadas en el Paso 4, antes de proceder al cierre en el Paso 5
 - El README anade una subseccion en Quick Start con un ejemplo completo de flujo, de `/planificar` a `/pr`: un caso ficticio end-to-end (endpoint de health check) que ilustra como se conectan spec, tasks, auditoria cruzada, implementacion y PR
+- **`computeWaves` renombrado a `computeNiveles`** (y `waves`/`wave` a `niveles`/`nivel` en todo el modulo de agrupacion por dependencias): el nombre anterior sugeria ejecucion concurrente por oleadas, que ya no describe el comportamiento real (implementacion lineal)
+- La regla 8 de "Reglas inquebrantables" de la plantilla de roadmap ya no sugiere que las tasks independientes "se paralelizan": la independencia entre tasks informa el orden de implementacion, pero las tasks se siguen implementando una tras otra. Las menciones de paralelismo que sí aplican (planificacion de specs) quedan aclaradas para no confundirse con ejecucion de tasks
+- El canario de vocabulario que detecta residuos del modelo de ejecucion concurrente retirado amplia su cobertura: antes solo escaneaba documentos de contexto en la raiz del repo, ahora tambien cubre workflows y skills por backend. La skill compartida entre Codex y Antigravity describia fan-out concurrente y arboles de trabajo por task, ya retirados; se reescribe para reflejar el flujo lineal real (implementar, revisar y commitear cada task antes de pasar a la siguiente)
+- El mensaje de `update` decia "actualizado desde version X" usando la version nueva recien copiada, invirtiendo el sentido de "desde" (sugeria la version previa, mostraba la version destino). Corregido a "actualizado a la version X"
+- Los textos de ayuda (`--help`, `install --help`, `update --help`) documentan ahora el menu interactivo que aparece al instalar o actualizar sin `--backend`; antes solo estaba documentado en el README
+
+### Removed
+
+- Campo `independiente` retirado del schema JSON de tasks que usa el planificador (y de las instrucciones de su prompt): sin uso desde que la implementacion paso a ser secuencial estricta por orden de dependencias. Un plan que aun trae el campo obsoleto sigue ordenandose correctamente, porque el ordenamiento se basa solo en dependencias
 
 ### Fixed
 
 - **`sdd-commit-guard.js` no impedia saltarse sus propias reglas.** Solo advertia sobre subjects largos o mensajes vacios, pero no detectaba `--no-verify`/`-n` en `git commit` o `git push`. Ahora bloquea ambos, reutilizando la logica ya existente en `sdd-commit-rules.js`
 - Correccion de conteo de plantillas en la documentacion, asociada a la incorporacion de `actualizar_framework.md`
+- La lectura de stdin en el parseo de payloads de hooks (`readPayload()`) ya no espera indefinidamente: corre contra un timeout acotado (5s por defecto, configurable) y resuelve a `null` si se cumple, el mismo valor que ya se devolvia ante JSON invalido, asi que el manejo fail-open existente en cada hook cubre el caso sin cambios adicionales
+- El hook de presupuesto de turnos denegaba llamadas de subagentes al alcanzar los umbrales de bloqueo, dejandolos sin forma de pedir guia al usuario. Ahora distingue llamadas de subagente (via los campos `agent_id`/`agent_type` del payload) y degrada a aviso en esos casos; el comportamiento en el hilo principal no cambia
+
+### Security
+
+- **Limite honesto de la senal de revision documentado.** La senal (un hash del diff cacheado) protege contra commits sin revisar por accidente, pero no puede endurecerse contra un falsificador deliberado con acceso a shell sin trasladar la misma superficie de ataque (sistema de archivos o variables de entorno) a un secreto compartido igual de accesible. Se documenta la limitacion en el README, justo despues del parrafo de `SDD_GUARD_SKIP=1`, y en el docstring del modulo del hook; la recomendacion para una frontera realmente dura sigue siendo proteccion de rama + CI
+
+### Aprendizajes de esta ronda
+
+- El canario de vocabulario que detecta residuos de un modelo retirado debe escanear tambien codigo fuente y skills por backend, no solo los documentos de contexto en la raiz: un residuo sobrevivio sin deteccion hasta que se amplio su cobertura.
+- Los campos muertos de un schema (como `independiente`) son residuos silenciosos: ningun test los detecta hasta que se buscan explicitamente, aunque ya no describan ningun comportamiento real.
+- La proteccion de archivos editados a mano en `update` (config, `CLAUDE.md`/`GEMINI.md`/`AGENTS.md`) extiende un patron de "no pisar lo que el usuario ya toco" que el propio CLI aplicaba a `ai_docs/core/` y `ai_docs/tasks/`; conviene generalizarlo, no reinventarlo por archivo.
 
 ### Breaking
 
