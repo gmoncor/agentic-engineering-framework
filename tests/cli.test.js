@@ -501,3 +501,104 @@ test('update sin sidecar previo trata los archivos protegidos preexistentes como
   assert.match(stdout, /CLAUDE\.md/);
   assert.match(stdout, /hooks\/config\.json/);
 });
+
+test('update sincroniza el marcador de version con la version del paquete fuente', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto\n<!-- sdd-framework: 0.0.0 -->\n' },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+
+  const instalacion = ejecutar(['install', '--backend', 'claude'], opts);
+  assert.strictEqual(instalacion.codigo, 0);
+  assert.match(
+    fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'),
+    /<!-- sdd-framework: 9\.9\.9 -->/,
+    'install ya debe dejar el marcador con la version del paquete fuente',
+  );
+
+  fs.writeFileSync(path.join(paquete, 'package.json'), JSON.stringify({ version: '9.9.10' }));
+
+  const actualizacion = ejecutar(['update', '--backend', 'claude'], opts);
+  assert.strictEqual(actualizacion.codigo, 0);
+  assert.match(
+    fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'),
+    /<!-- sdd-framework: 9\.9\.10 -->/,
+  );
+
+  // La reescritura del marcador no debe hacer que el siguiente update trate
+  // el archivo como editado localmente (el hash del sidecar debe refrescarse
+  // junto con el marcador).
+  const segundaActualizacion = ejecutar(['update', '--backend', 'claude'], opts);
+  assert.strictEqual(segundaActualizacion.codigo, 0);
+  assert.doesNotMatch(segundaActualizacion.stdout, /cambios locales/);
+});
+
+test('update no actualiza el marcador de un archivo saltado por proteccion local', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto\n<!-- sdd-framework: 1.0.0 -->\n' },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+
+  const instalacion = ejecutar(['install', '--backend', 'claude'], opts);
+  assert.strictEqual(instalacion.codigo, 0);
+
+  // El usuario edita CLAUDE.md a mano tras instalar.
+  fs.writeFileSync(
+    path.join(proyecto, 'CLAUDE.md'),
+    'contexto editado por el usuario\n<!-- sdd-framework: 9.9.9 -->\n',
+  );
+  fs.writeFileSync(path.join(paquete, 'package.json'), JSON.stringify({ version: '9.9.10' }));
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude'], opts);
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /cambios locales/);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'),
+    'contexto editado por el usuario\n<!-- sdd-framework: 9.9.9 -->\n',
+    'el marcador no debe cambiar en un archivo saltado por proteccion local',
+  );
+});
+
+test('actualizarMarcador no falla ni inserta el marcador en un archivo que no lo tiene', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto sin marcador de version' },
+  );
+  const proyecto = dirTemporal();
+
+  const { codigo, stdout } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'),
+    'contexto sin marcador de version',
+  );
+  assert.doesNotMatch(stdout, /sdd-framework/);
+});
+
+test('el marcador se sustituye en todas sus ocurrencias si aparece mas de una vez', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': '<!-- sdd-framework: 1.0.0 -->\ncontexto\n<!-- sdd-framework: 1.0.0 -->\n' },
+  );
+  const proyecto = dirTemporal();
+
+  const { codigo } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  const contenido = fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8');
+  const ocurrencias = contenido.match(/<!-- sdd-framework: 9\.9\.9 -->/g) || [];
+  assert.strictEqual(ocurrencias.length, 2, 'las dos ocurrencias del marcador deben actualizarse');
+  assert.doesNotMatch(contenido, /1\.0\.0/);
+});
