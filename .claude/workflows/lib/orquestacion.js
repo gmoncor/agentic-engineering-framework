@@ -10,7 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 
-// ── Oleadas y ciclos ─────────────────────────────────────────────────────────
+// ── Niveles topologicos y ciclos ─────────────────────────────────────────────
 
 /**
  * Dependencias que apuntan a otra task de esta misma spec. Las que no apuntan a
@@ -55,28 +55,28 @@ function validarDependencias(tasks, raiz) {
  * Un ciclo es un error de planificacion: lanzarlo en paralelo seria ejecutar a la
  * vez justo lo que la dependencia pretendia ordenar.
  */
-function computeWaves(tasks, raiz) {
+function computeNiveles(tasks, raiz) {
   validarDependencias(tasks, raiz);
 
   const conocidas = new Set(tasks.map(t => t.path));
   const completadas = new Set();
-  const waves = [];
+  const niveles = [];
   let restantes = tasks.slice();
 
   while (restantes.length > 0) {
-    const wave = restantes.filter(t => depsInternas(t, conocidas).every(d => completadas.has(d)));
+    const nivel = restantes.filter(t => depsInternas(t, conocidas).every(d => completadas.has(d)));
 
-    if (wave.length === 0) {
+    if (nivel.length === 0) {
       const enCiclo = restantes.map(t => t.path).join(', ');
       throw new Error('CICLO_DETECTADO: dependencias circulares entre tasks: ' + enCiclo
         + '. Corregir las dependencias antes de implementar.');
     }
 
-    for (const t of wave) completadas.add(t.path);
-    waves.push(wave);
+    for (const t of nivel) completadas.add(t.path);
+    niveles.push(nivel);
     restantes = restantes.filter(t => !completadas.has(t.path));
   }
-  return waves;
+  return niveles;
 }
 
 // ── Contratos entre tasks ────────────────────────────────────────────────────
@@ -212,7 +212,7 @@ function evaluarGateTests(entrada) {
 
 module.exports = {
   validarDependencias,
-  computeWaves,
+  computeNiveles,
   verificarContratos,
   descubrirComandoTest,
   tocaCodigoEjecutable,
