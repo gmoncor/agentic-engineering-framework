@@ -155,17 +155,25 @@ function parseTranscript(jsonlPath) {
  * Una transcripcion vacia o sin hooks nunca lanza: cae en los valores por defecto
  * (0/null/{}) para que un consumidor pueda iterar sesiones heterogeneas sin try/catch
  * por cada una.
+ *
+ * `unpricedModels` recoge los nombres de modelo distintos vistos en la transcripcion
+ * que no estan en `PRICING_USD_PER_MTOK`: sus tokens SI se suman a `totalInputTokens`
+ * etc., pero contribuyen $0 a `cost` porque no hay tarifa conocida. Sin esta lista,
+ * `cost` se presentaria como si fuera siempre el total completo aunque en realidad sea
+ * parcial para cualquier modelo no reconocido.
  */
 function computeMetrics(parsed) {
   let cost = 0;
   let totalInputTokens = 0;
   let totalCacheReadTokens = 0;
   let totalCacheCreationTokens = 0;
+  const unpricedModels = [];
 
   for (const model of Object.keys(parsed.usageByModel)) {
     const tokens = parsed.usageByModel[model];
-    const price = PRICING_USD_PER_MTOK[model] || { input: 0, output: 0 };
-    cost += (tokens.inputTokens / 1e6) * price.input + (tokens.outputTokens / 1e6) * price.output;
+    const price = PRICING_USD_PER_MTOK[model];
+    if (!price) unpricedModels.push(model);
+    cost += (tokens.inputTokens / 1e6) * (price ? price.input : 0) + (tokens.outputTokens / 1e6) * (price ? price.output : 0);
     totalInputTokens += tokens.inputTokens;
     totalCacheReadTokens += tokens.cacheReadTokens;
     totalCacheCreationTokens += tokens.cacheCreationTokens;
@@ -190,7 +198,7 @@ function computeMetrics(parsed) {
     }
   }
 
-  return { cost, duration, cacheHitRate, frictionByHook };
+  return { cost, duration, cacheHitRate, frictionByHook, unpricedModels };
 }
 
 module.exports = { parseTranscript, computeMetrics, PRICING_USD_PER_MTOK };

@@ -191,6 +191,32 @@ test('friccion agrupada por hookName derivado y por code cuando hay multiples ev
   assert.deepStrictEqual(metrics.frictionByHook['sdd-commit-guard.js'].byCode, {});
 });
 
+test('modelo desconocido: sus tokens no aportan coste y queda listado en unpricedModels', () => {
+  const dir = tempDir('session-analyzer-');
+  const file = writeFile(path.join(dir, 'modelo-desconocido.jsonl'), [
+    assistantEvent('2026-08-02T10:00:00.000Z', 'claude-sonnet-5', { input_tokens: 1000000, output_tokens: 1000000 }),
+    assistantEvent('2026-08-02T10:01:00.000Z', 'claude-modelo-futuro', { input_tokens: 1000000, output_tokens: 1000000 }),
+  ].join('\n'));
+
+  const metrics = computeMetrics(parseTranscript(file));
+  const priceKnown = PRICING_USD_PER_MTOK['claude-sonnet-5'];
+
+  // Solo el coste del modelo con tarifa conocida se refleja: el desconocido aporta $0,
+  // asi que 'cost' es parcial y debe venir acompanado de la senal unpricedModels.
+  assert.strictEqual(metrics.cost, priceKnown.input + priceKnown.output);
+  assert.deepStrictEqual(metrics.unpricedModels, ['claude-modelo-futuro']);
+});
+
+test('todos los modelos con tarifa conocida: unpricedModels vacio', () => {
+  const dir = tempDir('session-analyzer-');
+  const file = writeFile(path.join(dir, 'modelos-conocidos.jsonl'), [
+    assistantEvent('2026-08-02T10:00:00.000Z', 'claude-sonnet-5', { input_tokens: 10, output_tokens: 5 }),
+  ].join('\n'));
+
+  const metrics = computeMetrics(parseTranscript(file));
+  assert.deepStrictEqual(metrics.unpricedModels, []);
+});
+
 test('path inexistente: lanza error claro con el path, no un ENOENT generico', () => {
   const missing = path.join(tempDir('session-analyzer-'), 'no-existe.jsonl');
   assert.throws(() => parseTranscript(missing), (err) => {
