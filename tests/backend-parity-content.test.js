@@ -74,6 +74,61 @@ for (const archivo of CONTEXT_FILES) {
   });
 }
 
+// ── Seccion "Ahorro de tokens" ───────────────────────────────────────────────
+//
+// README.md documenta las palancas de ahorro de tokens (rtk, codeburn, modelo
+// por defecto); CLAUDE.md apunta a esa seccion en una linea, sin duplicarla
+// (CLAUDE.md se carga en cada sesion y no es sitio para prosa larga).
+
+test('README.md tiene la seccion "Ahorro de tokens" entre Hooks y Reglas de Cursor', () => {
+  const contenido = leer('README.md');
+  const inicioHooks = contenido.indexOf('## Hooks (enforcement mecanico)');
+  const inicioAhorro = contenido.indexOf('## Ahorro de tokens');
+  const inicioCursor = contenido.indexOf('## Reglas de Cursor');
+
+  assert.ok(inicioHooks !== -1, 'README.md debe tener la seccion "Hooks (enforcement mecanico)"');
+  assert.ok(inicioAhorro !== -1, 'README.md debe tener la seccion "Ahorro de tokens"');
+  assert.ok(inicioCursor !== -1, 'README.md debe tener la seccion "Reglas de Cursor"');
+  assert.ok(
+    inicioHooks < inicioAhorro && inicioAhorro < inicioCursor,
+    'La seccion "Ahorro de tokens" debe ir entre "Hooks (enforcement mecanico)" y "Reglas de Cursor"'
+  );
+});
+
+test('README.md "Ahorro de tokens" referencia "Modelo por defecto" en vez de duplicarlo', () => {
+  const contenido = leer('README.md');
+  const inicioAhorro = contenido.indexOf('## Ahorro de tokens');
+  const inicioCursor = contenido.indexOf('## Reglas de Cursor');
+  const seccion = contenido.slice(inicioAhorro, inicioCursor);
+
+  assert.ok(seccion.includes('rtk'), 'La seccion debe mencionar rtk como palanca de compresion de shell');
+  assert.ok(seccion.includes('codeburn'), 'La seccion debe mencionar codeburn como dashboard de coste');
+  assert.ok(
+    seccion.includes('Modelo por defecto'),
+    'La seccion debe referenciar "Modelo por defecto" en vez de repetir su contenido'
+  );
+  assert.ok(
+    !/opus|sonnet/i.test(seccion),
+    'La seccion no debe duplicar detalles de modelos concretos ya cubiertos en "Modelo por defecto"'
+  );
+});
+
+test('CLAUDE.md tiene un puntero de una linea a "Ahorro de tokens" (sin duplicar contenido)', () => {
+  const contenido = leer('CLAUDE.md');
+  const lineas = contenido.split('\n');
+  const lineasConMencion = lineas.filter(linea => linea.includes('Ahorro de tokens'));
+
+  assert.strictEqual(
+    lineasConMencion.length,
+    1,
+    'CLAUDE.md debe mencionar "Ahorro de tokens" exactamente una vez (puntero, no prosa)'
+  );
+  assert.ok(
+    lineasConMencion[0].length < 80,
+    'El puntero en CLAUDE.md debe ser una linea corta, no una seccion completa'
+  );
+});
+
 // ── Igualdad de skills identicas-por-diseno ──────────────────────────────────
 
 const IDENTICAL_SKILLS = ['cleanup', 'diff', 'revisar-tarea', 'revision-adversarial', 'testing'];

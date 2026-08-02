@@ -101,6 +101,8 @@ Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
 
 Los agentes heredan ese default salvo el `implementador`, fijado a `model: sonnet`: ejecuta trabajo mecanico (codigo + tests) donde el modelo mas caro no aporta, asi que el patron es **capaz para el gate, barato para ejecutar**. `planificador` y `revisor` heredan el default capaz, del que depende su razonamiento. Si prefieres un unico modelo para todo, devuelve el implementador a `model: inherit`.
 
+Ver tambien "Ahorro de tokens" en README.md.
+
 ## Hooks (enforcement mecanico)
 
 | Hook | Evento | Que enforcea | Modo |
