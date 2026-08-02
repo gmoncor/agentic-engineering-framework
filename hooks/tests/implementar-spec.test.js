@@ -180,6 +180,40 @@ test('next-task-number: reserva numeros consecutivos sin colisiones entre proces
   assert.deepStrictEqual([...numeros].sort(), ['001', '002', '003']);
 });
 
+test('next-task-number: bajo estres con invocaciones realmente concurrentes en bucle, nunca duplica numeros', async () => {
+  // La prueba anterior lanza 3 procesos de golpe, pero solo reproducia el
+  // TOCTOU original ~1/3 de las veces: el hueco entre "existe el lock?" y
+  // "leer su mtime" es estrecho y no siempre coincide con el intento de
+  // otro proceso. Aqui se repite el experimento varias rondas, cada una
+  // con mas procesos disputando el mismo lock, para exigir la ausencia de
+  // colisiones de forma mucho mas fiable.
+  const { execFile } = require('child_process');
+  const script = path.resolve(__dirname, '..', '..', 'scripts', 'next-task-number.sh');
+
+  const reservar = (raiz) => new Promise((resolve, reject) => {
+    execFile('bash', [script], { cwd: raiz, timeout: 10000 }, (e, stdout) => e ? reject(e) : resolve(stdout.trim()));
+  });
+
+  const RONDAS = 5;
+  const PROCESOS_POR_RONDA = 6;
+
+  for (let ronda = 0; ronda < RONDAS; ronda++) {
+    const raiz = tempDir('sdd-num-estres-');
+    fs.mkdirSync(path.join(raiz, 'ai_docs', 'tasks'), { recursive: true });
+
+    const numeros = await Promise.all(
+      Array.from({ length: PROCESOS_POR_RONDA }, () => reservar(raiz))
+    );
+
+    const esperados = Array.from({ length: PROCESOS_POR_RONDA }, (_, i) => String(i + 1).padStart(3, '0'));
+    assert.deepStrictEqual(
+      [...numeros].sort(),
+      esperados,
+      `ronda ${ronda}: numeros duplicados o huecos entre procesos concurrentes: ${JSON.stringify(numeros)}`
+    );
+  }
+});
+
 // ── Gate de tests: descubrir el comando real ─────────────────────────────────
 // El gate ejecuta el comando de test del proyecto y lee su exit code; nunca cree
 // numeros de tests auto-reportados. Aqui se prueba el descubrimiento del comando.
