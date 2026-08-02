@@ -57,7 +57,7 @@ proyecto/
 ├── .claude/
 │   ├── agents/         # planificador, revisor, implementador, asesor
 │   ├── commands/       # 12 comandos SDD
-│   ├── skills/         # 8 skills (auto-activacion)
+│   ├── skills/         # 9 skills (auto-activacion; auditar-sesion es exclusiva de este backend)
 │   ├── workflows/      # planificar.js + implementar-spec.js + lib/ (orquestacion)
 │   └── settings.json   # model default sugerido: claude-opus-4-8 + hooks
 ├── hooks/              # 5 hooks (pipeline-guard + review-gate + commit-guard + read-before-edit + turn-budget)

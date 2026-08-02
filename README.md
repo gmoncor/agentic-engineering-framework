@@ -183,7 +183,7 @@ No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` par
 |------------|-----------------|-----------------|----------------|----------------------|
 | Comandos | `.claude/commands/` (12) | `commands/` (12) | — (entregados como skills) | — (entregados como skills) |
 | Agentes | `.claude/agents/` (4) | `agents/` (4) | `.codex/agents/` (4, `.toml`) | `.agents/plugins/sdd/agents/` (4) |
-| Skills | `.claude/skills/` (8) | `skills/` (8) | `.agents/skills/` (17) | `.agents/skills/` (17) |
+| Skills | `.claude/skills/` (9)* | `skills/` (8) | `.agents/skills/` (17) | `.agents/skills/` (17) |
 | Hooks | `hooks/` (5, wired en settings) | `hooks/` (4, wired en `hooks/hooks.json`) | `hooks/` (2, wired en `.codex/hooks.json`) | `hooks/` (4, wired en `.agents/hooks.json`) |
 | Workflows | `.claude/workflows/` (2) | — (el orquestador implementa en orden) | — (idem) | — (idem) |
 | Contexto | `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` | `AGENTS.md` |
@@ -193,6 +193,9 @@ No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` par
 Las rutas coinciden con `scripts/backend-manifest.json`, que ademas marca `scripts/`, `package.json`
 y `CHANGELOG.md` como comunes a todos los backends: son infraestructura del CLI y metadatos, no
 componentes del flujo SDD, por eso la tabla no los lista.
+
+\* `auditar-sesion` es exclusiva de Claude Code: analiza las transcripciones nativas JSONL que este
+backend escribe en `~/.claude/projects/`, un formato que ningun otro backend produce.
 
 Los cuatro backends exponen el mismo conjunto de agentes y de pasos del flujo. Un test de paridad
 (`tests/backend-parity.test.js`, incluido en `npm test`) falla si uno se queda atras.
@@ -343,7 +346,7 @@ agentic-engineering-framework/
 │   ├── settings.json            #   model: opus-4.8 + hooks wiring
 │   ├── agents/                  #   planificador, revisor, implementador, asesor
 │   ├── commands/                #   12 comandos SDD
-│   ├── skills/                  #   8 skills (auto-activacion)
+│   ├── skills/                  #   9 skills (auto-activacion; 1 exclusiva de Claude Code)
 │   └── workflows/               #   planificar.js + implementar-spec.js
 │
 ├── agents/                      # Agentes Gemini CLI (4)

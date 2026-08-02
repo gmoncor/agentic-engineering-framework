@@ -32,6 +32,18 @@ const RAIZ = path.join(__dirname, '..');
 // backend de referencia, que es lo que hace assertParidad.
 const SKILLS_COMPARTIDAS = '.agents/skills';
 
+// Capacidades que solo tiene sentido ofrecer en un backend concreto porque dependen
+// de algo que ese backend expone y los demas no. Portarlas al resto les daria una
+// skill con instrucciones que ese backend no puede ejecutar. Excluidas de la
+// comparacion de paridad; no confundir con un olvido de portar.
+const CAPACIDADES_EXCLUSIVAS_POR_BACKEND = {
+  // Depende del formato de transcripcion JSONL nativo de Claude Code en
+  // ~/.claude/projects/: ningun otro backend lo produce.
+  claude: ['auditar-sesion']
+};
+
+const TODAS_LAS_CAPACIDADES_EXCLUSIVAS = Object.values(CAPACIDADES_EXCLUSIVAS_POR_BACKEND).flat();
+
 /** Backends activos. Anadir uno aqui lo mete en la comparacion. */
 const BACKENDS = {
   claude: {
@@ -78,16 +90,22 @@ function diferencia(a, b) {
   return a.filter(x => !b.includes(x));
 }
 
+/** Quita las capacidades exclusivas de un backend antes de comparar; no aplica a agentes. */
+function sinExclusivas(campo, lista) {
+  if (campo !== 'capacidades') return lista;
+  return lista.filter(nombre => !TODAS_LAS_CAPACIDADES_EXCLUSIVAS.includes(nombre));
+}
+
 /** Compara cada backend contra el primero y nombra lo que sobra y lo que falta. */
 function assertParidad(campo) {
   const nombres = Object.keys(BACKENDS);
   const referencia = nombres[0];
-  const esperado = conjunto(BACKENDS[referencia][campo]);
+  const esperado = sinExclusivas(campo, conjunto(BACKENDS[referencia][campo]));
 
   assert.ok(esperado.length > 0, `El backend de referencia (${referencia}) no expone ningun ${campo}`);
 
   for (const backend of nombres.slice(1)) {
-    const actual = conjunto(BACKENDS[backend][campo]);
+    const actual = sinExclusivas(campo, conjunto(BACKENDS[backend][campo]));
     const faltan = diferencia(esperado, actual);
     const sobran = diferencia(actual, esperado);
 
@@ -108,6 +126,32 @@ test('paridad: todos los backends exponen los mismos agentes', () => {
 
 test('paridad: todos los backends exponen las mismas capacidades del flujo', () => {
   assertParidad('capacidades');
+});
+
+test('las capacidades exclusivas realmente no existen en los demas backends', () => {
+  // Si alguna ya existiera en otro backend, la exclusion estaria ocultando una
+  // paridad rota en vez de documentar un caso legitimo.
+  for (const [duenio, nombres] of Object.entries(CAPACIDADES_EXCLUSIVAS_POR_BACKEND)) {
+    for (const backend of Object.keys(BACKENDS)) {
+      if (backend === duenio) continue;
+      const actual = conjunto(BACKENDS[backend].capacidades);
+      for (const nombre of nombres) {
+        assert.ok(
+          !actual.includes(nombre),
+          `"${nombre}" se declara exclusiva de ${duenio} pero tambien existe en ${backend}: `
+            + 'la exclusion ya no aplica, hay que quitarla y tratarla como capacidad compartida.'
+        );
+      }
+    }
+  }
+});
+
+test('la skill exclusiva de Claude Code tiene frontmatter valido', () => {
+  const ruta = path.join(RAIZ, '.claude/skills/auditar-sesion/SKILL.md');
+  const contenido = fs.readFileSync(ruta, 'utf8');
+
+  assert.match(contenido, /^---\nname: auditar-sesion\n/, 'falta el frontmatter con name: auditar-sesion');
+  assert.match(contenido, /\ndescription: ".+"\n/, 'falta description en el frontmatter');
 });
 
 test('codex y antigravity leen las skills del mismo directorio, por diseno', () => {
