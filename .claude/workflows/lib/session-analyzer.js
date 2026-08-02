@@ -6,18 +6,24 @@
 //   - `{ type: 'assistant', message: { model, usage: { input_tokens, output_tokens,
 //     cache_creation_input_tokens, cache_read_input_tokens } }, timestamp }`: el uso
 //     de tokens por turno, ya troceado por modelo por el propio backend.
-//   - `{ type: 'attachment', attachment: { type: 'hook_error'|'hook_success', hookName,
-//     message, code } }`: como Claude Code registra la decision de un hook (warn/deny)
-//     en la transcripcion. `code` solo existe si el hook lo emite (ver sdd-hook-utils.js).
+//   - `{ type: 'attachment', attachment: { type: 'hook_error'|'hook_success', command,
+//     content, durationMs, exitCode, hookEvent, hookName, stderr, stdout, toolUseID } }`:
+//     como Claude Code registra la ejecucion de un hook en la transcripcion. `hookName`
+//     aqui es SIEMPRE `'<HookEvent>:<matcher>'` (p.ej. `'PreToolUse:Bash'`), nunca el
+//     nombre del guard/script individual, asi que el identificador de hook que interesa
+//     para friccion se deriva del basename del script en `attachment.command`. El codigo
+//     corto que un guard emite via warn()/deny() (ver sdd-hook-utils.js) no llega como
+//     campo top-level: viaja embebido como JSON dentro de `attachment.stdout`.
 //
 // Deliberadamente NO calcula nada relativo a solapamiento entre subagentes,
 // rafagas de llamadas ni metricas de ejecucion simultanea: esta libreria asume
 // un pipeline secuencial de principio a fin.
 //
-// Sin dependencias npm: solo `fs`, para poder copiarse a cualquier proyecto que
-// tenga Node sin arrastrar nada mas.
+// Sin dependencias npm: solo `fs` y `path`, para poder copiarse a cualquier proyecto
+// que tenga Node sin arrastrar nada mas.
 
 const fs = require('fs');
+const path = require('path');
 
 // $/MTok, tokens de input y de output. No incluye tarifas de cache (creacion/lectura
 // tienen precio propio en la API real); el coste que calcula esta libreria es una
@@ -31,6 +37,49 @@ const PRICING_USD_PER_MTOK = {
 };
 
 const HOOK_ATTACHMENT_RE = /hook_(error|success)/;
+const HOOK_SCRIPT_RE = /\.(js|mjs|cjs|py|sh)$/i;
+
+/**
+ * Deriva el identificador de un hook a partir del comando que lo invoco
+ * (`attachment.command`, p.ej. `node "/ruta/hooks/sdd-turn-budget.js"`). `hookName`
+ * en la transcripcion real es `'<HookEvent>:<matcher>'` y agrupa varios guards
+ * distintos bajo el mismo matcher, asi que no sirve para friccion por-hook.
+ *
+ * Toma el ultimo token del comando que parece un script (extension conocida) y
+ * devuelve su basename; sin match reconocible devuelve 'desconocido' en vez de
+ * lanzar, porque un comando con forma inesperada no debe abortar el parseo.
+ */
+function hookIdentifierFromCommand(command) {
+  if (typeof command !== 'string' || !command.trim()) return 'desconocido';
+
+  const tokens = command.match(/"[^"]+"|'[^']+'|\S+/g) || [];
+  for (let i = tokens.length - 1; i >= 0; i -= 1) {
+    const token = tokens[i].replace(/^["']|["']$/g, '');
+    if (HOOK_SCRIPT_RE.test(token)) {
+      return path.basename(token);
+    }
+  }
+  return 'desconocido';
+}
+
+/**
+ * Extrae el codigo corto (p.ej. `TURN_BUDGET_BLOCK`) que un hook emite via
+ * warn()/deny() (ver sdd-hook-utils.js `emit()`), que escribe una linea JSON en
+ * stdout. `attachment.stdout` puede venir ausente, vacio o no ser JSON valido
+ * (un hook que no usa warn()/deny() no tiene por que emitir nada) — en esos
+ * casos se devuelve `code: null` en vez de lanzar.
+ */
+function parseHookStdout(stdout) {
+  if (typeof stdout !== 'string' || !stdout.trim()) return { code: null };
+
+  const firstLine = stdout.trim().split('\n')[0];
+  try {
+    const parsed = JSON.parse(firstLine);
+    return { code: (parsed && parsed.code) || null };
+  } catch {
+    return { code: null };
+  }
+}
 
 /**
  * Recorre un transcript JSONL y acumula uso de tokens por modelo, el rango temporal
@@ -87,10 +136,10 @@ function parseTranscript(jsonlPath) {
     }
 
     if (event.type === 'attachment' && event.attachment && HOOK_ATTACHMENT_RE.test(event.attachment.type || '')) {
+      const { code } = parseHookStdout(event.attachment.stdout);
       hookEvents.push({
-        hookName: event.attachment.hookName || 'desconocido',
-        code: event.attachment.code || null,
-        message: event.attachment.message || '',
+        hookName: hookIdentifierFromCommand(event.attachment.command),
+        code,
       });
     }
   }
