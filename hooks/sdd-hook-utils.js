@@ -8,14 +8,32 @@
 const fs = require('fs');
 
 const SKIP_ENV = 'SDD_GUARD_SKIP';
+const STDIN_TIMEOUT_MS = 5000;
 
-async function readPayload() {
-  let input = '';
-  for await (const chunk of process.stdin) input += chunk;
+// Si el harness no cierra stdin (pipe bloqueado, antivirus, comportamiento
+// anomalo), leer hasta EOF cuelga el proceso indefinidamente. La carrera
+// contra el timeout garantiza que el hook siempre resuelve: si stdin no
+// llega a tiempo, se degrada a null igual que un payload invalido.
+async function readPayload(timeoutMs) {
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(resolve, timeoutMs || STDIN_TIMEOUT_MS, null);
+  });
+
+  const read = (async () => {
+    let input = '';
+    for await (const chunk of process.stdin) input += chunk;
+    try {
+      return JSON.parse(input);
+    } catch {
+      return null;
+    }
+  })();
+
   try {
-    return JSON.parse(input);
-  } catch {
-    return null;
+    return await Promise.race([read, timeout]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
