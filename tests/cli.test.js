@@ -15,6 +15,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 
 const RAIZ = path.join(__dirname, '..');
@@ -371,7 +372,9 @@ test('update --backend all anade las rutas de los backends nuevos sobre una inst
   assert.strictEqual(codigo, 0);
   assert.ok(fs.existsSync(path.join(proyecto, 'GEMINI.md')), 'debe anadir la ruta nueva de gemini');
   assert.ok(fs.existsSync(path.join(proyecto, 'AGENTS.md')), 'debe anadir la ruta nueva de codex');
-  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'), 'contexto');
+  // CLAUDE.md ya existia sin haber pasado nunca por install/update (sin sidecar de
+  // hashes previo): se trata como posible edicion local y no se sobrescribe.
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'), 'contexto viejo');
   assert.strictEqual(
     fs.readFileSync(path.join(proyecto, '.claude', 'agents', 'planificador.md'), 'utf8'),
     'agente',
@@ -382,4 +385,119 @@ test('update comparte la funcion de copia con install (sin duplicar logica)', ()
   const contenido = fs.readFileSync(CLI, 'utf8');
   const coincidencias = contenido.match(/copiarRutas\w*|copyFramework/g) || [];
   assert.ok(coincidencias.length >= 2, 'la funcion de copia debe estar definida e invocada por ambos subcomandos');
+});
+
+test('install crea el sidecar de hashes con los archivos protegidos copiados', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: ['CLAUDE.md'] },
+    { 'hooks/config.json': '{"a":1}', 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  const { codigo } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  const sidecarPath = path.join(proyecto, '.sdd-installed-hashes.json');
+  assert.ok(fs.existsSync(sidecarPath), 'install debe crear el sidecar de hashes');
+  const hashes = JSON.parse(fs.readFileSync(sidecarPath, 'utf8'));
+  assert.strictEqual(
+    hashes['CLAUDE.md'],
+    crypto.createHash('sha256').update('contexto').digest('hex'),
+  );
+  assert.strictEqual(
+    hashes['hooks/config.json'],
+    crypto.createHash('sha256').update('{"a":1}').digest('hex'),
+  );
+});
+
+test('update salta un archivo protegido con cambios locales y avisa por stdout', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: ['CLAUDE.md'] },
+    { 'hooks/config.json': '{"turn_budget":{"hard_stop_at":40}}', 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+
+  const instalacion = ejecutar(['install', '--backend', 'claude'], opts);
+  assert.strictEqual(instalacion.codigo, 0);
+
+  // El usuario personaliza el umbral localmente tras instalar.
+  fs.writeFileSync(
+    path.join(proyecto, 'hooks', 'config.json'),
+    '{"turn_budget":{"hard_stop_at":80}}',
+  );
+  // El framework publica una nueva version del mismo archivo.
+  fs.writeFileSync(
+    path.join(paquete, 'hooks', 'config.json'),
+    '{"turn_budget":{"hard_stop_at":40,"warn_at":30}}',
+  );
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude'], opts);
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'hooks', 'config.json'), 'utf8'),
+    '{"turn_budget":{"hard_stop_at":80}}',
+    'no debe sobrescribir un archivo protegido con ediciones locales',
+  );
+  assert.match(stdout, /cambios locales/);
+  assert.match(stdout, /hooks\/config\.json/);
+});
+
+test('update sobrescribe un archivo protegido sin cambios locales', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: ['CLAUDE.md'] },
+    { 'hooks/config.json': '{"turn_budget":{"hard_stop_at":40}}', 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+
+  const instalacion = ejecutar(['install', '--backend', 'claude'], opts);
+  assert.strictEqual(instalacion.codigo, 0);
+
+  fs.writeFileSync(
+    path.join(paquete, 'hooks', 'config.json'),
+    '{"turn_budget":{"hard_stop_at":50}}',
+  );
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude'], opts);
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'hooks', 'config.json'), 'utf8'),
+    '{"turn_budget":{"hard_stop_at":50}}',
+  );
+  assert.doesNotMatch(stdout, /cambios locales/);
+});
+
+test('update sin sidecar previo trata los archivos protegidos preexistentes como posiblemente editados', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: ['CLAUDE.md'] },
+    { 'hooks/config.json': '{"nuevo":true}', 'CLAUDE.md': 'contexto nuevo' },
+  );
+  const proyecto = dirTemporal();
+  // Proyecto pre-existente que nunca paso por install/update con sidecar de hashes.
+  fs.writeFileSync(path.join(proyecto, 'CLAUDE.md'), 'contexto original del usuario');
+  fs.mkdirSync(path.join(proyecto, 'hooks'), { recursive: true });
+  fs.writeFileSync(path.join(proyecto, 'hooks', 'config.json'), '{"original":true}');
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'),
+    'contexto original del usuario',
+  );
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'hooks', 'config.json'), 'utf8'),
+    '{"original":true}',
+  );
+  assert.match(stdout, /cambios locales/);
+  assert.match(stdout, /CLAUDE\.md/);
+  assert.match(stdout, /hooks\/config\.json/);
 });
