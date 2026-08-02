@@ -453,6 +453,14 @@ Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohibe esos mismos com
 
 **Modelo por defecto (Claude Code):** `.claude/settings.json` fija `"model": "claude-opus-4-8"`. Opus 4.8 es el modelo mas capaz para planificacion y revision exhaustiva. Override puntual con `/model sonnet` si necesitas velocidad en tareas mecanicas.
 
+## Ahorro de tokens
+
+Tres palancas para reducir el coste de las sesiones:
+
+1. **Compresion de salida de shell (rtk):** [rtk](https://github.com/rtk-ai/rtk) es un proxy en Rust que recorta hasta un 90% de la salida de comandos de shell antes de que llegue al contexto del agente. Instalacion: `cargo install --git https://github.com/rtk-ai/rtk && rtk init -g` (o `brew install rtk`). Funciona en Linux, macOS y Windows nativo.
+2. **Dashboard de coste (codeburn):** `npx codeburn` muestra un TUI con el desglose de coste por sesion, herramienta y modelo.
+3. **Modelo por defecto:** ver "Modelo por defecto" mas arriba — ajustar el modelo al tipo de tarea (el mas capaz para gates de planificacion/revision, uno mas barato para ejecucion mecanica) es la palanca mas directa.
+
 ## Reglas de Cursor
 
 El directorio `.cursor/rules/` contiene 43 reglas que replican el comportamiento del framework dentro de Cursor. Son opcionales — el framework funciona sin ellas. Si usas Cursor, copia `.cursor/` a tu proyecto.
