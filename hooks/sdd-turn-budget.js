@@ -122,10 +122,10 @@ function avisoHardStopSubagente(count) {
 // En enforce, el hilo principal (sin senal de subagente) se deniega igual que
 // siempre. Un subagente nunca se deniega: se avisa con un mensaje que puede
 // accionar el mismo. En advisory ambos avisan con el mensaje normal.
-function decidir(count, enforce, subagent, mensajeNormal, mensajeSubagente, call) {
-  if (!enforce) return warn(mensajeNormal(count), call);
-  if (subagent) return warn(mensajeSubagente(count), call);
-  return deny(mensajeNormal(count), call);
+function decidir(count, enforce, subagent, mensajeNormal, mensajeSubagente, call, code) {
+  if (!enforce) return warn(mensajeNormal(count), call, code);
+  if (subagent) return warn(mensajeSubagente(count), call, code);
+  return deny(mensajeNormal(count), call, code);
 }
 
 async function main() {
@@ -155,13 +155,19 @@ async function main() {
   const subagent = isSubagentCall(data);
 
   if (count >= threshold(cfg, 'hard_stop_at')) {
-    return decidir(count, enforce, subagent, avisoHardStop, avisoHardStopSubagente, call);
+    return decidir(
+      count, enforce, subagent, avisoHardStop, avisoHardStopSubagente, call,
+      'TURN_BUDGET_HARD_STOP'
+    );
   }
   if (count >= threshold(cfg, 'block_at')) {
-    return decidir(count, enforce, subagent, avisoBlock, avisoBlockSubagente, call);
+    return decidir(
+      count, enforce, subagent, avisoBlock, avisoBlockSubagente, call,
+      'TURN_BUDGET_BLOCK'
+    );
   }
   if (count >= threshold(cfg, 'warn_at')) {
-    return warn(avisoWarn(count), call);
+    return warn(avisoWarn(count), call, 'TURN_BUDGET_WARN');
   }
 
   process.exit(0);

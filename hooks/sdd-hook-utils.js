@@ -76,16 +76,22 @@ function emit(payload, reason, code) {
  *
  * Antigravity solo admite allow | deny | ask | force_ask: un aviso se expresa ahi como `allow` con
  * motivo. En las demas CLIs se mantiene `warn`, que es su forma de decir lo mismo.
+ *
+ * `code` es un identificador corto y estable (UPPER_SNAKE_CASE) para que un consumidor
+ * automatizado distinga motivos dentro del mismo hook sin parsear el texto de `reason`.
+ * Es opcional: si no se pasa, el payload se emite igual que antes (retrocompatible).
  */
-function warn(reason, call) {
+function warn(reason, call, code) {
   const decision = call && call.stdoutOnly ? 'allow' : 'warn';
-  emit({ decision, reason }, reason, 0);
+  const payload = { decision, reason };
+  if (code) payload.code = code;
+  emit(payload, reason, 0);
 }
 
 /** Bloquea la accion. El codigo 2 es la senal de bloqueo de las CLIs que la usan; ver readToolCall. */
-function deny(reason, call) {
-  const code = call && call.stdoutOnly ? 0 : 2;
-  emit({
+function deny(reason, call, code) {
+  const exitCode = call && call.stdoutOnly ? 0 : 2;
+  const payload = {
     decision: 'deny',
     reason,
     hookSpecificOutput: {
@@ -93,7 +99,12 @@ function deny(reason, call) {
       permissionDecision: 'deny',
       permissionDecisionReason: reason,
     },
-  }, reason, code);
+  };
+  if (code) {
+    payload.code = code;
+    payload.hookSpecificOutput.code = code;
+  }
+  emit(payload, reason, exitCode);
 }
 
 module.exports = { readPayload, readToolCall, skipRequested, warn, deny, SKIP_ENV };

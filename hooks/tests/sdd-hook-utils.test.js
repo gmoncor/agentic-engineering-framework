@@ -13,9 +13,37 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { readPayload } = require('../sdd-hook-utils');
+const fs = require('fs');
+const { readPayload, warn, deny } = require('../sdd-hook-utils');
 
 const originalStdin = process.stdin;
+
+// warn()/deny() escriben a stdout con fs.writeSync y terminan con process.exit;
+// se interceptan ambos para capturar el payload emitido sin matar el proceso
+// de test ni depender de spawnear el hook completo.
+function captureEmit(fn) {
+  const originalWriteSync = fs.writeSync;
+  const originalExit = process.exit;
+  let stdout = '';
+  let exitCode;
+  fs.writeSync = (fd, chunk) => {
+    if (fd === 1) stdout += chunk;
+    return chunk.length;
+  };
+  process.exit = (code) => {
+    exitCode = code;
+    throw { __stopEmit: true }; // corta la ejecucion igual que exit() real, sin matar el proceso
+  };
+  try {
+    fn();
+  } catch (err) {
+    if (!err || !err.__stopEmit) throw err;
+  } finally {
+    fs.writeSync = originalWriteSync;
+    process.exit = originalExit;
+  }
+  return { payload: JSON.parse(stdout.trim()), exitCode };
+}
 
 function stubStdin(asyncIterator) {
   Object.defineProperty(process, 'stdin', {
@@ -81,4 +109,33 @@ test('stdin llega con JSON invalido -> resuelve a null sin esperar al timeout', 
   } finally {
     restoreStdin();
   }
+});
+
+test('warn() con code -> el payload emitido incluye el campo code', () => {
+  const { payload } = captureEmit(() => warn('motivo', null, 'ALGO_PASO'));
+  assert.strictEqual(payload.decision, 'warn');
+  assert.strictEqual(payload.reason, 'motivo');
+  assert.strictEqual(payload.code, 'ALGO_PASO');
+});
+
+test('warn() sin code -> el payload emitido no incluye el campo code (retrocompatible)', () => {
+  const { payload } = captureEmit(() => warn('motivo', null));
+  assert.strictEqual(payload.decision, 'warn');
+  assert.strictEqual(payload.reason, 'motivo');
+  assert.strictEqual('code' in payload, false);
+});
+
+test('deny() con code -> el campo code aparece en la raiz y en hookSpecificOutput', () => {
+  const { payload, exitCode } = captureEmit(() => deny('motivo', null, 'ALGO_MAL'));
+  assert.strictEqual(payload.decision, 'deny');
+  assert.strictEqual(payload.code, 'ALGO_MAL');
+  assert.strictEqual(payload.hookSpecificOutput.code, 'ALGO_MAL');
+  assert.strictEqual(exitCode, 2);
+});
+
+test('deny() sin code -> ni la raiz ni hookSpecificOutput incluyen code (retrocompatible)', () => {
+  const { payload } = captureEmit(() => deny('motivo', null));
+  assert.strictEqual(payload.decision, 'deny');
+  assert.strictEqual('code' in payload, false);
+  assert.strictEqual('code' in payload.hookSpecificOutput, false);
 });

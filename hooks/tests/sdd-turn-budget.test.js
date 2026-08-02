@@ -70,6 +70,7 @@ test('al alcanzar warn_at -> avisa', () => {
   assert.strictEqual(r.decision.decision, 'warn');
   assert.strictEqual(r.code, 0);
   assert.match(r.decision.reason, /sin commit/);
+  assert.strictEqual(r.decision.code, 'TURN_BUDGET_WARN');
 });
 
 test('enforce: al alcanzar block_at -> deniega', () => {
@@ -77,6 +78,8 @@ test('enforce: al alcanzar block_at -> deniega', () => {
   const r = repetir(3, e.env); // block_at = 3
   assert.strictEqual(r.decision.decision, 'deny');
   assert.match(r.decision.reason, /presupuesto/);
+  assert.strictEqual(r.decision.code, 'TURN_BUDGET_BLOCK');
+  assert.strictEqual(r.decision.hookSpecificOutput.code, 'TURN_BUDGET_BLOCK');
 });
 
 test('enforce: al alcanzar hard_stop_at -> deniega e INTERRUMPE', () => {
@@ -84,6 +87,8 @@ test('enforce: al alcanzar hard_stop_at -> deniega e INTERRUMPE', () => {
   const r = repetir(4, e.env); // hard_stop_at = 4
   assert.strictEqual(r.decision.decision, 'deny');
   assert.match(r.decision.reason, /INTERRUMPE y espera/);
+  assert.strictEqual(r.decision.code, 'TURN_BUDGET_HARD_STOP');
+  assert.strictEqual(r.decision.hookSpecificOutput.code, 'TURN_BUDGET_HARD_STOP');
 });
 
 test('advisory (default): supera block_at -> avisa, nunca bloquea', () => {
@@ -92,6 +97,7 @@ test('advisory (default): supera block_at -> avisa, nunca bloquea', () => {
   assert.strictEqual(r.decision.decision, 'warn');
   assert.strictEqual(r.code, 0);
   assert.match(r.decision.reason, /presupuesto/);
+  assert.strictEqual(r.decision.code, 'TURN_BUDGET_BLOCK');
 });
 
 test('advisory: supera hard_stop_at -> avisa con el mensaje de interrupcion, sin deny', () => {
@@ -100,6 +106,7 @@ test('advisory: supera hard_stop_at -> avisa con el mensaje de interrupcion, sin
   assert.strictEqual(r.decision.decision, 'warn');
   assert.strictEqual(r.code, 0);
   assert.match(r.decision.reason, /INTERRUMPE y espera/);
+  assert.strictEqual(r.decision.code, 'TURN_BUDGET_HARD_STOP');
 });
 
 test('git commit resetea el contador a 0', () => {
