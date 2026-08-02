@@ -35,7 +35,11 @@ const FORBIDDEN_PATTERNS = [
   'independientes en paralelo',
   'implementan en paralelo',
   'implementacion paralela',
-  'particion por dueno'
+  'particion por dueno',
+  'corren a la vez',
+  'fan-out',
+  'arbol de trabajo aparte',
+  'ejecucion paralela'
 ];
 
 const CONTEXT_FILES = [
@@ -46,7 +50,11 @@ const CONTEXT_FILES = [
   'package.json',
   'gemini-extension.json',
   '.claude-plugin/plugin.json',
-  'ai_docs/dev_templates/README.md'
+  'ai_docs/dev_templates/README.md',
+  '.claude/workflows/implementar-spec.js',
+  '.claude/workflows/lib/orquestacion.js',
+  '.agents/skills/implementar-spec/SKILL.md',
+  'hooks/tests/implementar-spec.test.js'
 ];
 
 for (const archivo of CONTEXT_FILES) {
