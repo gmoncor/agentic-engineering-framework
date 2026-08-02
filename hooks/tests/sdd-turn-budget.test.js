@@ -35,6 +35,20 @@ function entorno(config) {
 
 const accion = (session) => ({ tool_name: 'Read', tool_input: { file_path: '/x' }, session_id: session });
 const commit = (session, extra) => ({ tool_name: 'Bash', tool_input: { command: 'git commit' + (extra || '') }, session_id: session });
+const accionSubagente = (session) => ({
+  tool_name: 'Read',
+  tool_input: { file_path: '/x' },
+  session_id: session,
+  agent_id: 'agent-1',
+  agent_type: 'implementador',
+});
+
+// Como repetir(), pero con el payload de subagente (agent_id/agent_type presentes).
+function repetirSubagente(n, env, session) {
+  let r;
+  for (let i = 0; i < n; i++) r = runHook(HOOK, accionSubagente(session || SESSION), env);
+  return r;
+}
 
 // Ejecuta n acciones genericas y devuelve el resultado de la ultima.
 function repetir(n, env, session) {
@@ -140,6 +154,44 @@ test('fichero de contador corrupto -> arranca en 0, no bloquea', () => {
   const r = repetir(1, e.env);
   assert.strictEqual(r.code, 0);
   assert.strictEqual(r.decision, null, 'el contador corrupto se lee como 0 y una accion queda por debajo del umbral');
+});
+
+test('enforce + subagente: al alcanzar block_at avisa (no deniega) con mensaje accionable', () => {
+  const e = entorno(CONFIG_ENFORCE);
+  const r = repetirSubagente(3, e.env); // block_at = 3
+  assert.strictEqual(r.decision.decision, 'warn');
+  assert.match(r.decision.reason, /busca un punto para hacer commit/);
+});
+
+test('enforce + subagente: al alcanzar hard_stop_at avisa (no deniega) sin pedir esperar al usuario', () => {
+  const e = entorno(CONFIG_ENFORCE);
+  const r = repetirSubagente(4, e.env); // hard_stop_at = 4
+  assert.strictEqual(r.decision.decision, 'warn');
+  assert.doesNotMatch(r.decision.reason, /espera instrucciones del usuario/);
+  assert.match(r.decision.reason, /commit/);
+});
+
+test('enforce + hilo principal (sin agent_id/agent_type): sigue denegando igual que antes', () => {
+  const e = entorno(CONFIG_ENFORCE);
+  const r = repetir(4, e.env); // hard_stop_at = 4, payload sin senal de subagente
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.match(r.decision.reason, /INTERRUMPE y espera/);
+});
+
+test('advisory + subagente: supera hard_stop_at -> avisa igual que un subagente ausente, nunca deniega', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  const r = repetirSubagente(4, e.env);
+  assert.strictEqual(r.decision.decision, 'warn');
+  assert.strictEqual(r.code, 0);
+});
+
+test('subagente sin session_id -> silencio, no rompe la deteccion de subagente', () => {
+  const e = entorno(CONFIG_ENFORCE);
+  const payload = { tool_name: 'Read', tool_input: { file_path: '/x' }, agent_id: 'agent-1', agent_type: 'implementador' };
+  let r;
+  for (let i = 0; i < 5; i++) r = runHook(HOOK, payload, e.env);
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null);
 });
 
 test('sesiones concurrentes: cada una lleva su propio contador', () => {

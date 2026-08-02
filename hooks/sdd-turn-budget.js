@@ -22,6 +22,15 @@
  *   - "enforce": block_at y hard_stop_at DENIEGAN la accion; warn_at sigue avisando.
  *   Cualquier otro valor degrada a advisory (nunca bloquea por un modo desconocido).
  *
+ * SUBAGENTES (mode: enforce)
+ *   El contador se lleva por session_id, que un subagente comparte con el hilo
+ *   principal. Denegar la tool call de un subagente no tiene forma de "esperar
+ *   instrucciones del usuario": nadie en ese hilo puede accionar el aviso. Cuando
+ *   el payload trae `agent_id` o `agent_type` (presentes unicamente cuando la
+ *   llamada se origina dentro de un subagente), block_at y hard_stop_at se
+ *   degradan de deny() a warn() con un mensaje accionable por el propio
+ *   subagente. El hilo principal (sin esos campos) sigue denegado igual que antes.
+ *
  * DEGRADACION SEGURA (nunca rompe por infraestructura):
  *   - Sin config o enabled: false -> silencio.
  *   - SDD_GUARD_SKIP=1 -> bypass (escape de emergencia, no cuenta ni avisa).
@@ -78,6 +87,13 @@ function threshold(cfg, key) {
   return Number.isFinite(n) ? n : DEFAULTS[key];
 }
 
+// `agent_id`/`agent_type` solo aparecen en el payload cuando la tool call se
+// origina dentro de un subagente (contrato de hooks de Claude Code); el hilo
+// principal nunca los trae.
+function isSubagentCall(data) {
+  return !!(data && (data.agent_id || data.agent_type));
+}
+
 function avisoWarn(count) {
   return 'SDD: llevas ' + count + ' acciones sin commit. Considera hacer commit '
     + 'para crear un checkpoint antes de continuar.';
@@ -91,6 +107,25 @@ function avisoBlock(count) {
 function avisoHardStop(count) {
   return 'SDD: llevas ' + count + ' acciones sin commit. INTERRUMPE y espera '
     + 'instrucciones del usuario antes de continuar.';
+}
+
+function avisoBlockSubagente(count) {
+  return 'SDD: llevas ' + count + ' acciones sin commit. El presupuesto se acerca '
+    + 'al limite: busca un punto para hacer commit antes de continuar.';
+}
+
+function avisoHardStopSubagente(count) {
+  return 'SDD: llevas ' + count + ' acciones sin commit, superando el presupuesto '
+    + 'duro. Busca cuanto antes un punto seguro para hacer commit y continuar.';
+}
+
+// En enforce, el hilo principal (sin senal de subagente) se deniega igual que
+// siempre. Un subagente nunca se deniega: se avisa con un mensaje que puede
+// accionar el mismo. En advisory ambos avisan con el mensaje normal.
+function decidir(count, enforce, subagent, mensajeNormal, mensajeSubagente, call) {
+  if (!enforce) return warn(mensajeNormal(count), call);
+  if (subagent) return warn(mensajeSubagente(count), call);
+  return deny(mensajeNormal(count), call);
 }
 
 async function main() {
@@ -117,14 +152,13 @@ async function main() {
   saveCount(sessionId, count);
 
   const enforce = cfg.mode === 'enforce';
+  const subagent = isSubagentCall(data);
 
   if (count >= threshold(cfg, 'hard_stop_at')) {
-    const reason = avisoHardStop(count);
-    return enforce ? deny(reason, call) : warn(reason, call);
+    return decidir(count, enforce, subagent, avisoHardStop, avisoHardStopSubagente, call);
   }
   if (count >= threshold(cfg, 'block_at')) {
-    const reason = avisoBlock(count);
-    return enforce ? deny(reason, call) : warn(reason, call);
+    return decidir(count, enforce, subagent, avisoBlock, avisoBlockSubagente, call);
   }
   if (count >= threshold(cfg, 'warn_at')) {
     return warn(avisoWarn(count), call);
