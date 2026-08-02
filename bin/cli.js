@@ -23,6 +23,15 @@ const DEST = process.cwd();
 const BACKENDS_VALIDOS = ['claude', 'gemini', 'codex', 'antigravity', 'all'];
 const DIRS_DEL_PROYECTO = ['ai_docs/core', 'ai_docs/tasks', 'ai_docs/refs'];
 
+// Archivo de contexto que lleva el marcador `<!-- sdd-framework: X.Y.Z -->`
+// para cada backend. codex y antigravity comparten AGENTS.md.
+const ARCHIVO_CONTEXTO_POR_BACKEND = {
+  claude: 'CLAUDE.md',
+  gemini: 'GEMINI.md',
+  codex: 'AGENTS.md',
+  antigravity: 'AGENTS.md',
+};
+
 // Archivos que el usuario personaliza tras instalar (umbrales, permisos,
 // hooks propios) y que `update` no debe pisar si detecta ediciones locales.
 const ARCHIVO_SIDECAR_HASHES = '.sdd-installed-hashes.json';
@@ -222,6 +231,46 @@ function copiarRutasFramework(backend, opciones = {}) {
   return { copiadas, saltadas, creados, saltadasPorEdicion };
 }
 
+/** Sustituye el marcador de version en `archivo` por `version`. Retorna true si hubo cambio. */
+function actualizarMarcador(archivo, version) {
+  if (!fs.existsSync(archivo)) return false;
+  const contenido = fs.readFileSync(archivo, 'utf8');
+  const actualizado = contenido.replace(/<!-- sdd-framework: .+? -->/g, `<!-- sdd-framework: ${version} -->`);
+  if (actualizado === contenido) return false;
+  fs.writeFileSync(archivo, actualizado);
+  return true;
+}
+
+/**
+ * Sincroniza el marcador de version en los archivos de contexto que SI se
+ * copiaron. Estos archivos son ademas protegidos (ARCHIVOS_PROTEGIDOS): si
+ * el marcador cambia, su hash en el sidecar se refresca en el mismo paso
+ * para que la reescritura no se confunda con una edicion local del usuario
+ * en la proxima ejecucion.
+ */
+function sincronizarMarcadores(backend, copiadas, version) {
+  const archivos = backend === 'all'
+    ? [...new Set(Object.values(ARCHIVO_CONTEXTO_POR_BACKEND))]
+    : [ARCHIVO_CONTEXTO_POR_BACKEND[backend]].filter(Boolean);
+
+  const hashesInstalados = loadInstalledHashes(DEST);
+  let sidecarDesactualizado = false;
+
+  for (const archivo of archivos) {
+    if (!copiadas.includes(archivo)) continue;
+    try {
+      const destino = path.join(DEST, archivo);
+      if (!actualizarMarcador(destino, version)) continue;
+      hashesInstalados[archivo] = hashFile(destino);
+      sidecarDesactualizado = true;
+    } catch (err) {
+      process.stderr.write(`No se pudo actualizar el marcador de version en ${archivo}: ${err.message}\n`);
+    }
+  }
+
+  if (sidecarDesactualizado) saveInstalledHashes(DEST, hashesInstalados);
+}
+
 function reportarArchivosProtegidos(saltadasPorEdicion) {
   if (!saltadasPorEdicion.length) return;
   console.log('Archivos con cambios locales, no se sobrescribieron (revisa el diff manualmente):');
@@ -261,13 +310,16 @@ function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version) 
 async function cmdInstall(args) {
   const backend = await resolverBackend(args);
   const { copiadas, saltadas, creados, saltadasPorEdicion } = copiarRutasFramework(backend, { crearDirsUsuario: true });
+  sincronizarMarcadores(backend, copiadas, obtenerVersion());
   reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion);
 }
 
 async function cmdUpdate(args) {
   const backend = await resolverBackend(args);
   const { copiadas, saltadas, saltadasPorEdicion } = copiarRutasFramework(backend, { crearDirsUsuario: false });
-  reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, obtenerVersion());
+  const version = obtenerVersion();
+  sincronizarMarcadores(backend, copiadas, version);
+  reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version);
 }
 
 async function main() {
