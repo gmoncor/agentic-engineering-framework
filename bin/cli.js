@@ -304,7 +304,7 @@ function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version) 
     saltadas.forEach(ruta => console.log(`  - ${ruta}`));
   }
   reportarArchivosProtegidos(saltadasPorEdicion);
-  console.log(`Framework actualizado desde version ${version}. Rutas del proyecto (ai_docs/core/, ai_docs/tasks/, ai_docs/refs/) no se han tocado. Ejecuta 'npm test' para verificar los hooks.`);
+  console.log(`Framework actualizado a la version ${version}. Rutas del proyecto (ai_docs/core/, ai_docs/tasks/, ai_docs/refs/) no se han tocado. Ejecuta 'npm test' para verificar los hooks.`);
 }
 
 async function cmdInstall(args) {

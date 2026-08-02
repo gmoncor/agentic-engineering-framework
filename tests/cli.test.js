@@ -306,7 +306,7 @@ test('update --backend claude preserva intacto el contenido de ai_docs/core', ()
 
   assert.strictEqual(codigo, 0);
   assert.match(stdout, /Rutas actualizadas/);
-  assert.match(stdout, /Framework actualizado desde version/);
+  assert.match(stdout, /Framework actualizado a la version/);
   assert.strictEqual(
     fs.readFileSync(path.join(proyecto, 'ai_docs', 'core', 'test.md'), 'utf8'),
     'MIO SIN TOCAR',
