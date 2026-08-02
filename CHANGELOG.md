@@ -22,6 +22,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 - Instalacion granular del backend Claude Code: `install`/`update --backend claude` aceptan `--skip <nombre,nombre>` para omitir componentes opcionales concretos (asesor, auditar, bugfix, cleanup, testing, pr); los nombres no reconocidos avisan por stderr sin detener la instalacion, y el flag se ignora (con aviso) en los demas backends
 - Nota opcional de aislamiento de spec en un worktree dedicado (`git worktree add -b spec/<nombre> ../spec-<nombre> main`), documentada en el comando de implementacion de Claude Code (no se replica en el backend Gemini)
 - Paso opcional de limpieza de worktree y rama tras el merge de una PR revisada en un worktree dedicado, anadido a la plantilla de revision de PR
+- Nueva seccion "Ahorro de tokens" en README.md documentando palancas de reduccion de coste (herramienta rtk, codeburn, eleccion de modelo por defecto), con puntero desde CLAUDE.md
 
 ### Changed
 
