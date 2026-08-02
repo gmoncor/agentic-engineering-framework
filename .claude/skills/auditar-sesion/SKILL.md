@@ -5,7 +5,7 @@ description: "Se activa cuando el usuario pide metricas de la sesion, coste, dur
 
 Solo funciona en Claude Code: depende del formato nativo de transcripcion JSONL que este backend escribe en `~/.claude/projects/`. Ningun otro backend genera ese formato.
 
-1. Localiza el directorio de transcripciones del proyecto actual: `~/.claude/projects/<hash-del-proyecto>/`. Si no existe o esta vacio, informa "no se encontraron transcripciones" y detente.
+1. Localiza el directorio de transcripciones del proyecto actual: `~/.claude/projects/<ruta-saneada-del-proyecto>/` (la ruta absoluta de tu proyecto con las barras `/` sustituidas por guiones `-`). Si no existe o esta vacio, informa "no se encontraron transcripciones" y detente.
 2. Verifica que `.claude/workflows/lib/session-analyzer.js` existe antes de importarlo. Si falta, informa que la instalacion esta incompleta y detente.
 3. Si hay mas de 50 transcripciones, ofrece filtrar por fecha o por las N mas recientes antes de analizarlas todas.
 4. Para cada transcripcion seleccionada, usa `require('.claude/workflows/lib/session-analyzer.js')` y llama a `parseTranscript(ruta)` seguido de `computeMetrics(resultado)`. Si `parseTranscript` lanza para una transcripcion concreta, saltala y sigue con las demas.
