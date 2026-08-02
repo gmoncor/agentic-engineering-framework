@@ -27,7 +27,6 @@ const TASKS_SCHEMA = {
         properties: {
           path: { type: 'string' },
           titulo: { type: 'string' },
-          independiente: { type: 'boolean' },
           dependencias: { type: 'array', items: { type: 'string' } },
           // Lo que una task produce (API, tipo, export) y otra consume. Permite
           // detectar en la auditoria un consumidor sin productor: un error de plan.
@@ -44,7 +43,7 @@ const TASKS_SCHEMA = {
             }
           }
         },
-        required: ['path', 'titulo', 'independiente']
+        required: ['path', 'titulo']
       }
     }
   },
@@ -204,7 +203,7 @@ IMPORTANTE:
   otra CONSUME. Por contrato: tipo (produce|consume), nombre, archivo. El consumidor
   debe depender del productor.
 
-Retorna un JSON con spec_path y la lista de tasks creadas (path, titulo, independiente,
+Retorna un JSON con spec_path y la lista de tasks creadas (path, titulo,
 dependencias y contratos que produce o consume).
 `, { label: 'derivar-tasks', phase: 'Tasks', schema: TASKS_SCHEMA })
 

@@ -28,7 +28,7 @@ function proyecto(tasks) {
   for (const [nombre, archivos] of Object.entries(tasks)) {
     const rel = path.join('ai_docs', 'tasks', nombre);
     writeFile(path.join(raiz, rel), taskDoc(archivos));
-    lista.push({ path: rel, titulo: nombre, independiente: true });
+    lista.push({ path: rel, titulo: nombre });
   }
   return { raiz, tasks: lista };
 }
@@ -71,6 +71,17 @@ test('computeNiveles: las dependencias ordenan los niveles', () => {
   ]);
 
   assert.deepStrictEqual(niveles.map(w => w.map(t => t.path)), [['a'], ['b'], ['c']]);
+});
+
+test('computeNiveles: un plan viejo con el campo obsoleto "independiente" no rompe el ordenamiento', () => {
+  // Planes generados antes de retirar el campo del schema pueden traerlo todavia.
+  // El ordenamiento se basa solo en dependencias: el campo extra debe ignorarse.
+  const niveles = orq.computeNiveles([
+    { path: 'a', independiente: true, dependencias: [] },
+    { path: 'b', independiente: false, dependencias: ['a'] },
+  ]);
+
+  assert.deepStrictEqual(niveles.map(n => n.map(t => t.path)), [['a'], ['b']]);
 });
 
 test('computeNiveles: dependencia circular = error explicito, no nivel paralelo', () => {
