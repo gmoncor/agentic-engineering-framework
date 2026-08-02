@@ -168,6 +168,7 @@ test('enforce + subagente: al alcanzar block_at avisa (no deniega) con mensaje a
   const r = repetirSubagente(3, e.env); // block_at = 3
   assert.strictEqual(r.decision.decision, 'warn');
   assert.match(r.decision.reason, /busca un punto para hacer commit/);
+  assert.strictEqual(r.decision.code, 'TURN_BUDGET_BLOCK');
 });
 
 test('enforce + subagente: al alcanzar hard_stop_at avisa (no deniega) sin pedir esperar al usuario', () => {
@@ -176,6 +177,7 @@ test('enforce + subagente: al alcanzar hard_stop_at avisa (no deniega) sin pedir
   assert.strictEqual(r.decision.decision, 'warn');
   assert.doesNotMatch(r.decision.reason, /espera instrucciones del usuario/);
   assert.match(r.decision.reason, /commit/);
+  assert.strictEqual(r.decision.code, 'TURN_BUDGET_HARD_STOP');
 });
 
 test('enforce + hilo principal (sin agent_id/agent_type): sigue denegando igual que antes', () => {
@@ -183,6 +185,7 @@ test('enforce + hilo principal (sin agent_id/agent_type): sigue denegando igual 
   const r = repetir(4, e.env); // hard_stop_at = 4, payload sin senal de subagente
   assert.strictEqual(r.decision.decision, 'deny');
   assert.match(r.decision.reason, /INTERRUMPE y espera/);
+  assert.strictEqual(r.decision.code, 'TURN_BUDGET_HARD_STOP');
 });
 
 test('advisory + subagente: supera hard_stop_at -> avisa igual que un subagente ausente, nunca deniega', () => {
@@ -190,6 +193,7 @@ test('advisory + subagente: supera hard_stop_at -> avisa igual que un subagente 
   const r = repetirSubagente(4, e.env);
   assert.strictEqual(r.decision.decision, 'warn');
   assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision.code, 'TURN_BUDGET_HARD_STOP');
 });
 
 test('subagente sin session_id -> silencio, no rompe la deteccion de subagente', () => {
