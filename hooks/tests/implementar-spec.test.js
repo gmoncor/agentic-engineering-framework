@@ -39,36 +39,50 @@ function conDeps(tasks, deps) {
 
 // ── Ciclos ───────────────────────────────────────────────────────────────────
 
-test('computeWaves: tasks sin dependencias caen todas en el primer nivel', () => {
-  const waves = orq.computeWaves([
+test('computeNiveles: una dependencia compartida por dos tasks no las funde en el mismo nivel que su origen', () => {
+  // Grafo en diamante: 'a' es nivel 1; 'b' y 'c' dependen solo de 'a' y por tanto
+  // ambas caen en el nivel 2 (aunque no dependan entre si); 'd' depende de ambas y
+  // solo puede resolverse en el nivel 3, una vez completadas las dos.
+  const niveles = orq.computeNiveles([
+    { path: 'd', dependencias: ['b', 'c'] },
+    { path: 'b', dependencias: ['a'] },
+    { path: 'c', dependencias: ['a'] },
+    { path: 'a', dependencias: [] },
+  ]);
+
+  assert.deepStrictEqual(niveles.map(n => n.map(t => t.path).sort()), [['a'], ['b', 'c'], ['d']]);
+});
+
+test('computeNiveles: tasks sin dependencias caen todas en el primer nivel', () => {
+  const niveles = orq.computeNiveles([
     { path: 'a', dependencias: [] },
     { path: 'b' },
   ]);
 
-  assert.strictEqual(waves.length, 1);
-  assert.deepStrictEqual(waves[0].map(t => t.path), ['a', 'b']);
+  assert.strictEqual(niveles.length, 1);
+  assert.deepStrictEqual(niveles[0].map(t => t.path), ['a', 'b']);
 });
 
-test('computeWaves: las dependencias ordenan los niveles', () => {
-  const waves = orq.computeWaves([
+test('computeNiveles: las dependencias ordenan los niveles', () => {
+  const niveles = orq.computeNiveles([
     { path: 'c', dependencias: ['b'] },
     { path: 'a', dependencias: [] },
     { path: 'b', dependencias: ['a'] },
   ]);
 
-  assert.deepStrictEqual(waves.map(w => w.map(t => t.path)), [['a'], ['b'], ['c']]);
+  assert.deepStrictEqual(niveles.map(w => w.map(t => t.path)), [['a'], ['b'], ['c']]);
 });
 
-test('computeWaves: dependencia circular = error explicito, no oleada paralela', () => {
+test('computeNiveles: dependencia circular = error explicito, no nivel paralelo', () => {
   assert.throws(
-    () => orq.computeWaves([{ path: 'a', dependencias: ['b'] }, { path: 'b', dependencias: ['a'] }]),
+    () => orq.computeNiveles([{ path: 'a', dependencias: ['b'] }, { path: 'b', dependencias: ['a'] }]),
     /CICLO_DETECTADO.*a.*b/s
   );
 });
 
-test('computeWaves: ciclo de tres tasks nombra a las tres', () => {
+test('computeNiveles: ciclo de tres tasks nombra a las tres', () => {
   assert.throws(
-    () => orq.computeWaves([
+    () => orq.computeNiveles([
       { path: 'a', dependencias: ['c'] },
       { path: 'b', dependencias: ['a'] },
       { path: 'c', dependencias: ['b'] },
@@ -77,24 +91,24 @@ test('computeWaves: ciclo de tres tasks nombra a las tres', () => {
   );
 });
 
-test('computeWaves: una dependencia fuera de la spec, pero que existe, no es un ciclo', () => {
+test('computeNiveles: una dependencia fuera de la spec, pero que existe, no es un ciclo', () => {
   const p = proyecto({ '001_a.md': ['src/a.js'] });
   writeFile(path.join(p.raiz, 'ai_docs', 'tasks', '999_previa.md'), taskDoc(['src/previa.js']));
 
   const tasks = conDeps(p.tasks, { '001_a.md': ['ai_docs/tasks/999_previa.md'] });
-  const waves = orq.computeWaves(tasks, p.raiz);
+  const niveles = orq.computeNiveles(tasks, p.raiz);
 
-  assert.deepStrictEqual(waves.map(w => w.map(t => path.basename(t.path))), [['001_a.md']]);
+  assert.deepStrictEqual(niveles.map(w => w.map(t => path.basename(t.path))), [['001_a.md']]);
 });
 
-test('computeWaves: una dependencia cuyo documento no existe es un error, no una externa', () => {
+test('computeNiveles: una dependencia cuyo documento no existe es un error, no una externa', () => {
   const p = proyecto({ '001_a.md': ['src/a.js'] });
   const tasks = conDeps(p.tasks, { '001_a.md': ['ai_docs/tasks/002_typo.md'] });
 
   // Sin esta comprobacion la task se lanzaria como si no dependiera de nada: el
   // path mal escrito se descartaria en silencio por "externa ya satisfecha".
   assert.throws(
-    () => orq.computeWaves(tasks, p.raiz),
+    () => orq.computeNiveles(tasks, p.raiz),
     /DEPENDENCIA_INEXISTENTE.*002_typo\.md/s
   );
 });

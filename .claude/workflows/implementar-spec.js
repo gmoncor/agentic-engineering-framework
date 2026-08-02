@@ -165,11 +165,11 @@ if (taskList.length === 0) {
 }
 
 // Un ciclo de dependencias, o una dependencia cuyo documento no existe, no pueden
-// implementarse: son errores del plan. computeWaves valida ambos y agrupa las
+// implementarse: son errores del plan. computeNiveles valida ambos y agrupa las
 // tasks en niveles topologicos que el bucle recorre en orden.
-var waves
+var niveles
 try {
-  waves = orq.computeWaves(taskList, '.')
+  niveles = orq.computeNiveles(taskList, '.')
 } catch (e) {
   return { spec: specPath, error: e.message }
 }
@@ -179,9 +179,9 @@ for (var ci = 0; ci < contratosRotos.length; ci++) {
   log('AVISO contrato: ' + contratosRotos[ci])
 }
 
-log(taskList.length + ' tasks, ' + waves.length + ' nivel(es) de dependencia')
-for (var w = 0; w < waves.length; w++) {
-  log('Nivel ' + (w + 1) + ': ' + waves[w].map(function(t) { return t.titulo }).join(', '))
+log(taskList.length + ' tasks, ' + niveles.length + ' nivel(es) de dependencia')
+for (var w = 0; w < niveles.length; w++) {
+  log('Nivel ' + (w + 1) + ': ' + niveles[w].map(function(t) { return t.titulo }).join(', '))
 }
 
 // ── Fase 2: Implementacion (con revision por task antes del commit) ───────────
@@ -341,8 +341,8 @@ async function revisarYComitear(task, resultado) {
 // tras otra. Si una dependencia previa termino FALLIDA, la task se marca
 // bloqueada sin ejecutarla — y su propio FALLIDA arrastra a quien dependa de ella.
 const allResults = []
-for (const wave of waves) {
-  for (const task of wave) {
+for (const nivel of niveles) {
+  for (const task of nivel) {
     const depsFallidas = (task.dependencias || []).filter(function(d) {
       return allResults.some(function(r) { return r.task_path === d && r.resultado === 'FALLIDA' })
     })
@@ -413,7 +413,7 @@ return {
   spec: specPath,
   spec_titulo: discovery.spec_titulo,
   tasks_total: taskList.length,
-  niveles: waves.length,
+  niveles: niveles.length,
   tasks_completadas: completadas,
   tasks_fallidas: fallidas,
   implementaciones: allResults
