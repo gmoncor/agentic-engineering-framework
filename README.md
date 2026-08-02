@@ -469,6 +469,34 @@ El directorio `.cursor/rules/` contiene 43 reglas que replican el comportamiento
 
 ---
 
+## Personalizar: anadir tus propias skills o comandos
+
+`update` solo copia y refresca las rutas listadas explicitamente en
+`scripts/backend-manifest.json` — nunca borra nada que no este en ese manifiesto. Un
+archivo nuevo que tu anadas (por ejemplo `.claude/commands/mi-comando.md`) ya esta a
+salvo por construccion: `update` no lo toca, ni al traer una version nueva del
+framework ni en ninguna ejecucion futura.
+
+**Receta minima por backend:**
+
+- **Claude Code:** crea `.claude/skills/<tu-skill>/SKILL.md` con frontmatter `name` +
+  `description` (activacion automatica por el propio Claude Code), o
+  `.claude/commands/<tu-comando>.md` para un slash command explicito.
+- **Gemini CLI:** crea `skills/<tu-skill>/SKILL.md` (mismo frontmatter `name` +
+  `description`), o `commands/<tu-comando>.toml` con las claves `description` y
+  `prompt`.
+- **Codex:** crea `.agents/skills/<tu-skill>/SKILL.md` (carpeta compartida con
+  Antigravity, mismo frontmatter que arriba).
+- **Antigravity:** igual que Codex — `.agents/skills/<tu-skill>/SKILL.md`.
+
+**Evita reusar un nombre que ya exista en el manifiesto del framework** (por ejemplo
+`commit`, `bugfix` o `pr` en `.claude/skills/` o `.claude/commands/`): si el nombre
+coincide con una ruta que `scripts/backend-manifest.json` ya declara como propia del
+framework, `update` la trata como suya y la sobrescribe. Revisa
+`scripts/backend-manifest.json` si tienes dudas sobre que nombres estan reservados.
+
+---
+
 ## Actualizacion
 
 Para recibir cambios nuevos del framework:
