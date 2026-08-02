@@ -74,6 +74,19 @@ test('--help muestra uso con subcomandos y sale sin error', () => {
   assert.match(stdout, /install --backend/);
 });
 
+test('--help menciona el menu interactivo cuando se omite --backend', () => {
+  const { codigo, stdout } = ejecutar(['--help'], { cwd: dirTemporal() });
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /menu interactivo/i);
+});
+
+test('install --help muestra uso del subcomando y menciona el menu interactivo', () => {
+  const { codigo, stdout } = ejecutar(['install', '--help'], { cwd: dirTemporal() });
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /Uso: agentic-engineering-framework install/);
+  assert.match(stdout, /menu interactivo/i);
+});
+
 test('sin subcomando muestra uso y sale sin error', () => {
   const { codigo, stdout } = ejecutar([], { cwd: dirTemporal() });
   assert.strictEqual(codigo, 0);
@@ -253,6 +266,12 @@ test('update --help muestra uso del subcomando y sale sin error', () => {
   const { codigo, stdout } = ejecutar(['update', '--help'], { cwd: dirTemporal() });
   assert.strictEqual(codigo, 0);
   assert.match(stdout, /Uso: agentic-engineering-framework update/);
+});
+
+test('update --help menciona el menu interactivo cuando se omite --backend', () => {
+  const { codigo, stdout } = ejecutar(['update', '--help'], { cwd: dirTemporal() });
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /menu interactivo/i);
 });
 
 test('update con --backend invalido sale con codigo 1 y no copia nada', () => {
