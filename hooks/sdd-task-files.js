@@ -3,9 +3,8 @@
 /**
  * Formato de la seccion "Archivos afectados" de una task.
  *
- * SSOT del parser: lo consumen el guard de pipeline (bloquea escrituras que
- * ninguna task declara) y el workflow de implementacion (verifica que dos tasks
- * paralelas no escriben el mismo archivo). Un solo parser para los dos: si el
+ * SSOT del parser: lo consume el guard de pipeline (hooks/sdd-plan-state.js),
+ * que bloquea escrituras que ninguna task declara. Un solo parser: si el
  * formato de la tabla cambia, cambia en un unico sitio.
  *
  * Formato (dev_templates/tareas.md, Paso 3):
