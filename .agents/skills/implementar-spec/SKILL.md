@@ -15,19 +15,19 @@ Implementa TODAS las tasks de una spec APROBADA.
 
 ## Ejecucion
 
-- **Fan-out no bloqueante:** lanza cada task en cuanto SUS dependencias estan satisfechas, sin
-  esperar a las demas. Dos tasks solo corren a la vez si sus archivos son **disjuntos**; si se
-  solapan, se serializan. Un arbol de trabajo aparte solo hace falta para las tasks con efectos
-  secundarios en el sistema de ficheros (migraciones, instalacion de dependencias, contenedores).
-- Cada task la ejecuta un agente `implementador`, que sigue `ai_docs/dev_templates/implementar.md` y
-  cierra con su commit.
-- **Gate bloqueante unico:** cuando todas las tasks han terminado, el agente `revisor` hace la
-  revision adversarial del codigo (`ai_docs/dev_templates/revision_adversarial.md`). Su veredicto es
+- **Orden lineal:** implementa cada task en orden de dependencias, una tras otra: para cada task,
+  ejecuta un agente `implementador` que sigue `ai_docs/dev_templates/implementar.md`, revisa el
+  diff y commitea antes de pasar a la siguiente.
+- **Gate por task:** antes del commit, un agente aparte (contexto limpio) revisa ESE diff. Solo si
+  aprueba se emite la senal atada al diff y se crea el commit. Asi cada unidad se valida antes de
+  avanzar a la siguiente.
+- **Gate final:** cuando todas las tasks han terminado, el agente `revisor` hace la revision
+  adversarial del codigo completo (`ai_docs/dev_templates/revision_adversarial.md`). Su veredicto es
   lo unico que se espera para poder entregar.
 
 ## Resultado
 
-1. Orden de ejecucion: que tasks corrieron a la vez y cuales se serializaron (y por que archivo).
+1. Orden de ejecucion de las tasks y resultado de cada una.
 2. Detalle por task: archivos modificados, tests creados, commit realizado.
 3. Revision adversarial: veredicto, problemas criticos y menores.
 4. Hallazgos fuera de alcance, para tasks futuras.
