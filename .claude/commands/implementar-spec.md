@@ -32,6 +32,17 @@ Si el veredicto es **APROBADA**: indica que puede crear la PR con `/pr`.
 Si el veredicto es **NECESITA_CORRECCIONES**: detalla las correcciones y pregunta si quiere aplicarlas.
 Si el veredicto es **RECHAZADA**: detalla los problemas graves y recomienda revisar la planificacion.
 
+## Aislamiento por worktree (opcional, avanzado)
+
+Si quieres aislar esta spec de la rama principal, crea y entra en un worktree dedicado antes de lanzar este comando (requiere git 2.5+):
+
+```
+git worktree add -b spec/<descriptor> ../spec-<descriptor> main
+cd ../spec-<descriptor>
+```
+
+El paso `cd` es imprescindible: sin el, el comando se ejecuta sobre la rama principal en vez del worktree. El resto del pipeline (gates, senal de revision, tests, commits) funciona igual porque resuelve todas sus rutas relativas al directorio de trabajo actual. Al terminar, crea la PR desde la rama del worktree y limpia el worktree (ver plantilla de revision de PR).
+
 Solicitud del usuario:
 
 $ARGUMENTS
