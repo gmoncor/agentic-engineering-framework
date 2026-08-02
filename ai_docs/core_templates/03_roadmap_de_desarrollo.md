@@ -90,14 +90,14 @@ Basandose en las dependencias, agrupar specs en fases secuenciales:
 ```
 Fase 1: [Nombre descriptivo]
   - Spec A: [descripcion] — Va aqui porque [es prerequisito de X, Y]
-  - Spec B: [descripcion] — Independiente de A, se puede paralelizar
+  - Spec B: [descripcion] — Independiente de A, se puede paralelizar (entre personas del equipo, no dentro de la implementacion de una spec)
 
 Fase 2: [Nombre descriptivo]
   - Spec C: [descripcion] — Depende de Spec A (Fase 1)
   - Spec D: [descripcion] — Depende de Spec B (Fase 1)
 ```
 
-**Marcar specs independientes dentro de cada fase** — se pueden ejecutar en paralelo si el equipo lo permite.
+**Marcar specs independientes dentro de cada fase** — se pueden ejecutar en paralelo si el equipo lo permite (reparto de trabajo humano entre specs; la implementacion de cada spec sigue siendo lineal, tarea tras tarea).
 
 **Presentar este analisis al usuario y ESPERAR aprobacion antes de generar el roadmap detallado.**
 
@@ -231,4 +231,4 @@ Roadmap (fases + specs)
 5. **Si faltan documentos prerequisito**, pedir crearlos antes de empezar
 6. **Cada spec dice QUE lograr**, no COMO codificarlo
 7. **Roadmap lineal con fases secuenciales** — cada fase se completa antes de pasar a la siguiente
-8. **Tasks independientes se paralelizan** — no serializar lo que no tiene dependencias
+8. **Tasks independientes no dependen entre si**, pero se implementan igualmente una tras otra en el orden que el plan establezca — la independencia informa el orden, no habilita ejecucion simultanea
