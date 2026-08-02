@@ -140,6 +140,16 @@ Revisar la descripcion arriba. Creo la PR? (S/n)
 
 **ESPERAR aprobacion antes de crear la PR.**
 
+### Paso 6: Limpieza de worktree y rama (opcional)
+
+Si esta PR se trabajo en un worktree dedicado a la spec:
+
+1. Tras confirmar que la PR se mergeo, volver al directorio principal del proyecto
+2. Eliminar el worktree: `git worktree remove ../spec-<descriptor>`
+3. Borrar la rama local: `git branch -d spec/<descriptor>`
+
+Este paso evita acumular arboles de trabajo y ramas huerfanas en disco. Si no se uso un worktree dedicado, este paso no aplica.
+
 ---
 
 ## Reglas inquebrantables
