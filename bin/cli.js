@@ -54,19 +54,21 @@ Si se omite --backend, se muestra un menu interactivo para elegir (requiere term
 }
 
 function mostrarAyudaInstall() {
-  console.log(`Uso: agentic-engineering-framework install --backend <claude|gemini|codex|antigravity|all>
+  console.log(`Uso: agentic-engineering-framework install --backend <claude|gemini|codex|antigravity|all> [--skip <nombre,nombre>]
 
 Instala el framework en el directorio actual: copia las rutas del backend elegido y crea ai_docs/{core,tasks,refs}/ si no existen.
 
-Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).`);
+Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).
+--skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing, pr); solo aplica al backend claude.`);
 }
 
 function mostrarAyudaUpdate() {
-  console.log(`Uso: agentic-engineering-framework update --backend <claude|gemini|codex|antigravity|all>
+  console.log(`Uso: agentic-engineering-framework update --backend <claude|gemini|codex|antigravity|all> [--skip <nombre,nombre>]
 
 Actualiza el framework instalado en el directorio actual: copia las rutas del backend elegido sin tocar ai_docs/core/, ai_docs/tasks/ ni ai_docs/refs/.
 
-Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).`);
+Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).
+--skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing, pr); solo aplica al backend claude.`);
 }
 
 function obtenerVersion() {
@@ -90,11 +92,50 @@ function deduplicarRutas(rutas) {
   return resultado;
 }
 
-function rutasParaBackend(manifest, backend) {
-  const rutas = backend === 'all'
-    ? Object.values(manifest).flat()
-    : [...manifest.common, ...(manifest[backend] || [])];
-  return deduplicarRutas(rutas);
+/**
+ * Rutas de la seccion `claude` del manifiesto, aplicando `--skip` sobre los
+ * componentes opcionales. Formato antiguo (array plano) => retrocompatible:
+ * todo se trata como core, sin componentes omitibles.
+ */
+function resolverSeccionClaude(seccionClaude, skip) {
+  if (Array.isArray(seccionClaude)) return seccionClaude;
+  const nombresValidos = new Set(seccionClaude.optional.map(item => item.nombre));
+  for (const nombre of skip) {
+    if (!nombresValidos.has(nombre)) {
+      process.stderr.write(`componente '${nombre}' no reconocido, ignorado\n`);
+    }
+  }
+  const opcionalesActivas = seccionClaude.optional
+    .filter(item => !skip.has(item.nombre))
+    .flatMap(item => item.rutas);
+  return [...seccionClaude.core, ...opcionalesActivas];
+}
+
+function rutasParaBackend(manifest, backend, skip = new Set()) {
+  if (backend === 'all') {
+    const rutas = Object.entries(manifest).flatMap(([nombreBackend, seccion]) =>
+      nombreBackend === 'claude' ? resolverSeccionClaude(seccion, skip) : seccion,
+    );
+    return deduplicarRutas(rutas);
+  }
+  const seccionBackend = backend === 'claude' ? resolverSeccionClaude(manifest.claude, skip) : (manifest[backend] || []);
+  return deduplicarRutas([...manifest.common, ...seccionBackend]);
+}
+
+/** Lista de nombres de `--skip <nombre,nombre>`. Vacio o ausente => sin skip. */
+function parseSkip(args) {
+  const valor = parseFlag(args, '--skip');
+  if (!valor) return new Set();
+  return new Set(valor.split(',').map(nombre => nombre.trim()).filter(Boolean));
+}
+
+/** El flag --skip solo tiene efecto sobre el backend claude (solo o dentro de all). */
+function advertirSiSkipNoAplica(backend, skip) {
+  if (skip.size > 0 && backend !== 'claude' && backend !== 'all') {
+    process.stderr.write(
+      'la granularidad --skip solo aplica al backend claude en esta version; se ignora para los demas backends\n',
+    );
+  }
 }
 
 /** SHA-256 hexadecimal del contenido de un archivo, o null si no existe. */
@@ -218,10 +259,11 @@ async function resolverBackend(args) {
 }
 
 /** Copia las rutas del backend elegido segun el manifiesto. Comun a install y update. */
-function copiarRutasFramework(backend, opciones = {}) {
+function copiarRutasFramework(backend, skip, opciones = {}) {
   const manifestPath = path.join(PACKAGE_ROOT, 'scripts', 'backend-manifest.json');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  const rutas = rutasParaBackend(manifest, backend);
+  advertirSiSkipNoAplica(backend, skip);
+  const rutas = rutasParaBackend(manifest, backend, skip);
 
   const hashesInstalados = loadInstalledHashes(DEST);
   const saltadasPorEdicion = [];
@@ -315,14 +357,16 @@ function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version) 
 
 async function cmdInstall(args) {
   const backend = await resolverBackend(args);
-  const { copiadas, saltadas, creados, saltadasPorEdicion } = copiarRutasFramework(backend, { crearDirsUsuario: true });
+  const skip = parseSkip(args);
+  const { copiadas, saltadas, creados, saltadasPorEdicion } = copiarRutasFramework(backend, skip, { crearDirsUsuario: true });
   sincronizarMarcadores(backend, copiadas, obtenerVersion());
   reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion);
 }
 
 async function cmdUpdate(args) {
   const backend = await resolverBackend(args);
-  const { copiadas, saltadas, saltadasPorEdicion } = copiarRutasFramework(backend, { crearDirsUsuario: false });
+  const skip = parseSkip(args);
+  const { copiadas, saltadas, saltadasPorEdicion } = copiarRutasFramework(backend, skip, { crearDirsUsuario: false });
   const version = obtenerVersion();
   sincronizarMarcadores(backend, copiadas, version);
   reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version);

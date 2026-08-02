@@ -7,10 +7,36 @@
     "package.json",
     "CHANGELOG.md"
   ],
-  "claude": [
-    ".claude",
-    "CLAUDE.md"
-  ],
+  "claude": {
+    "core": [
+      ".claude/commands/spec.md",
+      ".claude/commands/tareas.md",
+      ".claude/commands/planificar.md",
+      ".claude/commands/implementar-spec.md",
+      ".claude/commands/implementar.md",
+      ".claude/commands/revision.md",
+      ".claude/commands/commit.md",
+      ".claude/commands/estado.md",
+      ".claude/agents/planificador.md",
+      ".claude/agents/implementador.md",
+      ".claude/agents/revisor.md",
+      ".claude/skills/commit",
+      ".claude/skills/diff",
+      ".claude/skills/revisar-tarea",
+      ".claude/skills/revision-adversarial",
+      ".claude/workflows",
+      ".claude/settings.json",
+      "CLAUDE.md"
+    ],
+    "optional": [
+      { "nombre": "asesor", "rutas": [".claude/commands/asesor.md", ".claude/agents/asesor.md"] },
+      { "nombre": "auditar", "rutas": [".claude/commands/auditar.md"] },
+      { "nombre": "bugfix", "rutas": [".claude/commands/bugfix.md", ".claude/skills/bugfix"] },
+      { "nombre": "cleanup", "rutas": [".claude/skills/cleanup"] },
+      { "nombre": "testing", "rutas": [".claude/skills/testing"] },
+      { "nombre": "pr", "rutas": [".claude/commands/pr.md", ".claude/skills/pr"] }
+    ]
+  },
   "gemini": [
     "agents",
     "commands",
