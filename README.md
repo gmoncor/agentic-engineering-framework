@@ -480,6 +480,13 @@ npx github:gmoncor/agentic-engineering-framework update --backend <claude|gemini
 Sobrescribe las rutas del backend elegido segun `scripts/backend-manifest.json`, sin tocar
 `ai_docs/core/`, `ai_docs/tasks/` ni `ai_docs/refs/` — esos son tuyos.
 
+**Archivos que se preservan si los personalizaste:** ademas de esas tres carpetas, `update`
+protege `hooks/config.json`, `.claude/settings.json`, `CLAUDE.md`, `GEMINI.md` y `AGENTS.md`.
+El CLI guarda un hash de cada uno la primera vez que los instala (en `.sdd-installed-hashes.json`,
+en la raiz de tu proyecto); si el contenido en disco ya no coincide con ese hash, salta la
+sobrescritura de ese archivo y avisa por stdout cuales omitio. Si no los tocaste, se actualizan
+con normalidad.
+
 **Gemini CLI (extension):**
 ```bash
 gemini extensions update sdd-framework
@@ -499,11 +506,13 @@ git pull origin main
 **Que se actualiza y que no:**
 | Se actualiza (del framework) | NO se toca (tuyo) |
 |------|------|
-| `.claude/` (comandos, agentes, skills, workflows) | `ai_docs/core/` (vision, planificacion, roadmap) |
+| `.claude/`\* (comandos, agentes, skills, workflows) | `ai_docs/core/` (vision, planificacion, roadmap) |
 | `hooks/` (enforcement) | `ai_docs/tasks/` (specs y tasks) |
 | `ai_docs/dev_templates/` (plantillas operativas) | `ai_docs/refs/` (referencias externas) |
 | `ai_docs/core_templates/` (plantillas de planificacion) | Codigo de tu proyecto |
-| `CLAUDE.md` / `GEMINI.md` (instrucciones sistema) | |
+| `CLAUDE.md` / `GEMINI.md`\* (instrucciones sistema) | |
+
+\* Solo si no los editaste; ver parrafo anterior.
 
 ---
 
