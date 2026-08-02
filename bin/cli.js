@@ -48,19 +48,25 @@ Subcomandos:
 
 Ejemplos:
   npx github:gmoncor/agentic-engineering-framework install --backend claude
-  npx github:gmoncor/agentic-engineering-framework update --backend claude`);
+  npx github:gmoncor/agentic-engineering-framework update --backend claude
+
+Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).`);
 }
 
 function mostrarAyudaInstall() {
   console.log(`Uso: agentic-engineering-framework install --backend <claude|gemini|codex|antigravity|all>
 
-Instala el framework en el directorio actual: copia las rutas del backend elegido y crea ai_docs/{core,tasks,refs}/ si no existen.`);
+Instala el framework en el directorio actual: copia las rutas del backend elegido y crea ai_docs/{core,tasks,refs}/ si no existen.
+
+Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).`);
 }
 
 function mostrarAyudaUpdate() {
   console.log(`Uso: agentic-engineering-framework update --backend <claude|gemini|codex|antigravity|all>
 
-Actualiza el framework instalado en el directorio actual: copia las rutas del backend elegido sin tocar ai_docs/core/, ai_docs/tasks/ ni ai_docs/refs/.`);
+Actualiza el framework instalado en el directorio actual: copia las rutas del backend elegido sin tocar ai_docs/core/, ai_docs/tasks/ ni ai_docs/refs/.
+
+Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).`);
 }
 
 function obtenerVersion() {
