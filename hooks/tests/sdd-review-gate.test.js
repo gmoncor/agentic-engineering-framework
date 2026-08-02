@@ -195,6 +195,24 @@ test('el emisor del flujo revisa por task y usa el mismo contrato de senal que e
   assert.doesNotMatch(workflow, /SDD-POST-IMPL/, 'el canal de la marca en el mensaje de commit se elimino');
 });
 
+test('la limitacion frente a falsificacion deliberada esta documentada en README y en el modulo de la senal', () => {
+  const readme = fs.readFileSync(path.resolve(HOOKS_DIR, '..', 'README.md'), 'utf8');
+  const signalSource = fs.readFileSync(path.join(HOOKS_DIR, 'sdd-review-signal.js'), 'utf8');
+
+  // README: la limitacion vive junto al escape hatch de SDD_GUARD_SKIP, no en
+  // una seccion aparte que nadie lea al configurar el gate.
+  const skipIdx = readme.indexOf('SDD_GUARD_SKIP=1');
+  const limiteIdx = readme.search(/falsificaci[oó]n deliberada/);
+  assert.notStrictEqual(skipIdx, -1, 'el parrafo de SDD_GUARD_SKIP debe seguir presente');
+  assert.notStrictEqual(limiteIdx, -1, 'README debe documentar la limitacion frente a falsificacion deliberada');
+  assert.ok(limiteIdx > skipIdx, 'la limitacion debe documentarse junto/despues del escape hatch, no antes');
+
+  // El docstring del modulo que emite/lee la senal debe declarar el mismo limite,
+  // para quien lea el codigo sin pasar por el README.
+  assert.match(signalSource, /falsificaci[oó]n deliberada/);
+  assert.match(signalSource, /LIMITE HONESTO/);
+});
+
 test('el hook solo se cablea donde el flujo emite la senal: Claude Code', () => {
   const settings = fs.readFileSync(path.resolve(HOOKS_DIR, '..', '.claude', 'settings.json'), 'utf8');
   const hooksJson = fs.readFileSync(path.join(HOOKS_DIR, 'hooks.json'), 'utf8');
