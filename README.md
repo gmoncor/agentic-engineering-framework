@@ -444,6 +444,8 @@ Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohibe esos mismos com
 
 **Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada ambos bloqueos (escrituras y revision) a aviso. Uso puntual para desbloquear una urgencia; si se queda fijo en el shell, el enforcement deja de existir.
 
+**Limite honesto de la senal de revision:** el hash que `sdd-review-gate.js` contrasta protege contra commits accidentales sin revision, no contra una falsificacion deliberada. El diff cacheado es visible para cualquier proceso con acceso a shell en la misma sesion, asi que ese mismo proceso puede recalcular el hash y escribir la senal directamente, sin haber pasado la revision adversarial. No es una limitacion cerrable mezclando un secreto en el hash: para que el gate lo verifique de forma mecanica, el secreto tendria que persistir en un sitio (disco, variable de entorno) igual de accesible para quien intenta falsificar la senal, lo que anula la proteccion que se buscaba anadir. La senal ata el diff a "hubo una revision", no autentica quien la emitio. Para una frontera dura frente a falsificacion deliberada, usa proteccion de rama y CI, no este hook.
+
 **Tests:** `npm test` ejecuta los tests de contrato de los hooks (Node >= 20, sin dependencias).
 
 **Modelo por defecto (Claude Code):** `.claude/settings.json` fija `"model": "claude-opus-4-8"`. Opus 4.8 es el modelo mas capaz para planificacion y revision exhaustiva. Override puntual con `/model sonnet` si necesitas velocidad en tareas mecanicas.

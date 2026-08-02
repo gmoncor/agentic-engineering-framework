@@ -20,6 +20,16 @@
 // El canal antiguo — una marca [SDD-POST-IMPL: <hash>] en el mensaje de commit —
 // se elimino: el mensaje de commit lo redacta el mismo agente al que el gate
 // interpela, asi que la marca era auto-emitible y no aportaba evidencia alguna.
+//
+// LIMITE HONESTO: esta senal protege contra commits accidentales sin revision, no
+// contra una falsificacion deliberada. El diff cacheado (`git diff --cached`) es
+// visible para cualquier proceso con acceso a shell en la sesion, que puede
+// recalcular el mismo hash y llamar a writeSignal directamente. Mezclar un
+// secreto en hashDiff no cierra el gap de forma mecanica: para que el gate lo
+// verifique sin compartir estado con el emisor, el secreto tendria que persistir
+// en un sitio (disco, env) igual de accesible para quien intenta falsificar la
+// senal, lo que anula la proteccion. Ver README.md, seccion Hooks, para el
+// contrato completo y la alternativa (proteccion de rama + CI).
 
 const crypto = require('crypto');
 const fs = require('fs');
