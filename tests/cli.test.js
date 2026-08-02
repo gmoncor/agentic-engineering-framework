@@ -16,7 +16,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
-const { execFileSync } = require('node:child_process');
+const { spawnSync } = require('node:child_process');
 
 const RAIZ = path.join(__dirname, '..');
 const CLI = path.join(RAIZ, 'bin', 'cli.js');
@@ -42,22 +42,19 @@ function crearPaqueteFixture(manifest, archivos = {}) {
   return dir;
 }
 
+/** Captura stdout/stderr siempre (exito o error), a diferencia de execFileSync. */
 function ejecutar(args, opts = {}) {
-  try {
-    const stdout = execFileSync('node', [CLI, ...args], {
-      cwd: opts.cwd,
-      env: Object.assign({}, process.env, opts.env),
-      input: opts.input,
-      encoding: 'utf8',
-    });
-    return { codigo: 0, stdout };
-  } catch (err) {
-    return {
-      codigo: err.status,
-      stdout: err.stdout ? err.stdout.toString() : '',
-      stderr: err.stderr ? err.stderr.toString() : '',
-    };
-  }
+  const resultado = spawnSync('node', [CLI, ...args], {
+    cwd: opts.cwd,
+    env: Object.assign({}, process.env, opts.env),
+    input: opts.input,
+    encoding: 'utf8',
+  });
+  return {
+    codigo: resultado.status,
+    stdout: resultado.stdout || '',
+    stderr: resultado.stderr || '',
+  };
 }
 
 test('existe, es ejecutable y usa shebang node', () => {
@@ -620,4 +617,117 @@ test('el marcador se sustituye en todas sus ocurrencias si aparece mas de una ve
   const ocurrencias = contenido.match(/<!-- sdd-framework: 9\.9\.9 -->/g) || [];
   assert.strictEqual(ocurrencias.length, 2, 'las dos ocurrencias del marcador deben actualizarse');
   assert.doesNotMatch(contenido, /1\.0\.0/);
+});
+
+/** Fixture con la seccion `claude` en formato core/optional para los tests de granularidad. */
+function crearPaqueteGranular() {
+  return crearPaqueteFixture(
+    {
+      common: [],
+      claude: {
+        core: ['.claude/commands/spec.md', '.claude/commands/commit.md'],
+        optional: [
+          { nombre: 'asesor', rutas: ['.claude/commands/asesor.md', '.claude/agents/asesor.md'] },
+          { nombre: 'bugfix', rutas: ['.claude/commands/bugfix.md'] },
+        ],
+      },
+      gemini: ['GEMINI.md'],
+    },
+    {
+      '.claude/commands/spec.md': 'spec',
+      '.claude/commands/commit.md': 'commit',
+      '.claude/commands/asesor.md': 'asesor cmd',
+      '.claude/agents/asesor.md': 'asesor agente',
+      '.claude/commands/bugfix.md': 'bugfix',
+      'GEMINI.md': 'gemini',
+    },
+  );
+}
+
+test('install --backend claude sin --skip copia componentes core y opcionales', () => {
+  const paquete = crearPaqueteGranular();
+  const proyecto = dirTemporal();
+  const { codigo } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'commands', 'spec.md')));
+  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'commands', 'commit.md')));
+  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'commands', 'asesor.md')));
+  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'agents', 'asesor.md')));
+  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'commands', 'bugfix.md')));
+});
+
+test('install --backend claude --skip asesor,bugfix omite esos componentes y copia el resto', () => {
+  const paquete = crearPaqueteGranular();
+  const proyecto = dirTemporal();
+  const { codigo, stderr } = ejecutar(['install', '--backend', 'claude', '--skip', 'asesor,bugfix'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'commands', 'spec.md')));
+  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'commands', 'commit.md')));
+  assert.ok(!fs.existsSync(path.join(proyecto, '.claude', 'commands', 'asesor.md')));
+  assert.ok(!fs.existsSync(path.join(proyecto, '.claude', 'agents', 'asesor.md')));
+  assert.ok(!fs.existsSync(path.join(proyecto, '.claude', 'commands', 'bugfix.md')));
+  assert.strictEqual(stderr, '');
+});
+
+test('install --backend gemini --skip asesor avisa y copia todo (skip solo aplica a claude)', () => {
+  const paquete = crearPaqueteGranular();
+  const proyecto = dirTemporal();
+  const { codigo, stderr } = ejecutar(['install', '--backend', 'gemini', '--skip', 'asesor'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stderr, /--skip solo aplica al backend claude/);
+  assert.ok(fs.existsSync(path.join(proyecto, 'GEMINI.md')));
+});
+
+test('install --backend claude --skip con nombre invalido avisa y continua sin fallar', () => {
+  const paquete = crearPaqueteGranular();
+  const proyecto = dirTemporal();
+  const { codigo, stderr } = ejecutar(['install', '--backend', 'claude', '--skip', 'inexistente'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stderr, /componente 'inexistente' no reconocido, ignorado/);
+  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'commands', 'spec.md')));
+  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'commands', 'asesor.md')));
+});
+
+test('install --backend claude --skip "" trata como sin skip (copia todo, sin error)', () => {
+  const paquete = crearPaqueteGranular();
+  const proyecto = dirTemporal();
+  const { codigo } = ejecutar(['install', '--backend', 'claude', '--skip', ''], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'commands', 'asesor.md')));
+});
+
+test('install --backend claude con manifiesto en formato antiguo (array plano) trata todo como core', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['.claude/commands/spec.md'] },
+    { '.claude/commands/spec.md': 'spec' },
+  );
+  const proyecto = dirTemporal();
+  const { codigo, stderr } = ejecutar(['install', '--backend', 'claude', '--skip', 'spec'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(stderr, '');
+  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'commands', 'spec.md')));
 });
