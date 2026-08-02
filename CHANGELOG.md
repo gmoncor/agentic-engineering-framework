@@ -23,6 +23,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 - Nota opcional de aislamiento de spec en un worktree dedicado (`git worktree add -b spec/<nombre> ../spec-<nombre> main`), documentada en el comando de implementacion de Claude Code (no se replica en el backend Gemini)
 - Paso opcional de limpieza de worktree y rama tras el merge de una PR revisada en un worktree dedicado, anadido a la plantilla de revision de PR
 - Nueva seccion "Ahorro de tokens" en README.md documentando palancas de reduccion de coste (herramienta rtk, codeburn, eleccion de modelo por defecto), con puntero desde CLAUDE.md
+- Nota al inicio de `CONTRIBUTING.md` aclarando que el documento cubre el flujo de contribucion upstream (fork, PR, canario de paridad), y que adaptar el framework como base de un proyecto independiente no-upstream no requiere seguir ninguna de sus reglas: basta con el `git init` de la seccion de instalacion del README y la seccion "Personalizar: anadir tus propias skills o comandos"
 
 ### Changed
 

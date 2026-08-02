@@ -2,6 +2,8 @@
 
 Gracias por tu interes en mejorar el framework. Este documento explica como reportar problemas, proponer cambios y abrir una Pull Request.
 
+> **Todo lo que sigue aplica a contribuir cambios de vuelta a este repositorio.** Si tu objetivo es distinto — adaptar el framework como base de un proyecto independiente que no vas a subir aqui — no necesitas nada de esto. Sigue las instrucciones de `git init` de la seccion "Instalacion" del `README.md` y la seccion **"Personalizar: anadir tus propias skills o comandos"**. En ese caso ninguna de las reglas de esta guia (alcance de PR, canario de paridad entre backends, plantillas de issue) te aplica: es tu copia, la ajustas como quieras.
+
 ## Antes de empezar
 
 - **Node.js >= 20** — requerido por los hooks (`hooks/*.js`). Verifica con `node --version`
