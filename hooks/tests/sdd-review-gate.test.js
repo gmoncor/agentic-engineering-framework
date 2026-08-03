@@ -77,6 +77,14 @@ test('sin senal, con diff staged: DENIEGA el commit', () => {
   assert.match(r.decision.reason, /no consta revisado/);
 });
 
+test('sin senal: el mensaje de bloqueo nombra /implementar-spec como via que emite la senal', () => {
+  const env = entorno(CONFIG_ON, { SDD_STAGED_DIFF: DIFF });
+
+  const r = runHook(HOOK, commit('feat: entregar el modulo de pagos'), env);
+
+  assert.match(r.decision.reason, /\/implementar-spec/);
+});
+
 test('senal que NO ata el diff (el codigo cambio tras revisarse): DENIEGA', () => {
   const env = entorno(CONFIG_ON, { SDD_STAGED_DIFF: DIFF });
   emitirSenal(env, 'diff viejo, distinto del que se va a commitear');

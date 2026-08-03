@@ -44,12 +44,12 @@ const SHELL_TOOLS = new Set(['Bash', 'run_command', 'shell']);
 const GUARDED_CMD_RE = /\bgit\s+(commit|merge)\b/;
 
 const SIN_SENAL = 'SDD: este diff no consta revisado. La revision adversarial por task debe '
-  + 'pasar ANTES del commit y emitir su senal. Ejecuta el flujo de implementacion (revision '
-  + 'por task) o pasa la revision adversarial sobre este diff antes de commitear.';
+  + 'pasar ANTES del commit y emitir su senal. Usa /implementar-spec, que emite la senal de '
+  + 'revision automaticamente. Los comandos /implementar y /revision manuales no emiten esta senal.';
 
 const HASH_NO_ATA = 'SDD: la revision registrada no corresponde al diff que vas a commitear '
-  + '(el codigo cambio despues de revisarse). Vuelve a pasar la revision adversarial sobre el '
-  + 'diff actual antes de commitear.';
+  + '(el codigo cambio despues de revisarse). Usa /implementar-spec, que emite la senal de '
+  + 'revision automaticamente sobre el diff actual antes de commitear.';
 
 const SIN_DIFF = 'SDD: no hay diff cacheado que contrastar (nada staged, o git no disponible). '
   + 'Este aviso no bloquea: sin el diff no se puede verificar la revision. Haz git add de lo que '
