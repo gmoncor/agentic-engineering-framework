@@ -1,0 +1,46 @@
+{
+  "_readme": "SSOT del mapeo de acciones canonicas a eventos y matchers nativos por backend. tests/hook-mapping-parity.test.js compara este archivo contra los cuatro ficheros de wiring reales (.claude/settings.json, hooks/hooks.json, .codex/hooks.json, .agents/hooks.json) y falla si divergen. Al anadir o modificar un hook, actualiza primero esta tabla.",
+  "events": {
+    "claude": "PreToolUse",
+    "gemini": "BeforeTool",
+    "codex": "PreToolUse",
+    "antigravity": "PreToolUse"
+  },
+  "actions": {
+    "pipeline-guard": {
+      "claude": { "matcher": "Write|Edit", "hook_file": "sdd-pipeline-guard", "wired": true },
+      "gemini": { "matcher": "write_file|edit_file", "hook_file": "sdd-pipeline-guard", "wired": true },
+      "codex": { "matcher": "apply_patch", "hook_file": "sdd-pipeline-guard", "wired": true },
+      "antigravity": { "matcher": "write_to_file|replace_file_content|multi_replace_file_content|create_file", "hook_file": "sdd-pipeline-guard", "wired": true }
+    },
+    "commit-guard": {
+      "claude": { "matcher": "Bash", "hook_file": "sdd-commit-guard", "wired": true },
+      "gemini": { "matcher": "run_command", "hook_file": "sdd-commit-guard", "wired": true },
+      "codex": { "matcher": "shell", "hook_file": "sdd-commit-guard", "wired": true },
+      "antigravity": { "matcher": "run_command", "hook_file": "sdd-commit-guard", "wired": true }
+    },
+    "read-before-edit": {
+      "claude": { "matcher": "Read|Write|Edit", "hook_file": "sdd-read-before-edit", "wired": true },
+      "gemini": { "matcher": "read_file|write_file|edit_file", "hook_file": "sdd-read-before-edit", "wired": true },
+      "codex": { "matcher": null, "hook_file": "sdd-read-before-edit", "wired": false },
+      "antigravity": { "matcher": "read_file|view_file|write_to_file|replace_file_content|multi_replace_file_content|create_file", "hook_file": "sdd-read-before-edit", "wired": true }
+    },
+    "turn-budget": {
+      "claude": { "matcher": "*", "hook_file": "sdd-turn-budget", "wired": true },
+      "gemini": { "matcher": "read_file|write_file|edit_file|run_command", "hook_file": "sdd-turn-budget", "wired": true },
+      "codex": { "matcher": null, "hook_file": "sdd-turn-budget", "wired": false },
+      "antigravity": { "matcher": "read_file|view_file|write_to_file|replace_file_content|multi_replace_file_content|create_file|run_command", "hook_file": "sdd-turn-budget", "wired": true }
+    },
+    "review-gate": {
+      "claude": { "matcher": "Bash", "hook_file": "sdd-review-gate", "wired": true },
+      "gemini": { "matcher": null, "hook_file": "sdd-review-gate", "wired": false },
+      "codex": { "matcher": null, "hook_file": "sdd-review-gate", "wired": false },
+      "antigravity": { "matcher": null, "hook_file": "sdd-review-gate", "wired": false }
+    }
+  },
+  "notes": {
+    "read-before-edit": "Codex no cablea este aviso: carece de un evento de lectura equivalente a read_file en los demas backends para alimentar el rastreador, y el refuerzo duro para Codex vive en .codex/rules/.",
+    "turn-budget": "Codex no cablea este aviso: el conteo de acciones sin commit depende de un session_id persistente que este backend no expone de la misma forma que los demas.",
+    "review-gate": "Solo Claude Code cablea este aviso: la senal que lo silencia la emite el motor de workflows de comandos/agentes, que solo existe en ese backend. Cablearlo donde no hay emisor daria un aviso que nada puede silenciar por una via legitima."
+  }
+}
