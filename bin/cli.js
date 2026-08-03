@@ -35,7 +35,7 @@ const ARCHIVO_CONTEXTO_POR_BACKEND = {
 // Archivos que el usuario personaliza tras instalar (umbrales, permisos,
 // hooks propios) y que `update` no debe pisar si detecta ediciones locales.
 const ARCHIVO_SIDECAR_HASHES = '.sdd-installed-hashes.json';
-const ARCHIVOS_PROTEGIDOS = ['hooks/config.json', '.claude/settings.json', 'CLAUDE.md', 'GEMINI.md', 'AGENTS.md'];
+const ARCHIVOS_PROTEGIDOS = ['hooks/config.json', '.claude/settings.json', 'CLAUDE.md', 'GEMINI.md', 'AGENTS.md', '.gitignore'];
 
 function mostrarAyuda() {
   console.log(`Uso: agentic-engineering-framework <subcomando> [opciones]
@@ -69,7 +69,7 @@ Actualiza el framework instalado en el directorio actual: copia las rutas del ba
 
 Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).
 --skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing, pr); solo aplica al backend claude.
---reset-protected sobrescribe archivos protegidos con ediciones locales (hooks/config.json, .claude/settings.json, CLAUDE.md, GEMINI.md, AGENTS.md) y refresca el sidecar de hashes al final.`);
+--reset-protected sobrescribe archivos protegidos con ediciones locales (hooks/config.json, .claude/settings.json, CLAUDE.md, GEMINI.md, AGENTS.md, .gitignore) y refresca el sidecar de hashes al final.`);
 }
 
 function obtenerVersion() {

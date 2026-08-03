@@ -25,6 +25,11 @@ ai_docs/refs/*
 .worktrees/
 
 # ===========================================
+# Framework CLI (generados por install/update)
+# ===========================================
+.sdd-installed-hashes.json
+
+# ===========================================
 # Archivos sensibles
 # ===========================================
 .env
