@@ -890,3 +890,65 @@ test('install --backend claude con manifiesto en formato antiguo (array plano) t
   assert.strictEqual(stderr, '');
   assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'commands', 'spec.md')));
 });
+
+test('install --dry-run --backend claude reporta preview y no crea ningun fichero en el destino', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: ['.claude', 'CLAUDE.md'] },
+    {
+      'hooks/sdd-commit-guard.js': 'hook',
+      '.claude/agents/planificador.md': 'contenido agente',
+      'CLAUDE.md': 'contexto',
+    },
+  );
+  const proyecto = dirTemporal();
+  const { codigo, stdout } = ejecutar(['install', '--backend', 'claude', '--dry-run'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /\[DRY-RUN\]/);
+  assert.match(stdout, /Rutas copiadas/);
+  assert.ok(!fs.existsSync(path.join(proyecto, 'CLAUDE.md')), 'no debe escribir ficheros en dry-run');
+  assert.ok(!fs.existsSync(path.join(proyecto, 'hooks')), 'no debe crear directorios en dry-run');
+  assert.ok(!fs.existsSync(path.join(proyecto, '.claude')), 'no debe crear directorios en dry-run');
+  assert.ok(!fs.existsSync(path.join(proyecto, 'ai_docs')), 'no debe crear ai_docs/ en dry-run');
+  assert.ok(
+    !fs.existsSync(path.join(proyecto, '.sdd-installed-hashes.json')),
+    'no debe persistir el sidecar de hashes en dry-run',
+  );
+});
+
+test('update --dry-run reporta un archivo protegido editado localmente sin sobrescribirlo', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+
+  const instalacion = ejecutar(['install', '--backend', 'claude'], opts);
+  assert.strictEqual(instalacion.codigo, 0);
+
+  // El usuario personaliza CLAUDE.md localmente tras instalar.
+  const contenidoLocal = 'contexto editado a mano';
+  fs.writeFileSync(path.join(proyecto, 'CLAUDE.md'), contenidoLocal);
+  // El framework publica una nueva version del mismo archivo.
+  fs.writeFileSync(path.join(paquete, 'CLAUDE.md'), 'contexto nuevo del framework');
+  const hashesAntes = fs.readFileSync(path.join(proyecto, '.sdd-installed-hashes.json'), 'utf8');
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude', '--dry-run'], opts);
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /\[DRY-RUN\] saltaria \(editada localmente\): CLAUDE\.md/);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'),
+    contenidoLocal,
+    'dry-run no debe sobrescribir un archivo protegido con ediciones locales',
+  );
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, '.sdd-installed-hashes.json'), 'utf8'),
+    hashesAntes,
+    'dry-run no debe modificar el sidecar de hashes',
+  );
+});

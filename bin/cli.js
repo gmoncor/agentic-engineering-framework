@@ -54,22 +54,24 @@ Si se omite --backend, se muestra un menu interactivo para elegir (requiere term
 }
 
 function mostrarAyudaInstall() {
-  console.log(`Uso: agentic-engineering-framework install --backend <claude|gemini|codex|antigravity|all> [--skip <nombre,nombre>]
+  console.log(`Uso: agentic-engineering-framework install --backend <claude|gemini|codex|antigravity|all> [--skip <nombre,nombre>] [--dry-run]
 
 Instala el framework en el directorio actual: copia las rutas del backend elegido y crea ai_docs/{core,tasks,refs}/ si no existen.
 
 Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).
---skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing, pr); solo aplica al backend claude.`);
+--skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing, pr); solo aplica al backend claude.
+--dry-run muestra que ficheros se copiarian/saltarian sin escribir nada en disco.`);
 }
 
 function mostrarAyudaUpdate() {
-  console.log(`Uso: agentic-engineering-framework update --backend <claude|gemini|codex|antigravity|all> [--skip <nombre,nombre>] [--reset-protected]
+  console.log(`Uso: agentic-engineering-framework update --backend <claude|gemini|codex|antigravity|all> [--skip <nombre,nombre>] [--reset-protected] [--dry-run]
 
 Actualiza el framework instalado en el directorio actual: copia las rutas del backend elegido sin tocar ai_docs/core/, ai_docs/tasks/ ni ai_docs/refs/.
 
 Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).
 --skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing, pr); solo aplica al backend claude.
---reset-protected sobrescribe archivos protegidos con ediciones locales (hooks/config.json, .claude/settings.json, CLAUDE.md, GEMINI.md, AGENTS.md, .gitignore) y refresca el sidecar de hashes al final.`);
+--reset-protected sobrescribe archivos protegidos con ediciones locales (hooks/config.json, .claude/settings.json, CLAUDE.md, GEMINI.md, AGENTS.md, .gitignore) y refresca el sidecar de hashes al final.
+--dry-run muestra que ficheros se copiarian/saltarian sin escribir nada en disco.`);
 }
 
 function obtenerVersion() {
@@ -223,21 +225,36 @@ function editadaLocalmente(rutaRelativa, hashesInstalados) {
  * Copia una ruta del manifiesto, saltando los archivos protegidos con
  * ediciones locales. Con `resetProtected` la proteccion se ignora por
  * completo para este run (el usuario eligio explicitamente sobrescribir).
+ * Con `dryRun` no se escribe nada en disco: se reporta por consola lo que
+ * habria pasado y se retorna el mismo resultado que produciria el run real.
  */
-function copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, resetProtected) {
+function copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, resetProtected, dryRun) {
   const origen = path.join(PACKAGE_ROOT, ruta);
   if (!fs.existsSync(origen)) {
     return { ruta, copiada: false };
   }
   const destino = path.join(DEST, ruta);
-  fs.mkdirSync(path.dirname(destino), { recursive: true });
 
   const editadas = resetProtected
     ? []
     : protegidasEn(ruta).filter(protegida => editadaLocalmente(protegida, hashesInstalados));
   editadas.forEach(protegida => saltadasPorEdicion.push(protegida));
 
-  if (fs.statSync(origen).isDirectory()) {
+  const esDirectorio = fs.statSync(origen).isDirectory();
+
+  if (!esDirectorio && editadas.includes(ruta)) {
+    if (dryRun) console.log(`[DRY-RUN] saltaria (editada localmente): ${ruta}`);
+    return { ruta, copiada: false };
+  }
+
+  if (dryRun) {
+    const etiqueta = fs.existsSync(destino) ? 'copiaria' : 'nuevo';
+    console.log(`[DRY-RUN] ${etiqueta}: ${ruta}`);
+    return { ruta, copiada: true };
+  }
+
+  fs.mkdirSync(path.dirname(destino), { recursive: true });
+  if (esDirectorio) {
     fs.cpSync(origen, destino, {
       recursive: true,
       filter: origenEntrada => {
@@ -248,9 +265,6 @@ function copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, resetProtected) 
     return { ruta, copiada: true };
   }
 
-  if (editadas.includes(ruta)) {
-    return { ruta, copiada: false };
-  }
   fs.copyFileSync(origen, destino);
   return { ruta, copiada: true };
 }
@@ -307,7 +321,11 @@ async function resolverBackend(args) {
   return backend;
 }
 
-/** Copia las rutas del backend elegido segun el manifiesto. Comun a install y update. */
+/**
+ * Copia las rutas del backend elegido segun el manifiesto. Comun a install y
+ * update. Con `opciones.dryRun` no escribe nada en disco (ni copias ni
+ * directorios de usuario ni sidecar de hashes): solo calcula y reporta.
+ */
 function copiarRutasFramework(backend, skip, opciones = {}) {
   const manifestPath = path.join(PACKAGE_ROOT, 'scripts', 'backend-manifest.json');
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
@@ -316,14 +334,18 @@ function copiarRutasFramework(backend, skip, opciones = {}) {
 
   const hashesInstalados = loadInstalledHashes(DEST);
   const saltadasPorEdicion = [];
-  const resultados = rutas.map(ruta => copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, opciones.resetProtected));
+  const resultados = rutas.map(ruta =>
+    copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, opciones.resetProtected, opciones.dryRun),
+  );
   const copiadas = resultados.filter(r => r.copiada).map(r => r.ruta);
   const saltadas = resultados
     .filter(r => !r.copiada && !saltadasPorEdicion.includes(r.ruta))
     .map(r => r.ruta);
-  const creados = opciones.crearDirsUsuario ? crearDirectoriosDelProyecto() : [];
+  const creados = opciones.crearDirsUsuario && !opciones.dryRun ? crearDirectoriosDelProyecto() : [];
 
-  actualizarHashesInstalados(hashesInstalados, rutas, saltadasPorEdicion);
+  if (!opciones.dryRun) {
+    actualizarHashesInstalados(hashesInstalados, rutas, saltadasPorEdicion);
+  }
 
   return { copiadas, saltadas, creados, saltadasPorEdicion };
 }
@@ -407,9 +429,13 @@ function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version) 
 async function cmdInstall(args) {
   const backend = await resolverBackend(args);
   const skip = parseSkip(args);
+  const dryRun = args.includes('--dry-run');
   advertirSiBackendEquivocado(backend);
-  const { copiadas, saltadas, creados, saltadasPorEdicion } = copiarRutasFramework(backend, skip, { crearDirsUsuario: true });
-  sincronizarMarcadores(backend, copiadas, obtenerVersion());
+  const { copiadas, saltadas, creados, saltadasPorEdicion } = copiarRutasFramework(backend, skip, {
+    crearDirsUsuario: true,
+    dryRun,
+  });
+  if (!dryRun) sincronizarMarcadores(backend, copiadas, obtenerVersion());
   reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion);
 }
 
@@ -417,13 +443,15 @@ async function cmdUpdate(args) {
   const backend = await resolverBackend(args);
   const skip = parseSkip(args);
   const resetProtected = args.includes('--reset-protected');
+  const dryRun = args.includes('--dry-run');
   advertirSiBackendEquivocado(backend);
   const { copiadas, saltadas, saltadasPorEdicion } = copiarRutasFramework(backend, skip, {
     crearDirsUsuario: false,
     resetProtected,
+    dryRun,
   });
   const version = obtenerVersion();
-  sincronizarMarcadores(backend, copiadas, version);
+  if (!dryRun) sincronizarMarcadores(backend, copiadas, version);
   reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version);
 }
 
