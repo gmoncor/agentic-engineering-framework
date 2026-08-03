@@ -9,6 +9,7 @@
  */
 
 const { spawnSync } = require('child_process');
+const fs = require('fs');
 
 const VALID_TYPES = ['feat', 'fix', 'update', 'refactor', 'create', 'optimize', 'remove', 'rename', 'docs', 'test', 'style', 'chore'];
 const SUBJECT_MAX_LEN = 72;
@@ -47,6 +48,35 @@ function isGhPr(cmd) {
   return GH_PR_RE.test(cmd);
 }
 
+/**
+ * Tasks de convergencia (NNN_convergencia_*.md) con Estado: PENDIENTE en ai_docs/tasks/.
+ *
+ * La garantia de convergencia deja estas tasks como rastro de brechas entre la spec y el codigo
+ * final; sin este chequeo nada impide abrir una PR ignorandolas. Silencioso ante cualquier fallo
+ * de lectura: un proyecto sin ai_docs/tasks/ (o sin permisos sobre un fichero puntual) no es motivo
+ * para bloquear ni ensuciar stderr.
+ */
+function pendingConvergenceTasks() {
+  let entries;
+  try {
+    entries = fs.readdirSync('ai_docs/tasks');
+  } catch {
+    return [];
+  }
+
+  return entries
+    .filter(f => /_convergencia_.*\.md$/.test(f))
+    .map(f => 'ai_docs/tasks/' + f)
+    .filter(taskPath => {
+      try {
+        const head = fs.readFileSync(taskPath, 'utf8').split('\n').slice(0, 10).join('\n');
+        return /Estado:\s*PENDIENTE/.test(head);
+      } catch {
+        return false;
+      }
+    });
+}
+
 /** Avisos (no bloqueantes) sobre un comando git commit / gh pr. Lista vacia = nada que decir. */
 function commitWarnings(cmd) {
   const warnings = [];
@@ -65,6 +95,12 @@ function commitWarnings(cmd) {
     const body = extractPrBody(cmd);
     if (body && FORBIDDEN_COAUTHOR_RE.test(body)) {
       warnings.push('PR_COAUTHOR_FORBIDDEN: Co-Authored-By con nombre de IA en body del PR — eliminar');
+    }
+
+    const pending = pendingConvergenceTasks();
+    if (pending.length > 0) {
+      warnings.push('CONVERGENCE_PENDING: hay tasks de convergencia sin resolver: '
+        + pending.join(', ') + ' -- revisa antes de abrir la PR');
     }
   }
 
@@ -152,6 +188,7 @@ module.exports = {
   usesNoVerify,
   isGitCommit,
   isGhPr,
+  pendingConvergenceTasks,
   commitWarnings,
   extractCommitMessage,
   extractPrBody,

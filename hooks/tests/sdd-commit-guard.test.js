@@ -8,7 +8,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { runHook } = require('./helpers');
+const path = require('path');
+const { runHook, tempDir, writeFile } = require('./helpers');
+const { commitWarnings } = require('../sdd-commit-rules');
 
 const HOOK = 'sdd-commit-guard.js';
 
@@ -119,4 +121,44 @@ test('commit interactivo (sin -m) -> no puede leer el cuerpo, no dice nada', () 
 
   assert.strictEqual(r.code, 0);
   assert.strictEqual(r.decision, null);
+});
+
+// pendingConvergenceTasks() lee de un path relativo (ai_docs/tasks/), asi que estos tres
+// tests se ejecutan in-process (require directo, no runHook) para poder controlar el cwd.
+const PR_CMD = 'gh pr create --title "x" --body "y"';
+
+function withCwd(dir, fn) {
+  const previo = process.cwd();
+  process.chdir(dir);
+  try {
+    return fn();
+  } finally {
+    process.chdir(previo);
+  }
+}
+
+test('gh pr create con task de convergencia PENDIENTE -> warn CONVERGENCE_PENDING', () => {
+  const dir = tempDir('sdd-convergencia-');
+  writeFile(path.join(dir, 'ai_docs/tasks/001_convergencia_test.md'), '# Task\n\nEstado: PENDIENTE\n');
+
+  const warnings = withCwd(dir, () => commitWarnings(PR_CMD));
+
+  assert.ok(warnings.some(w => /CONVERGENCE_PENDING/.test(w)));
+});
+
+test('gh pr create con task de convergencia COMPLETADA -> no genera el aviso', () => {
+  const dir = tempDir('sdd-convergencia-');
+  writeFile(path.join(dir, 'ai_docs/tasks/001_convergencia_test.md'), '# Task\n\nEstado: COMPLETADA\n');
+
+  const warnings = withCwd(dir, () => commitWarnings(PR_CMD));
+
+  assert.ok(!warnings.some(w => /CONVERGENCE_PENDING/.test(w)));
+});
+
+test('gh pr create sin ai_docs/tasks/ -> sin aviso ni excepcion', () => {
+  const dir = tempDir('sdd-convergencia-');
+
+  const warnings = withCwd(dir, () => commitWarnings(PR_CMD));
+
+  assert.ok(!warnings.some(w => /CONVERGENCE_PENDING/.test(w)));
 });
