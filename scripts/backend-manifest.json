@@ -5,7 +5,8 @@
     "hooks",
     "scripts",
     "package.json",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    ".gitignore"
   ],
   "claude": {
     "core": [

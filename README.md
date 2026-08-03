@@ -87,7 +87,7 @@ Al terminar la ultima task de una spec, `/implementar-spec` verifica automaticam
 npx github:gmoncor/agentic-engineering-framework install --backend <claude|gemini|codex|antigravity|all>
 ```
 
-Copia las rutas del backend elegido (segun `scripts/backend-manifest.json`) y crea `ai_docs/{core,tasks,refs}/` si no existen. Sin `--backend`, pregunta interactivamente que backend instalar (requiere terminal). Usa `all` para instalar los cuatro a la vez. Requiere `npx` con Node.js >= 20 (ver Prerequisitos) y acceso al repo. Si el proyecto ya tiene otro backend instalado, `install`/`update` avisan (sin bloquear) antes de copiar.
+Copia las rutas del backend elegido (segun `scripts/backend-manifest.json`) y crea `ai_docs/{core,tasks,refs}/` si no existen. Tambien copia un `.gitignore` con las reglas del framework (protege `.sdd-installed-hashes.json`, `ai_docs/tasks/`, `ai_docs/refs/`, `.worktrees/`, etc.); si ya tenias uno propio, `update` posterior respeta tus ediciones (ver Actualizacion). Sin `--backend`, pregunta interactivamente que backend instalar (requiere terminal). Usa `all` para instalar los cuatro a la vez. Requiere `npx` con Node.js >= 20 (ver Prerequisitos) y acceso al repo. Si el proyecto ya tiene otro backend instalado, `install`/`update` avisan (sin bloquear) antes de copiar.
 
 ### Claude Code
 
@@ -517,7 +517,8 @@ Sobrescribe las rutas del backend elegido segun `scripts/backend-manifest.json`,
 `ai_docs/core/`, `ai_docs/tasks/` ni `ai_docs/refs/` — esos son tuyos.
 
 **Archivos que se preservan si los personalizaste:** ademas de esas tres carpetas, `update`
-protege `hooks/config.json`, `.claude/settings.json`, `CLAUDE.md`, `GEMINI.md` y `AGENTS.md`.
+protege `hooks/config.json`, `.claude/settings.json`, `CLAUDE.md`, `GEMINI.md`, `AGENTS.md`
+y `.gitignore`.
 El CLI guarda un hash de cada uno la primera vez que los instala (en `.sdd-installed-hashes.json`,
 en la raiz de tu proyecto); si el contenido en disco ya no coincide con ese hash, salta la
 sobrescritura de ese archivo y avisa por stdout cuales omitio. Si no los tocaste, se actualizan
