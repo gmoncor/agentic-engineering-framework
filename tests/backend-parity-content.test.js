@@ -39,7 +39,9 @@ const FORBIDDEN_PATTERNS = [
   'corren a la vez',
   'fan-out',
   'arbol de trabajo aparte',
-  'ejecucion paralela'
+  'ejecucion paralela',
+  'implementarse a la vez',
+  'archivos son disjuntos'
 ];
 
 const CONTEXT_FILES = [
@@ -54,7 +56,12 @@ const CONTEXT_FILES = [
   '.claude/workflows/implementar-spec.js',
   '.claude/workflows/lib/orquestacion.js',
   '.agents/skills/implementar-spec/SKILL.md',
-  'hooks/tests/implementar-spec.test.js'
+  'hooks/tests/implementar-spec.test.js',
+  '.claude/agents/planificador.md',
+  'agents/planificador.md',
+  '.codex/agents/planificador.toml',
+  '.agents/plugins/sdd/agents/planificador.md',
+  '.agents/skills/tareas/SKILL.md'
 ];
 
 for (const archivo of CONTEXT_FILES) {

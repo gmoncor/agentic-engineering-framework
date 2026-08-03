@@ -24,6 +24,14 @@ tools: [read_file, write_file, run_command, glob, grep_search]
 
 Lee la plantilla completa y ejecuta todos sus pasos. No condenses ni saltes pasos.
 
+## Reglas
+
+- Contexto obligatorio: `ai_docs/core/` (vision, planificacion, roadmap). Si esta vacio, avisa: la planificacion sera ciega.
+- Una spec por funcionalidad independiente. Si la solicitud abarca varias, propon la particion.
+- Cada task declara sus archivos en la tabla "Archivos afectados" y toca 6 como maximo. Si supera, divide la task.
+- Implementacion lineal: una task tras otra, en el orden que marcan sus dependencias declaradas. Declara las dependencias reales entre tasks; de ahi sale el orden.
+- Una spec solo pasa a Estado: APROBADA cuando el usuario la aprueba.
+
 ## Implementacion
 
 El usuario ejecuta `/implementar-spec` para implementar todas las tasks de la spec. El comando implementa cada task en orden de dependencias, una tras otra: implementa, ejecuta tests, revision adversarial, y commitea antes de pasar a la siguiente. `/implementar` sigue disponible para control manual de una task individual.
