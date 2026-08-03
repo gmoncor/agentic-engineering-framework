@@ -323,6 +323,12 @@ test('update --help menciona el menu interactivo cuando se omite --backend', () 
   assert.match(stdout, /menu interactivo/i);
 });
 
+test('update --help menciona --reset-protected', () => {
+  const { codigo, stdout } = ejecutar(['update', '--help'], { cwd: dirTemporal() });
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /--reset-protected/);
+});
+
 test('update con --backend invalido sale con codigo 1 y no copia nada', () => {
   const paquete = crearPaqueteFixture(
     { common: ['CLAUDE.md'], claude: ['.claude'] },
@@ -630,6 +636,107 @@ test('update no actualiza el marcador de un archivo saltado por proteccion local
     'contexto editado por el usuario\n<!-- sdd-framework: 9.9.9 -->\n',
     'el marcador no debe cambiar en un archivo saltado por proteccion local',
   );
+});
+
+test('update sin sidecar previo y contenido identico al del paquete copia el archivo y siembra el hash', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto identico al del paquete' },
+  );
+  const proyecto = dirTemporal();
+  // Instalacion anterior al sidecar de hashes: el contenido nunca diverge del origen.
+  fs.writeFileSync(path.join(proyecto, 'CLAUDE.md'), 'contexto identico al del paquete');
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.doesNotMatch(stdout, /cambios locales/, 'contenido identico al origen no debe protegerse');
+  const sidecarPath = path.join(proyecto, '.sdd-installed-hashes.json');
+  const hashes = JSON.parse(fs.readFileSync(sidecarPath, 'utf8'));
+  assert.strictEqual(
+    hashes['CLAUDE.md'],
+    crypto.createHash('sha256').update('contexto identico al del paquete').digest('hex'),
+    'el hash debe sembrarse en el sidecar aunque no hubiera entrada previa',
+  );
+});
+
+test('update sin sidecar previo y contenido distinto al del paquete protege el archivo', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto del paquete' },
+  );
+  const proyecto = dirTemporal();
+  // Instalacion anterior al sidecar de hashes, con ediciones genuinas del usuario.
+  fs.writeFileSync(path.join(proyecto, 'CLAUDE.md'), 'contexto editado por el usuario');
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'),
+    'contexto editado por el usuario',
+    'contenido distinto al origen debe protegerse por defecto',
+  );
+  assert.match(stdout, /cambios locales/);
+  assert.match(stdout, /CLAUDE\.md/);
+});
+
+test('update --reset-protected sobrescribe archivos protegidos con ediciones locales y refresca el sidecar', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: ['CLAUDE.md'] },
+    { 'hooks/config.json': '{"turn_budget":{"hard_stop_at":40}}', 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+
+  const instalacion = ejecutar(['install', '--backend', 'claude'], opts);
+  assert.strictEqual(instalacion.codigo, 0);
+
+  // El usuario personaliza el umbral localmente tras instalar.
+  fs.writeFileSync(
+    path.join(proyecto, 'hooks', 'config.json'),
+    '{"turn_budget":{"hard_stop_at":80}}',
+  );
+  // El framework publica una nueva version del mismo archivo.
+  fs.writeFileSync(
+    path.join(paquete, 'hooks', 'config.json'),
+    '{"turn_budget":{"hard_stop_at":40,"warn_at":30}}',
+  );
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude', '--reset-protected'], opts);
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'hooks', 'config.json'), 'utf8'),
+    '{"turn_budget":{"hard_stop_at":40,"warn_at":30}}',
+    '--reset-protected debe sobrescribir el archivo pese a las ediciones locales',
+  );
+  assert.doesNotMatch(stdout, /cambios locales/);
+
+  const sidecarPath = path.join(proyecto, '.sdd-installed-hashes.json');
+  const hashes = JSON.parse(fs.readFileSync(sidecarPath, 'utf8'));
+  assert.strictEqual(
+    hashes['hooks/config.json'],
+    crypto.createHash('sha256').update('{"turn_budget":{"hard_stop_at":40,"warn_at":30}}').digest('hex'),
+    'el sidecar debe refrescarse con el hash del archivo recien copiado',
+  );
+});
+
+test('update --reset-protected sin --backend sigue el flujo interactivo normal', () => {
+  const paquete = crearPaqueteFixture({ common: [], claude: ['CLAUDE.md'] }, { 'CLAUDE.md': 'contexto' });
+  const { codigo, stderr } = ejecutar(['update', '--reset-protected'], {
+    cwd: dirTemporal(),
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+    input: '',
+  });
+  assert.strictEqual(codigo, 1);
+  assert.match(stderr, /requiere un terminal/);
 });
 
 test('actualizarMarcador no falla ni inserta el marcador en un archivo que no lo tiene', () => {

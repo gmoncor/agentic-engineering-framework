@@ -63,12 +63,13 @@ Si se omite --backend, se muestra un menu interactivo para elegir (requiere term
 }
 
 function mostrarAyudaUpdate() {
-  console.log(`Uso: agentic-engineering-framework update --backend <claude|gemini|codex|antigravity|all> [--skip <nombre,nombre>]
+  console.log(`Uso: agentic-engineering-framework update --backend <claude|gemini|codex|antigravity|all> [--skip <nombre,nombre>] [--reset-protected]
 
 Actualiza el framework instalado en el directorio actual: copia las rutas del backend elegido sin tocar ai_docs/core/, ai_docs/tasks/ ni ai_docs/refs/.
 
 Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).
---skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing, pr); solo aplica al backend claude.`);
+--skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing, pr); solo aplica al backend claude.
+--reset-protected sobrescribe archivos protegidos con ediciones locales (hooks/config.json, .claude/settings.json, CLAUDE.md, GEMINI.md, AGENTS.md) y refresca el sidecar de hashes al final.`);
 }
 
 function obtenerVersion() {
@@ -199,15 +200,31 @@ function protegidasEn(ruta) {
   return ARCHIVOS_PROTEGIDOS.filter(protegida => protegida === ruta || protegida.startsWith(`${ruta}/`));
 }
 
-/** true si el destino ya existe con contenido que no coincide con el ultimo hash instalado. */
+/**
+ * true si el destino ya existe con contenido que no coincide con el ultimo
+ * hash instalado. Si el sidecar no tiene entrada para esta ruta (instalacion
+ * anterior a su introduccion), compara contra el hash del archivo de origen:
+ * si coinciden, no hay edicion local (siembra la entrada en el sidecar);
+ * si difieren -- o el origen ya no existe -- se protege por defecto.
+ */
 function editadaLocalmente(rutaRelativa, hashesInstalados) {
   const hashActual = hashFile(path.join(DEST, rutaRelativa));
   if (hashActual === null) return false;
+  if (hashesInstalados[rutaRelativa] === undefined) {
+    const hashOrigen = hashFile(path.join(PACKAGE_ROOT, rutaRelativa));
+    if (hashOrigen === null || hashOrigen !== hashActual) return true;
+    hashesInstalados[rutaRelativa] = hashActual;
+    return false;
+  }
   return hashesInstalados[rutaRelativa] !== hashActual;
 }
 
-/** Copia una ruta del manifiesto, saltando los archivos protegidos con ediciones locales. */
-function copiarRuta(ruta, hashesInstalados, saltadasPorEdicion) {
+/**
+ * Copia una ruta del manifiesto, saltando los archivos protegidos con
+ * ediciones locales. Con `resetProtected` la proteccion se ignora por
+ * completo para este run (el usuario eligio explicitamente sobrescribir).
+ */
+function copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, resetProtected) {
   const origen = path.join(PACKAGE_ROOT, ruta);
   if (!fs.existsSync(origen)) {
     return { ruta, copiada: false };
@@ -215,7 +232,9 @@ function copiarRuta(ruta, hashesInstalados, saltadasPorEdicion) {
   const destino = path.join(DEST, ruta);
   fs.mkdirSync(path.dirname(destino), { recursive: true });
 
-  const editadas = protegidasEn(ruta).filter(protegida => editadaLocalmente(protegida, hashesInstalados));
+  const editadas = resetProtected
+    ? []
+    : protegidasEn(ruta).filter(protegida => editadaLocalmente(protegida, hashesInstalados));
   editadas.forEach(protegida => saltadasPorEdicion.push(protegida));
 
   if (fs.statSync(origen).isDirectory()) {
@@ -297,7 +316,7 @@ function copiarRutasFramework(backend, skip, opciones = {}) {
 
   const hashesInstalados = loadInstalledHashes(DEST);
   const saltadasPorEdicion = [];
-  const resultados = rutas.map(ruta => copiarRuta(ruta, hashesInstalados, saltadasPorEdicion));
+  const resultados = rutas.map(ruta => copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, opciones.resetProtected));
   const copiadas = resultados.filter(r => r.copiada).map(r => r.ruta);
   const saltadas = resultados
     .filter(r => !r.copiada && !saltadasPorEdicion.includes(r.ruta))
@@ -397,8 +416,12 @@ async function cmdInstall(args) {
 async function cmdUpdate(args) {
   const backend = await resolverBackend(args);
   const skip = parseSkip(args);
+  const resetProtected = args.includes('--reset-protected');
   advertirSiBackendEquivocado(backend);
-  const { copiadas, saltadas, saltadasPorEdicion } = copiarRutasFramework(backend, skip, { crearDirsUsuario: false });
+  const { copiadas, saltadas, saltadasPorEdicion } = copiarRutasFramework(backend, skip, {
+    crearDirsUsuario: false,
+    resetProtected,
+  });
   const version = obtenerVersion();
   sincronizarMarcadores(backend, copiadas, version);
   reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version);
