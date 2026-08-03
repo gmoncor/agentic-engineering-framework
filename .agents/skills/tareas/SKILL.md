@@ -11,4 +11,4 @@ Reglas que no se negocian:
 
 - Solo se derivan tasks de specs con Estado: APROBADA. Si la spec sigue en BORRADOR, detente.
 - Cada task declara su tabla "Archivos afectados" y toca 6 archivos como maximo. Si supera, divide.
-- Dos tasks que escriben el mismo archivo no pueden implementarse a la vez: declara la dependencia.
+- Dos tasks que escriben el mismo archivo se implementan en el orden de sus dependencias, nunca simultaneamente.
