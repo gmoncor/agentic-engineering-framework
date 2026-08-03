@@ -295,3 +295,42 @@ test('evaluarGateTests: sin comando + task solo docs/config -> ADVISORY (exenta)
   const v = orq.evaluarGateTests({ comando: null, exitCode: null, archivos: ['README.md'] });
   assert.strictEqual(v.estado, 'ADVISORY');
 });
+
+// ── Fase 3: Convergencia ─────────────────────────────────────────────────────
+// La revision por task (arriba) valida cada diff antes de commitear, pero no si
+// el conjunto final converge con la spec original. La Fase 3 cierra ese hueco
+// invocando el Paso 4bis en modo standalone. Estos tests fijan el contrato en
+// el propio texto del workflow: la fase se omite si algo quedo sin completar,
+// y el resultado (CONVERGIDA/DIVERGE/OMITIDA/ERROR) siempre llega al retorno.
+
+const WORKFLOW = fs.readFileSync(
+  path.resolve(__dirname, '..', '..', '.claude', 'workflows', 'implementar-spec.js'), 'utf8');
+
+test('implementar-spec.js: la Fase 3 invoca el Paso 4bis en modo standalone, sin repetir los demas pasos', () => {
+  assert.match(WORKFLOW, /Paso 4bis/);
+  assert.match(WORKFLOW, /standalone/);
+  assert.match(WORKFLOW, /No repitas Pasos 1-3\/5/);
+});
+
+test('implementar-spec.js: la Fase 3 se omite si alguna task quedo fallida/bloqueada, sin invocar al agente', () => {
+  assert.match(WORKFLOW, /completadas !== taskList\.length/);
+  assert.match(WORKFLOW, /veredicto: 'OMITIDA', razon: 'tasks_fallidas'/);
+});
+
+test('implementar-spec.js: una respuesta de convergencia que no parsea contra el schema no crashea el workflow', () => {
+  assert.match(WORKFLOW, /veredicto: 'ERROR', razon: 'parse_failed'/);
+});
+
+test('implementar-spec.js: el objeto de retorno incluye el resultado de convergencia', () => {
+  assert.match(WORKFLOW, /convergencia:\s*convergencia/);
+});
+
+test('implementar-spec.js: meta.phases declara las 3 fases, incluida Convergencia', () => {
+  assert.match(WORKFLOW, /title: 'Descubrimiento'/);
+  assert.match(WORKFLOW, /title: 'Implementacion'/);
+  assert.match(WORKFLOW, /title: 'Convergencia'/);
+});
+
+test('implementar-spec.js: el comentario que declaraba la revision de integracion opcional ya no aplica', () => {
+  assert.doesNotMatch(WORKFLOW, /opcional y ligera/);
+});

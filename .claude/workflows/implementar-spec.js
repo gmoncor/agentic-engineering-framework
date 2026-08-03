@@ -4,6 +4,7 @@ export const meta = {
   phases: [
     { title: 'Descubrimiento', detail: 'Identificar tasks, dependencias y orden de ejecucion' },
     { title: 'Implementacion', detail: 'Implementar cada task, revisarla y commitearla antes de pasar a la siguiente' },
+    { title: 'Convergencia', detail: 'Verificar convergencia entre spec y resultado final' },
   ],
 }
 
@@ -65,6 +66,16 @@ const REVISION_SCHEMA = {
     resumen: { type: 'string' }
   },
   required: ['veredicto', 'problemas_criticos', 'problemas_menores', 'resumen']
+}
+
+const CONVERGENCIA_SCHEMA = {
+  type: 'object',
+  properties: {
+    veredicto: { type: 'string', enum: ['CONVERGIDA', 'DIVERGE'] },
+    criterios_verificados: { type: 'integer' },
+    tasks_generadas: { type: 'array', items: { type: 'string' } }
+  },
+  required: ['veredicto']
 }
 
 // ── Modulos del repo ──────────────────────────────────────────────────────────
@@ -404,10 +415,54 @@ for (var ri = 0; ri < allResults.length; ri++) {
 }
 log('Implementacion: ' + completadas + ' completadas, ' + fallidas + ' fallidas de ' + taskList.length)
 
+// ── Fase 3: Convergencia ───────────────────────────────────────────────────────
 // El gate primario es la revision POR TASK (ya ejecutada arriba, antes de cada
-// commit). Una revision de integracion final sobre el conjunto es opcional y
-// ligera: se puede lanzar aparte con /revision si la spec toca varias tasks que
-// interactuan. No se ejecuta aqui para no repetir lo ya revisado por task.
+// commit). Esta fase cierra el hueco que esa revision no cubre: si el conjunto
+// final converge con la spec original. Ejecuta el Paso 4bis de
+// revision_adversarial.md en modo standalone (sin repetir Pasos 1-3/5, que ya
+// se cubrieron por task). Se omite si alguna task quedo FALLIDA/bloqueada: no
+// tiene sentido verificar convergencia sobre un resultado incompleto.
+phase('Convergencia')
+
+async function verificarConvergencia() {
+  return agent('\
+Aplica solo el Paso 4bis de ai_docs/dev_templates/revision_adversarial.md en modo\n\
+standalone contra la spec ' + specPath + ' y sus tasks.\n\
+No repitas Pasos 1-3/5. No toques codigo.\n\
+Si hay brechas BLOQUEANTES, genera tasks de convergencia via scripts/next-task-number.sh.\n\
+Emite el veredicto.', {
+    label: 'convergencia',
+    phase: 'Convergencia',
+    schema: CONVERGENCIA_SCHEMA
+  })
+}
+
+var convergencia
+if (completadas !== taskList.length) {
+  log('Convergencia omitida: ' + fallidas + ' tasks fallidas/bloqueadas')
+  convergencia = { veredicto: 'OMITIDA', razon: 'tasks_fallidas' }
+} else {
+  const resultadoConvergencia = await verificarConvergencia()
+  if (!resultadoConvergencia || !resultadoConvergencia.veredicto) {
+    log('Convergencia: la respuesta del agente no parseo contra el schema')
+    convergencia = { veredicto: 'ERROR', razon: 'parse_failed' }
+  } else if (resultadoConvergencia.veredicto === 'DIVERGE') {
+    const tasksGeneradas = resultadoConvergencia.tasks_generadas || []
+    log('DIVERGENCIA: spec no cerrada, ' + tasksGeneradas.length + ' task(s) de convergencia generadas: ' + tasksGeneradas.join(', '))
+    convergencia = {
+      veredicto: 'DIVERGE',
+      criterios_verificados: resultadoConvergencia.criterios_verificados,
+      tasks_generadas: tasksGeneradas
+    }
+  } else {
+    log('CONVERGENCIA: spec cerrada, ' + (resultadoConvergencia.criterios_verificados || 0) + ' criterios verificados')
+    convergencia = {
+      veredicto: 'CONVERGIDA',
+      criterios_verificados: resultadoConvergencia.criterios_verificados,
+      tasks_generadas: []
+    }
+  }
+}
 
 return {
   spec: specPath,
@@ -416,5 +471,6 @@ return {
   niveles: niveles.length,
   tasks_completadas: completadas,
   tasks_fallidas: fallidas,
-  implementaciones: allResults
+  implementaciones: allResults,
+  convergencia: convergencia
 }
