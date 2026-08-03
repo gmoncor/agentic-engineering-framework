@@ -85,6 +85,8 @@ Revisar TODOS los archivos cambiados buscando:
 
 ### Paso 1: Verificar archivos (mismo que Modo A, Paso 1)
 
+El commit guard avisa automaticamente si hay tasks de convergencia pendientes al ejecutar `gh pr create`.
+
 ### Paso 2: Revisar los cambios
 
 1. Ejecutar `git diff` contra la rama base (normalmente `main` o `develop`)
