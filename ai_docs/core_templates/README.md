@@ -2,6 +2,8 @@
 
 > Estas plantillas te guian para definir y documentar un proyecto de software antes de escribir codigo. Se usan en orden y cada una genera un documento que alimenta a la siguiente.
 
+**Con Claude Code o Gemini CLI:** ejecuta `/inicio`. **Con Codex o Antigravity:** pide "inicio" o describe que quieres arrancar la documentacion del proyecto — la skill correspondiente lo hace por ti. **Sin ninguno de estos CLIs:** usa las plantillas por copy-paste, tal como se explica abajo.
+
 ---
 
 ## Cuando usar estas plantillas

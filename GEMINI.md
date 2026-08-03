@@ -55,7 +55,7 @@
 ```
 proyecto/
 ├── agents/             # planificador, revisor, implementador, asesor
-├── commands/           # 12 comandos SDD (.toml)
+├── commands/           # 13 comandos SDD (.toml)
 ├── skills/             # 8 skills (auto-activacion)
 ├── hooks/              # 4 hooks (pipeline-guard + commit-guard + read-before-edit + turn-budget)
 ├── ai_docs/

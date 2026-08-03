@@ -10,6 +10,7 @@
   ],
   "claude": {
     "core": [
+      ".claude/commands/inicio.md",
       ".claude/commands/spec.md",
       ".claude/commands/tareas.md",
       ".claude/commands/planificar.md",
