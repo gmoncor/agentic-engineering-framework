@@ -513,7 +513,12 @@ protege `hooks/config.json`, `.claude/settings.json`, `CLAUDE.md`, `GEMINI.md` y
 El CLI guarda un hash de cada uno la primera vez que los instala (en `.sdd-installed-hashes.json`,
 en la raiz de tu proyecto); si el contenido en disco ya no coincide con ese hash, salta la
 sobrescritura de ese archivo y avisa por stdout cuales omitio. Si no los tocaste, se actualizan
-con normalidad.
+con normalidad. Si tu instalacion es anterior a la introduccion de este hash y nunca editaste
+esos archivos, `update` lo detecta comparando contra el archivo original del framework y los
+actualiza igualmente (sembrando el hash para las proximas ejecuciones); solo se protegen si el
+contenido en disco difiere de verdad. Si necesitas forzar la sobrescritura de archivos protegidos
+con ediciones locales genuinas (asumiendo que perderas esas ediciones), usa
+`update --backend <backend> --reset-protected`.
 
 **Gemini CLI (extension):**
 ```bash
