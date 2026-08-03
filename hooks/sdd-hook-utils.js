@@ -42,6 +42,37 @@ function skipRequested(env) {
 }
 
 /**
+ * Carga `hooks/config.json` (o `SDD_CONFIG_PATH` si esta definido, seam usado
+ * por los tests). Distingue dos fallos que no son iguales:
+ *   - archivo ausente u otro error de lectura (EACCES, etc.): silencio, `{}`.
+ *     El framework no requiere config.json para funcionar.
+ *   - archivo presente pero JSON invalido: degradacion silenciosa peligrosa
+ *     si no avisa (el usuario cree que su configuracion esta activa). Se
+ *     avisa a stderr dentro de un try/catch mudo (stderr puede estar roto) y
+ *     se retorna `{}` igual.
+ */
+function loadConfig(defaultFile) {
+  const file = process.env.SDD_CONFIG_PATH || defaultFile;
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch {
+    return {};
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    try {
+      fs.writeSync(2, '[SDD] ' + file + ' no es JSON valido (' + err.message
+        + ') - hooks SDD usando valores por defecto. Revisa el archivo.\n');
+    } catch {
+      // stderr roto: nada mas que hacer, se degrada igual a valores por defecto.
+    }
+    return {};
+  }
+}
+
+/**
  * Normaliza la llamada a herramienta de las CLIs soportadas a una forma unica.
  *
  * Dos familias de payload:
@@ -107,4 +138,4 @@ function deny(reason, call, code) {
   emit(payload, reason, exitCode);
 }
 
-module.exports = { readPayload, readToolCall, skipRequested, warn, deny, SKIP_ENV };
+module.exports = { readPayload, readToolCall, skipRequested, loadConfig, warn, deny, SKIP_ENV };
