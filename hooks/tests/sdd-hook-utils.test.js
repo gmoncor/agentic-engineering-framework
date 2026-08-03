@@ -178,3 +178,56 @@ test('loadConfig() con archivo ausente -> retorna {} sin avisar a stderr', () =>
   assert.deepStrictEqual(result, {});
   assert.strictEqual(stderr, '');
 });
+
+test('readPayload() con Node < 20 -> emite aviso de version a stderr', async () => {
+  // checkNodeVersion() solo avisa una vez por proceso (flag de modulo). Se
+  // recarga el modulo para que el flag arranque en false sin depender del
+  // orden en que corran los demas tests de este fichero.
+  const rutaModulo = require.resolve('../sdd-hook-utils');
+  delete require.cache[rutaModulo];
+  const modulo = require(rutaModulo);
+
+  // process.versions.node no es writable (asignacion directa lanza en modo
+  // estricto): se redefine la propiedad para simular una version antigua.
+  const versionOriginal = process.versions.node;
+  Object.defineProperty(process.versions, 'node', { value: '18.0.0', configurable: true });
+  const originalWriteSync = fs.writeSync;
+  let stderr = '';
+  fs.writeSync = (fd, chunk) => {
+    if (fd === 2) stderr += chunk;
+    return chunk.length;
+  };
+  stubStdin(closingStdin(['{}']));
+  try {
+    await modulo.readPayload();
+    assert.match(stderr, /Node 18\.0\.0 detectado/);
+    assert.match(stderr, /Node >= 20/);
+  } finally {
+    fs.writeSync = originalWriteSync;
+    Object.defineProperty(process.versions, 'node', { value: versionOriginal, configurable: true });
+    restoreStdin();
+    delete require.cache[rutaModulo];
+  }
+});
+
+test('readPayload() con Node >= 20 -> no emite aviso de version', async () => {
+  const rutaModulo = require.resolve('../sdd-hook-utils');
+  delete require.cache[rutaModulo];
+  const modulo = require(rutaModulo);
+
+  const originalWriteSync = fs.writeSync;
+  let stderr = '';
+  fs.writeSync = (fd, chunk) => {
+    if (fd === 2) stderr += chunk;
+    return chunk.length;
+  };
+  stubStdin(closingStdin(['{}']));
+  try {
+    await modulo.readPayload();
+    assert.strictEqual(stderr, '');
+  } finally {
+    fs.writeSync = originalWriteSync;
+    restoreStdin();
+    delete require.cache[rutaModulo];
+  }
+});

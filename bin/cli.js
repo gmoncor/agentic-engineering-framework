@@ -138,6 +138,36 @@ function advertirSiSkipNoAplica(backend, skip) {
   }
 }
 
+/**
+ * Avisa (no bloquea) si el proyecto tiene marcador de un backend distinto al
+ * elegido. Compara por ruta de archivo, no por nombre de backend: codex y
+ * antigravity comparten AGENTS.md por diseno, asi que instalar codex sobre
+ * un proyecto con marcador antigravity NO debe disparar el aviso.
+ */
+function advertirSiBackendEquivocado(backend) {
+  if (backend === 'all') return;
+  const archivoElegido = ARCHIVO_CONTEXTO_POR_BACKEND[backend];
+  if (fs.existsSync(path.join(DEST, archivoElegido))) {
+    const contenido = fs.readFileSync(path.join(DEST, archivoElegido), 'utf8');
+    if (contenido.includes('<!-- sdd-framework:')) return;
+  }
+
+  for (const [otroBackend, archivo] of Object.entries(ARCHIVO_CONTEXTO_POR_BACKEND)) {
+    if (otroBackend === backend || archivo === archivoElegido) continue;
+    try {
+      const rutaAbsoluta = path.join(DEST, archivo);
+      if (!fs.existsSync(rutaAbsoluta)) continue;
+      if (!fs.readFileSync(rutaAbsoluta, 'utf8').includes('<!-- sdd-framework:')) continue;
+      process.stderr.write(
+        `Aviso: se detecto una instalacion previa del backend ${otroBackend} (${archivo}). Si esto es intencional (ej. --backend all), ignora este aviso.\n`,
+      );
+      return;
+    } catch {
+      // El aviso es best-effort: un fallo de lectura no debe interrumpir la instalacion.
+    }
+  }
+}
+
 /** SHA-256 hexadecimal del contenido de un archivo, o null si no existe. */
 function hashFile(rutaAbsoluta) {
   if (!fs.existsSync(rutaAbsoluta)) return null;
@@ -358,6 +388,7 @@ function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version) 
 async function cmdInstall(args) {
   const backend = await resolverBackend(args);
   const skip = parseSkip(args);
+  advertirSiBackendEquivocado(backend);
   const { copiadas, saltadas, creados, saltadasPorEdicion } = copiarRutasFramework(backend, skip, { crearDirsUsuario: true });
   sincronizarMarcadores(backend, copiadas, obtenerVersion());
   reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion);
@@ -366,6 +397,7 @@ async function cmdInstall(args) {
 async function cmdUpdate(args) {
   const backend = await resolverBackend(args);
   const skip = parseSkip(args);
+  advertirSiBackendEquivocado(backend);
   const { copiadas, saltadas, saltadasPorEdicion } = copiarRutasFramework(backend, skip, { crearDirsUsuario: false });
   const version = obtenerVersion();
   sincronizarMarcadores(backend, copiadas, version);

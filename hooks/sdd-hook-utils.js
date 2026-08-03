@@ -9,12 +9,35 @@ const fs = require('fs');
 
 const SKIP_ENV = 'SDD_GUARD_SKIP';
 const STDIN_TIMEOUT_MS = 5000;
+const NODE_MINIMO = 20;
+
+// Node >=20 es requisito del framework (async iterators, fs.cpSync, etc.).
+// El aviso es no-bloqueante y se emite una sola vez por proceso: cada hook
+// corre en su propio proceso, asi que el flag solo evita repeticion si
+// readPayload() se llamara mas de una vez dentro del mismo.
+let _nodeChecked = false;
+function checkNodeVersion() {
+  if (_nodeChecked) return;
+  _nodeChecked = true;
+  try {
+    const mayor = parseInt(process.versions.node.split('.')[0], 10);
+    if (mayor < NODE_MINIMO) {
+      fs.writeSync(
+        2,
+        '[SDD] Node ' + process.versions.node + ' detectado; los hooks requieren Node >= ' + NODE_MINIMO + '. Algunos hooks pueden fallar.\n',
+      );
+    }
+  } catch {
+    // El aviso es best-effort: un fallo aqui no debe interrumpir el hook.
+  }
+}
 
 // Si el harness no cierra stdin (pipe bloqueado, antivirus, comportamiento
 // anomalo), leer hasta EOF cuelga el proceso indefinidamente. La carrera
 // contra el timeout garantiza que el hook siempre resuelve: si stdin no
 // llega a tiempo, se degrada a null igual que un payload invalido.
 async function readPayload(timeoutMs) {
+  checkNodeVersion();
   let timer;
   const timeout = new Promise((resolve) => {
     timer = setTimeout(resolve, timeoutMs || STDIN_TIMEOUT_MS, null);
