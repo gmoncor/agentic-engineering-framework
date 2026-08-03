@@ -84,6 +84,8 @@ Codex y Antigravity no soportan el frontmatter `argument-hint`. Las skills que l
 
 El autor usa Claude Code a diario como backend principal. Los otros tres backends (Gemini CLI, Codex y Antigravity) estan implementados, cableados y con tests de paridad en verde, pero no reciben verificacion diaria propia. Esto no implica menor soporte: la paridad completa entre los cuatro es un requisito del proyecto.
 
+Los guards (`sdd-pipeline-guard`, `sdd-commit-guard`, `sdd-read-before-edit`, `sdd-turn-budget`, `sdd-review-gate`) tambien existen por duplicado: cada backend los cablea a su propio evento y matcher nativos en `.claude/settings.json`, `hooks/hooks.json`, `.codex/hooks.json` o `.agents/hooks.json`. `scripts/hook-event-mapping.json` es la tabla canonica de ese mapeo; si anades o modificas un hook, **actualizala primero** y despues porta el cambio a los ficheros de wiring reales. `tests/hook-mapping-parity.test.js` compara ambos y falla nombrando la accion, el backend y el matcher que diverge.
+
 ## Sandbox de Codex
 
 `.codex/config.toml` viene con `sandbox_mode = "workspace-write"`: el agente escribe dentro del proyecto y no fuera. Si tu proyecto necesita mas (acceso de red, escritura fuera del arbol), puedes subirlo a `danger-full-access`, pero entonces **el sandbox deja de existir**: el agente puede tocar cualquier cosa de la maquina. Hazlo solo si sabes por que, y no lo commitees como valor por defecto del repositorio. El modelo (`model`) tambien es tuyo: ajustalo a tu cuenta.
