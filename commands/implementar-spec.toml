@@ -34,8 +34,12 @@ Si una task queda FALLIDA, las que dependan de ella NO se implementan: se report
 
 PASO 3 — RESUMEN
 Presenta: orden de ejecucion, tasks completadas, tasks fallidas o bloqueadas, archivos modificados, tests creados.
-Si todas las tasks se aprobaron y commitearon: sugiere /pr.
-Si alguna fallo: detalla que corregir.
+Si alguna task fallo: detalla que corregir y DETENTE aqui (no ejecutes el sub-paso de convergencia).
+
+PASO 3bis — CONVERGENCIA (solo si todas las tasks se completaron)
+Aplica el Paso 4bis de ai_docs/dev_templates/revision_adversarial.md en modo standalone contra la spec: reconcilia el resultado real de cada task con sus criterios de exito asignados y con la seccion "No incluye".
+Si el veredicto es DIVERGE: por cada hallazgo BLOQUEANTE, genera una task de convergencia numerada con scripts/next-task-number.sh (si el script no existe en este proyecto, numera la task manualmente y dejalo indicado).
+Si el veredicto es CONVERGIDA: indica que la spec esta cerrada y sugiere /pr.
 
 Solicitud del usuario:
 

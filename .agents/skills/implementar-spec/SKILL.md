@@ -21,17 +21,20 @@ Implementa TODAS las tasks de una spec APROBADA.
 - **Gate por task:** antes del commit, un agente aparte (contexto limpio) revisa ESE diff. Solo si
   aprueba se emite la senal atada al diff y se crea el commit. Asi cada unidad se valida antes de
   avanzar a la siguiente.
-- **Gate final:** cuando todas las tasks han terminado, el agente `revisor` hace la revision
-  adversarial del codigo completo (`ai_docs/dev_templates/revision_adversarial.md`). Su veredicto es
-  lo unico que se espera para poder entregar.
+- **Gate final:** solo si todas las tasks se completaron (ninguna quedo FALLIDA), el agente
+  `revisor` ejecuta el Paso 4bis de `ai_docs/dev_templates/revision_adversarial.md` en modo
+  standalone (no la revision completa):
+  reconcilia el resultado real de cada task con sus criterios de exito asignados y con la seccion
+  "No incluye" de la spec. Si el veredicto es `DIVERGE`, genera una task de convergencia por cada
+  hallazgo bloqueante, numerada con `scripts/next-task-number.sh` (o manualmente si el script no
+  esta disponible en el proyecto). Si el veredicto es `CONVERGIDA`, la spec queda cerrada.
 
 ## Resultado
 
 1. Orden de ejecucion de las tasks y resultado de cada una.
 2. Detalle por task: archivos modificados, tests creados, commit realizado.
-3. Revision adversarial: veredicto, problemas criticos y menores.
-4. Hallazgos fuera de alcance, para tasks futuras.
+3. Convergencia de cierre: veredicto (`CONVERGIDA` o `DIVERGE`) y hallazgos del Paso 4bis.
+4. Tasks de convergencia generadas (si `DIVERGE`), o confirmacion de cierre (si `CONVERGIDA`).
 
-Si el veredicto es **APROBADA**, el usuario puede crear la PR.
-Si es **NECESITA_CORRECCIONES**, detalla las correcciones y pregunta si las aplica.
-Si es **RECHAZADA**, detalla los problemas graves y recomienda revisar la planificacion.
+Si el veredicto es **CONVERGIDA**, el usuario puede crear la PR.
+Si es **DIVERGE**, presenta las tasks de convergencia generadas antes de continuar.
