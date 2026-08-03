@@ -65,6 +65,14 @@ Principios del flujo:
 - **Roadmap global.** El plan de trabajo vive en `ai_docs/core/` y guia cada `/planificar`
 - **Orden por dependencias.** `/implementar-spec` ordena las tasks por sus dependencias y las implementa una tras otra: cada task espera a las tasks de las que depende
 
+### Garantia de convergencia
+
+Al terminar la ultima task de una spec, `/implementar-spec` verifica automaticamente que el resultado final converge con la spec original: cada criterio de aceptacion tiene al menos una task completada que lo cubre, y ninguna exclusion declarada ("No incluye") termino implementada igualmente.
+
+- **Cuando corre:** solo, sin intervencion manual, tras completar todas las tasks de la spec. Si alguna task quedo fallida o bloqueada, se omite (no tiene sentido verificar convergencia sobre un resultado incompleto).
+- **Que produce:** un veredicto `CONVERGIDA` (con el conteo de criterios verificados) o, si detecta huecos, una o mas tasks `NNN_convergencia_<spec>.md` en `ai_docs/tasks/` describiendo cada hueco y como cerrarlo.
+- **Como re-ejecutarla manualmente:** invoca `/revision` pidiendo que aplique solo el Paso 4bis de `revision_adversarial.md` en modo standalone, sin repetir la revision completa de codigo.
+
 ---
 
 ## Prerequisitos
