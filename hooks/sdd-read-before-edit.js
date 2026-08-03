@@ -31,7 +31,8 @@
  *     expone un evento de lectura uniforme -> fuera de alcance; no se cablea.
  *
  * Configurable en hooks/config.json: sdd_read_before_edit.enabled (default true),
- * .mode (default "advisory"; cualquier otro valor lo silencia — nunca bloquea).
+ * .mode (default "advisory"; cualquier otro valor lo silencia — nunca bloquea, pero
+ * si el valor esta explicitamente declarado se avisa por stderr que no es reconocido).
  */
 
 const fs = require('fs');
@@ -70,7 +71,15 @@ async function main() {
 
   const cfg = loadConfig().sdd_read_before_edit || {};
   if (cfg.enabled === false) process.exit(0);
-  if ((cfg.mode || 'advisory') !== 'advisory') process.exit(0);
+  if ((cfg.mode || 'advisory') !== 'advisory') {
+    if (cfg.mode) {
+      try {
+        fs.writeSync(2, '[SDD] sdd_read_before_edit.mode=\'' + cfg.mode + '\' no reconocido '
+          + '(solo \'advisory\' soportado) - el hook queda desactivado, no reforzado.\n');
+      } catch {}
+    }
+    process.exit(0);
+  }
 
   const call = readToolCall(data);
   const filePath = call.input.file_path || call.input.path

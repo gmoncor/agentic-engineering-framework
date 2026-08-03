@@ -23,6 +23,7 @@ const SESSION = 'sesion-de-prueba-1';
 const CONFIG_ON = { sdd_read_before_edit: { enabled: true, mode: 'advisory' } };
 const CONFIG_OFF = { sdd_read_before_edit: { enabled: false, mode: 'advisory' } };
 const CONFIG_MODE_OFF = { sdd_read_before_edit: { enabled: true, mode: 'off' } };
+const CONFIG_MODE_ENFORCE = { sdd_read_before_edit: { enabled: true, mode: 'enforce' } };
 
 // Crea un entorno aislado y un archivo existente en disco para las escrituras.
 function entorno(config) {
@@ -84,6 +85,16 @@ test('mode distinto de advisory -> silencio (el hook nunca bloquea)', () => {
 
   assert.strictEqual(r.code, 0);
   assert.strictEqual(r.decision, null);
+});
+
+test('mode: "enforce" -> silencio en stdout pero avisa por stderr que el valor no es reconocido', () => {
+  const e = entorno(CONFIG_MODE_ENFORCE);
+  const r = runHook(HOOK, claudeWrite(e.existente, SESSION), e.env);
+
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null);
+  assert.match(r.stderr, /enforce/);
+  assert.match(r.stderr, /no reconocido/);
 });
 
 test('sin session_id -> silencio (no hay sesion que correlacionar)', () => {
