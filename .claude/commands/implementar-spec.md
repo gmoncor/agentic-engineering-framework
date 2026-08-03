@@ -24,13 +24,13 @@ Un ciclo de dependencias entre tasks detiene el workflow con error: hay que corr
 Al completarse, presenta al usuario:
 
 1. **Orden de ejecucion** — orden en que se implementaron las tasks y resultado de cada una
-2. **Detalle por task** — archivos modificados, tests creados, commit realizado
-3. **Revision adversarial** — veredicto, problemas criticos y menores
+2. **Detalle por task** — archivos modificados, tests creados, commit realizado, veredicto de su revision adversarial individual
+3. **Convergencia de la spec** — una vez completadas todas las tasks, el workflow compara el resultado final contra la spec completa y devuelve uno de tres veredictos: `CONVERGIDA` (sin brechas), `DIVERGE` (brechas encontradas) u `OMITIDA` (no se llego a verificar)
 4. **Hallazgos fuera de alcance** — para tasks futuras
 
-Si el veredicto es **APROBADA**: indica que puede crear la PR con `/pr`.
-Si el veredicto es **NECESITA_CORRECCIONES**: detalla las correcciones y pregunta si quiere aplicarlas.
-Si el veredicto es **RECHAZADA**: detalla los problemas graves y recomienda revisar la planificacion.
+Si el veredicto de convergencia es **CONVERGIDA**: la spec queda cerrada, puede crear la PR con `/pr`.
+Si el veredicto es **DIVERGE**: detalla las brechas encontradas y las tasks `NNN_convergencia_*` generadas para cerrarlas; implementalas con el flujo normal (otra pasada de `/implementar-spec` o `/implementar` task a task) antes de abrir la PR.
+Si el veredicto es **OMITIDA**: alguna task quedo FALLIDA o BLOQUEADA y por eso no se verifico la convergencia; resuelve esas tasks primero.
 
 ## Aislamiento por worktree (opcional, avanzado)
 
