@@ -82,6 +82,13 @@ Usa este formato exacto:
 
 [Situacion actual. Que existe hoy. Por que es necesario este cambio. Informacion relevante para entender el problema.]
 
+## Asunciones y clarificaciones
+
+[Opcional. Incluir si hay datos asumidos sin confirmacion o preguntas resueltas durante el intake. Omitir si todo fue confirmado explicitamente.]
+
+- Asumido: <texto> (no confirmado por el usuario)
+- Clarificado: <pregunta> -> <respuesta>
+
 ## Alcance
 
 ### Incluye
@@ -119,6 +126,7 @@ Minimo 3, todos medibles:
 - Debe haber al menos 3 criterios de aceptacion, cada uno MEDIBLE. "Funciona correctamente" no es un criterio. "Devuelve 200 con el usuario creado cuando se envia email valido" si lo es.
 - La seccion "No incluye" es obligatoria. Previene scope creep.
 - Las restricciones deben ser verificables. "Buen rendimiento" no es una restriccion. "Respuesta en menos de 200ms para el 95% de requests" si lo es.
+- Las asunciones deben ser greppables y distinguibles de las decisiones confirmadas. Usar el prefijo `Asumido:` para datos no confirmados y `Clarificado:` para preguntas ya resueltas.
 
 ---
 
