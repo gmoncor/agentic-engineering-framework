@@ -86,6 +86,24 @@ Buscar partes de la spec que no estan cubiertas por ninguna task:
 
 ---
 
+## Paso 4.5: Detectar lenguaje ambiguo
+
+Escanear las secciones Objetivo, Alcance (Incluye + No incluye), Criterios de aceptacion y Restricciones de la spec en busca de dos tipos de lenguaje no medible:
+
+**Adjetivos de calidad sin cuantificar** (lista fija, cerrada): rapido, robusto, intuitivo, eficiente, seguro, escalable, facil de usar, optimo, flexible, moderno.
+
+**Placeholders sin resolver** (lista fija, cerrada): TODO, TBD, ???, FIXME, PENDIENTE, POR DEFINIR.
+
+| Seccion | Texto encontrado | Tipo (ambiguo/placeholder) | Sugerencia de reemplazo medible |
+|---------|-------------------|------------------------------|----------------------------------|
+| [Objetivo / Alcance / Criterios de aceptacion / Restricciones] | [Frase o termino literal] | [ambiguo / placeholder] | [Version cuantificada o accion concreta] |
+
+**Si la tabla tiene al menos una fila:** el hallazgo produce como minimo el veredicto NECESITA AJUSTES (nunca APROBADO).
+
+**Alcance del idioma:** la lista fija cubre el idioma principal del framework (espanol). La deteccion de equivalentes en otros idiomas (ej: "fast" en vez de "rapido") es responsabilidad del auditor humano.
+
+---
+
 ## Paso 5: Verificar coherencia
 
 Verificar que las tasks no contradicen la spec ni entre si:
@@ -132,6 +150,9 @@ Para cada task con dependencias declaradas:
 ### Huecos
 - [Lista de huecos encontrados o "Ninguno"]
 
+### Ambiguedad
+- [N] terminos ambiguos o placeholders encontrados: [lista o "Ninguno"]
+
 ### Coherencia
 - [Lista de incoherencias encontradas o "Todo coherente"]
 
@@ -169,3 +190,4 @@ Para cada task con dependencias declaradas:
 5. **El rol del auditor es encontrar problemas** — asumir que hay huecos hasta demostrar lo contrario
 6. **Si la spec no esta aprobada**, DETENTE. No audites tasks de una spec en borrador
 7. **Dependencias no declaradas son tan graves como huecos** — documentarlas como hallazgo
+8. **NUNCA emitas APROBADO si el Paso 4.5 encontro adjetivos ambiguos o placeholders sin resolver** — como minimo NECESITA AJUSTES
