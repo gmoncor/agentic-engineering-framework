@@ -14,7 +14,9 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
-const { readPayload, warn, deny } = require('../sdd-hook-utils');
+const os = require('os');
+const path = require('path');
+const { readPayload, warn, deny, loadConfig } = require('../sdd-hook-utils');
 
 const originalStdin = process.stdin;
 
@@ -138,4 +140,41 @@ test('deny() sin code -> ni la raiz ni hookSpecificOutput incluyen code (retroco
   assert.strictEqual(payload.decision, 'deny');
   assert.strictEqual('code' in payload, false);
   assert.strictEqual('code' in payload.hookSpecificOutput, false);
+});
+
+// loadConfig() no llama process.exit(): solo hace falta interceptar fs.writeSync
+// para capturar (o comprobar la ausencia de) el aviso a stderr.
+function withCapturedStderr(fn) {
+  const originalWriteSync = fs.writeSync;
+  let stderr = '';
+  fs.writeSync = (fd, chunk) => {
+    if (fd === 2) stderr += chunk;
+    return chunk.length;
+  };
+  try {
+    const result = fn();
+    return { result, stderr };
+  } finally {
+    fs.writeSync = originalWriteSync;
+  }
+}
+
+test('loadConfig() con JSON malformado -> retorna {} y avisa a stderr', () => {
+  const tmpFile = path.join(os.tmpdir(), 'sdd-hook-utils-test-malformed-' + process.pid + '.json');
+  fs.writeFileSync(tmpFile, '{enabled: true}');
+  try {
+    const { result, stderr } = withCapturedStderr(() => loadConfig(tmpFile));
+    assert.deepStrictEqual(result, {});
+    assert.notStrictEqual(stderr, '');
+    assert.ok(stderr.includes(tmpFile), 'el aviso debe nombrar el archivo');
+  } finally {
+    fs.unlinkSync(tmpFile);
+  }
+});
+
+test('loadConfig() con archivo ausente -> retorna {} sin avisar a stderr', () => {
+  const missingFile = path.join(os.tmpdir(), 'sdd-hook-utils-test-missing-' + process.pid + '.json');
+  const { result, stderr } = withCapturedStderr(() => loadConfig(missingFile));
+  assert.deepStrictEqual(result, {});
+  assert.strictEqual(stderr, '');
 });

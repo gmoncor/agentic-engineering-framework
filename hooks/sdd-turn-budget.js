@@ -45,7 +45,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { readPayload, readToolCall, warn, deny, skipRequested } = require('./sdd-hook-utils');
+const { readPayload, readToolCall, warn, deny, skipRequested, loadConfig } = require('./sdd-hook-utils');
 
 const SHELL_TOOLS = new Set(['Bash', 'run_command', 'shell']);
 const COMMIT_RE = /\bgit\s+commit\b/;
@@ -132,7 +132,7 @@ async function main() {
   const data = await readPayload();
   if (!data) process.exit(0);
 
-  const cfg = loadConfig().sdd_turn_budget || {};
+  const cfg = loadConfig(path.join(__dirname, 'config.json')).sdd_turn_budget || {};
   if (cfg.enabled === false) process.exit(0);
   if (skipRequested()) process.exit(0);
 
@@ -171,16 +171,6 @@ async function main() {
   }
 
   process.exit(0);
-}
-
-// SDD_CONFIG_PATH permite apuntar a otra configuracion (tests, entornos aislados).
-function loadConfig() {
-  const file = process.env.SDD_CONFIG_PATH || path.join(__dirname, 'config.json');
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return {};
-  }
 }
 
 main().catch(() => process.exit(0));

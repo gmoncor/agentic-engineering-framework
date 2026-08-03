@@ -37,7 +37,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { readPayload, readToolCall, warn } = require('./sdd-hook-utils');
+const { readPayload, readToolCall, warn, loadConfig } = require('./sdd-hook-utils');
 const { trackRead, hasRead, hasAnyRead } = require('./sdd-read-tracker');
 
 const READ_TOOLS = new Set([
@@ -69,7 +69,7 @@ async function main() {
   const data = await readPayload();
   if (!data) process.exit(0);
 
-  const cfg = loadConfig().sdd_read_before_edit || {};
+  const cfg = loadConfig(path.join(__dirname, 'config.json')).sdd_read_before_edit || {};
   if (cfg.enabled === false) process.exit(0);
   if ((cfg.mode || 'advisory') !== 'advisory') {
     if (cfg.mode) {
@@ -107,16 +107,6 @@ async function main() {
   if (!backendDeliversReads) process.exit(0);
 
   warn(advisory(filePath), call);
-}
-
-// SDD_CONFIG_PATH permite apuntar a otra configuracion (tests, entornos aislados).
-function loadConfig() {
-  const file = process.env.SDD_CONFIG_PATH || path.join(__dirname, 'config.json');
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return {};
-  }
 }
 
 main().catch(() => process.exit(0));

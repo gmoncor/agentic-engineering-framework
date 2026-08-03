@@ -35,9 +35,8 @@
  */
 
 const { spawnSync } = require('child_process');
-const fs = require('fs');
 const path = require('path');
-const { readPayload, readToolCall, warn, deny, skipRequested } = require('./sdd-hook-utils');
+const { readPayload, readToolCall, warn, deny, skipRequested, loadConfig } = require('./sdd-hook-utils');
 const { DEFAULT_TTL_MS, readSignal, hashDiff } = require('./sdd-review-signal');
 
 const SHELL_TOOLS = new Set(['Bash', 'run_command', 'shell']);
@@ -68,7 +67,7 @@ async function main() {
   const cmd = String(call.input.command || '').trim();
   if (!GUARDED_CMD_RE.test(cmd)) process.exit(0);
 
-  const config = loadConfig().sdd_review_gate || {};
+  const config = loadConfig(path.join(__dirname, 'config.json')).sdd_review_gate || {};
   if (config.enabled !== true) process.exit(0);
 
   if (skipRequested()) { warn(SKIP_AVISO, call); return; }
@@ -97,16 +96,6 @@ function stagedDiff() {
     return r.stdout;
   } catch {
     return null;
-  }
-}
-
-// SDD_CONFIG_PATH permite apuntar a otra configuracion (tests, entornos aislados).
-function loadConfig() {
-  const file = process.env.SDD_CONFIG_PATH || path.join(__dirname, 'config.json');
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return {};
   }
 }
 
