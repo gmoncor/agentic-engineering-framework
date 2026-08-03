@@ -129,7 +129,7 @@ Copia `agents/`, `commands/`, `skills/`, `hooks/`, `gemini-extension.json`, `GEM
 ```bash
 gemini extensions install https://github.com/gmoncor/agentic-engineering-framework
 ```
-Instala los 12 comandos, 4 agentes y 8 skills. Comprueba con `gemini extensions list`.
+Instala los 13 comandos, 4 agentes y 8 skills. Comprueba con `gemini extensions list`.
 
 > **Los hooks no viajan con la extension.** `hooks/hooks.json` los invoca con rutas relativas a la raiz del proyecto, asi que copia tambien la carpeta `hooks/` ahi (via CLI del framework o a mano). Sin ella no hay enforcement: el pipeline se convierte en una sugerencia.
 
@@ -189,9 +189,9 @@ No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` par
 
 | Componente | Donde (Claude) | Donde (Gemini) | Donde (Codex) | Donde (Antigravity) |
 |------------|-----------------|-----------------|----------------|----------------------|
-| Comandos | `.claude/commands/` (12) | `commands/` (12) | — (entregados como skills) | — (entregados como skills) |
+| Comandos | `.claude/commands/` (13) | `commands/` (13) | — (entregados como skills) | — (entregados como skills) |
 | Agentes | `.claude/agents/` (4) | `agents/` (4) | `.codex/agents/` (4, `.toml`) | `.agents/plugins/sdd/agents/` (4) |
-| Skills | `.claude/skills/` (9)* | `skills/` (8) | `.agents/skills/` (17) | `.agents/skills/` (17) |
+| Skills | `.claude/skills/` (9)* | `skills/` (8) | `.agents/skills/` (18) | `.agents/skills/` (18) |
 | Hooks | `hooks/` (5, wired en settings) | `hooks/` (4, wired en `hooks/hooks.json`) | `hooks/` (2, wired en `.codex/hooks.json`) | `hooks/` (4, wired en `.agents/hooks.json`) |
 | Workflows | `.claude/workflows/` (2) | — (el orquestador implementa en orden) | — (idem) | — (idem) |
 | Contexto | `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` | `AGENTS.md` |
@@ -226,7 +226,9 @@ Si ves "No hay specs ni tasks creadas", la instalacion funciona. Si da error, re
 
 **Este paso es CRITICO.** Sin documentacion en `ai_docs/core/`, las plantillas SDD trabajan a ciegas — el LLM no conoce tu proyecto y tomara decisiones arbitrarias.
 
-Usa las plantillas de `ai_docs/core_templates/` **en orden**:
+**Con Claude Code o Gemini CLI:** ejecuta `/inicio`. Lee las 4 plantillas en orden, conduce la conversacion y escribe los documentos en `ai_docs/core/` sin que tengas que copiar y pegar nada.
+
+**Sin CLI, o si prefieres el flujo manual:** usa las plantillas de `ai_docs/core_templates/` **en orden**:
 
 ```
 1. 01_vision_del_proyecto.md    → QUE construyes, PARA QUIEN y POR QUE
@@ -353,18 +355,18 @@ agentic-engineering-framework/
 ├── .claude/                     # Configuracion Claude Code
 │   ├── settings.json            #   model: opus-4.8 + hooks wiring
 │   ├── agents/                  #   planificador, revisor, implementador, asesor
-│   ├── commands/                #   12 comandos SDD
+│   ├── commands/                #   13 comandos SDD
 │   ├── skills/                  #   9 skills (auto-activacion; 1 exclusiva de Claude Code)
 │   └── workflows/               #   planificar.js + implementar-spec.js
 │
 ├── agents/                      # Agentes Gemini CLI (4)
-├── commands/                    # 12 comandos Gemini CLI (.toml)
+├── commands/                    # 13 comandos Gemini CLI (.toml)
 ├── skills/                      # 8 skills Gemini CLI
 ├── gemini-extension.json        # Manifest extension Gemini
 │
 ├── AGENTS.md                    # Contexto compartido (Codex + Antigravity)
 ├── .codex/                      # Config, agentes (.toml), hooks y reglas de Codex
-├── .agents/                     # Skills (17), subagentes y hooks de Antigravity
+├── .agents/                     # Skills (18), subagentes y hooks de Antigravity
 │
 ├── hooks/                       # Enforcement SDD (compartido por los 4 backends)
 ├── tests/                       # Canary de paridad entre backends
