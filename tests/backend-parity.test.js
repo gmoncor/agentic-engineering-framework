@@ -162,6 +162,45 @@ test('codex y antigravity leen las skills del mismo directorio, por diseno', () 
   assert.deepStrictEqual(BACKENDS.antigravity.capacidades, [{ dir: SKILLS_COMPARTIDAS }]);
 });
 
+// ── Exhaustividad del manifiesto de skills de Claude Code ────────────────────
+//
+// backend-manifest.json no usa una entrada comodin de directorio para las
+// skills de Claude Code: las lista una a una en claude.core y claude.optional.
+// Crear una skill en disco y olvidarse de anadirla aqui no rompe nada de forma
+// visible: la skill simplemente nunca se copia a un proyecto destino. Este
+// test compara el disco contra el manifiesto en ambas direcciones.
+
+/** Nombres de skill que el manifiesto declara bajo .claude/skills/. */
+function skillsDeclaradasEnManifiesto() {
+  const manifiesto = JSON.parse(leer('scripts/backend-manifest.json'));
+  const rutas = [
+    ...manifiesto.claude.core,
+    ...manifiesto.claude.optional.flatMap(entrada => entrada.rutas)
+  ];
+  return rutas
+    .filter(ruta => ruta.startsWith('.claude/skills/'))
+    .map(ruta => ruta.replace('.claude/skills/', ''));
+}
+
+test('exhaustividad: toda skill en .claude/skills/ esta registrada en backend-manifest.json', () => {
+  const enDisco = nombresDe({ dir: '.claude/skills' });
+  const enManifiesto = skillsDeclaradasEnManifiesto();
+
+  const sinRegistrar = diferencia(enDisco, enManifiesto);
+  assert.deepStrictEqual(
+    sinRegistrar,
+    [],
+    `Skills en .claude/skills/ sin registrar en scripts/backend-manifest.json: ${sinRegistrar.join(', ')}.`
+  );
+
+  const fantasma = diferencia(enManifiesto, enDisco);
+  assert.deepStrictEqual(
+    fantasma,
+    [],
+    `scripts/backend-manifest.json registra skills que ya no existen en disco: ${fantasma.join(', ')}.`
+  );
+});
+
 // ── Hooks cableados en cada backend ──────────────────────────────────────────
 //
 // Los guards no estan al mismo nivel en los cuatro backends, y eso es deliberado:

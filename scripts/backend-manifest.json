@@ -33,6 +33,7 @@
     "optional": [
       { "nombre": "asesor", "rutas": [".claude/commands/asesor.md", ".claude/agents/asesor.md"] },
       { "nombre": "auditar", "rutas": [".claude/commands/auditar.md"] },
+      { "nombre": "auditar-sesion", "rutas": [".claude/skills/auditar-sesion"] },
       { "nombre": "bugfix", "rutas": [".claude/commands/bugfix.md", ".claude/skills/bugfix"] },
       { "nombre": "cleanup", "rutas": [".claude/skills/cleanup"] },
       { "nombre": "testing", "rutas": [".claude/skills/testing"] },
