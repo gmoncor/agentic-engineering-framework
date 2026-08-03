@@ -159,13 +159,34 @@ Para CADA criterio de aceptacion de la spec, verificar que se cumple:
 
 > Aplicable solo en modo integracion/spec completa (no en revisiones de task individual).
 
+**Modos de invocacion:**
+- **Integrado** (comportamiento por defecto): parte de la revision completa de esta plantilla, ejecutado despues del Paso 4 dentro del mismo pase.
+- **Standalone**: invocable en solitario, sin ejecutar los Pasos 1-3 ni el Paso 5, desde `/implementar-spec` al cerrar todas las tasks de una spec. Solo requiere la spec y el estado final de sus tasks (Paso 1.2-1.3 de este documento, aplicados de forma acotada). Util para re-verificar convergencia sin repetir toda la revision de codigo.
+
 Antes de emitir el veredicto final de la spec:
 
 1. **Reconciliar resultado real por task.** Para cada task del roadmap, verificar su estado final (`COMPLETADA`, `FALLIDA`, `PARCIAL`). Una task `FALLIDA` o `PARCIAL` implica que sus criterios asignados carecen de cobertura, aunque el plan los asignara — el veredicto de la spec DEBE reflejarlo.
 2. **Recuperar la tabla criterio-task.** Usar la tabla de asignacion del Paso 2 de la spec (la que mapea cada criterio de exito a la task responsable). Si la spec no tiene esa tabla (formato antiguo), reconstruirla a partir de los criterios de exito y el roadmap de tasks. Confirmar que cada criterio tiene al menos una task `COMPLETADA` que lo cubre. Criterio sin task completada = criterio SIN COBERTURA.
 3. **Barrido de "No incluye".** Verificar contra el codigo final que las exclusiones declaradas en la spec (seccion "No incluye" / "Fuera de alcance") realmente NO se implementaron. Implementacion no solicitada es tan grave como omision. Si la spec no declara exclusiones, este sub-paso se salta.
 
-Si algun criterio queda sin cobertura o se detecto implementacion fuera de alcance, el veredicto de la spec es BLOQUEANTE con lista explicita de gaps.
+**Schema de hallazgo.** Cada gap detectado en los sub-pasos 1-3 se registra con estos 6 campos:
+
+| Campo | Descripcion |
+|-------|-------------|
+| `id` | Identificador corto, secuencial dentro del pase (ej. `CONV-001`) |
+| `source_ref` | Referencia a la seccion de la spec o criterio de aceptacion afectado |
+| `gap_type` | `missing` (no implementado) \| `partial` (implementado a medias) \| `contradicts` (contradice la spec) \| `unrequested` (implementado sin pedirse, viola "No incluye") |
+| `severidad` | `BLOQUEANTE` \| `WARNING` |
+| `evidencia` | Descripcion concreta del gap, con referencia a archivo:linea cuando aplique |
+| `correccion_sugerida` | Accion concreta para cerrar el gap |
+
+**Generacion de artefactos.** El resultado depende de la severidad de los hallazgos:
+
+- **>=1 hallazgo BLOQUEANTE:** por cada uno, crear una task doc `NNN_convergencia_<descriptor-spec>.md` en `ai_docs/tasks/`, numerada con `scripts/next-task-number.sh` (ver su cabecera para el uso). La task doc lleva `Estado: PENDIENTE`, referencia a la spec madre, el hallazgo completo con su schema, y criterios de exito derivados del gap. Emitir veredicto `DIVERGE` con la lista de tasks generadas.
+  - Si `next-task-number.sh` no esta disponible (sin permisos de ejecucion o inexistente en el proyecto destino): reportar el error explicitamente y listar los hallazgos igualmente. NUNCA silenciar el diagnostico ni omitir hallazgos por falta de la herramienta de numeracion.
+- **Solo WARNINGs o cero hallazgos:** no se escribe ningun fichero (ni se invoca `next-task-number.sh`). Emitir veredicto `CONVERGIDA` con el conteo de criterios verificados.
+
+El modo standalone es **append-only por construccion**: solo crea ficheros nuevos (`NNN_convergencia_*.md`). Nunca reescribe la spec, tasks existentes ni codigo — ni en modo standalone ni en modo integrado.
 
 ---
 
