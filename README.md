@@ -69,7 +69,7 @@ Principios del flujo:
 
 ## Prerequisitos
 
-- **Node.js >= 20** — requerido por los hooks de enforcement (`sdd-pipeline-guard.js`, `sdd-review-gate.js`, `sdd-commit-guard.js`, `sdd-read-before-edit.js`, `sdd-turn-budget.js`). Sin Node.js, los hooks fallan silenciosamente y no hay enforcement del pipeline SDD. Verificar con `node --version`
+- **Node.js >= 20** — requerido por los hooks de enforcement (`sdd-pipeline-guard.js`, `sdd-review-gate.js`, `sdd-commit-guard.js`, `sdd-read-before-edit.js`, `sdd-turn-budget.js`). Sin Node.js, los hooks fallan silenciosamente y no hay enforcement del pipeline SDD. Verificar con `node --version`. Si un hook se ejecuta con una version menor, avisa (sin bloquear) por stderr la primera vez que corre en el proceso.
 
 ## Instalacion
 
@@ -79,7 +79,7 @@ Principios del flujo:
 npx github:gmoncor/agentic-engineering-framework install --backend <claude|gemini|codex|antigravity|all>
 ```
 
-Copia las rutas del backend elegido (segun `scripts/backend-manifest.json`) y crea `ai_docs/{core,tasks,refs}/` si no existen. Sin `--backend`, pregunta interactivamente que backend instalar (requiere terminal). Usa `all` para instalar los cuatro a la vez. Requiere `npx` con Node.js >= 20 (ver Prerequisitos) y acceso al repo.
+Copia las rutas del backend elegido (segun `scripts/backend-manifest.json`) y crea `ai_docs/{core,tasks,refs}/` si no existen. Sin `--backend`, pregunta interactivamente que backend instalar (requiere terminal). Usa `all` para instalar los cuatro a la vez. Requiere `npx` con Node.js >= 20 (ver Prerequisitos) y acceso al repo. Si el proyecto ya tiene otro backend instalado, `install`/`update` avisan (sin bloquear) antes de copiar.
 
 ### Claude Code
 
