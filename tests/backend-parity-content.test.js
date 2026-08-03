@@ -181,3 +181,48 @@ for (const skill of IDENTICAL_SKILLS) {
     }
   });
 }
+
+// ── Igualdad de cuerpo de agentes identicos-por-diseno ──────────────────────
+//
+// Los agentes de Codex (TOML) y Antigravity (Markdown+frontmatter) comparten
+// el mismo cuerpo de instrucciones tras normalizar el envoltorio de cada
+// formato. Una edicion en un solo backend diverge en silencio si nada lo ata.
+
+const IDENTICAL_AGENTS = ['asesor', 'implementador', 'planificador', 'revisor'];
+
+function extractorToml(contenido) {
+  const marcador = 'developer_instructions = """';
+  const inicio = contenido.indexOf(marcador) + marcador.length;
+  const fin = contenido.indexOf('"""', inicio);
+  return contenido.slice(inicio, fin).trim();
+}
+
+function extractorMd(contenido) {
+  const primerDelimitador = contenido.indexOf('---');
+  const segundoDelimitador = contenido.indexOf('---', primerDelimitador + 3);
+  return contenido.slice(segundoDelimitador + 3).trim();
+}
+
+function md5DeTexto(texto) {
+  return crypto.createHash('md5').update(texto).digest('hex');
+}
+
+for (const agente of IDENTICAL_AGENTS) {
+  test(`paridad de contenido: el agente "${agente}" es identico entre codex y antigravity`, t => {
+    const rutaCodex = path.join(RAIZ, '.codex/agents', `${agente}.toml`);
+    const rutaAntigravity = path.join(RAIZ, '.agents/plugins/sdd/agents', `${agente}.md`);
+
+    if (!fs.existsSync(rutaCodex) || !fs.existsSync(rutaAntigravity)) {
+      t.skip(`el agente "${agente}" no existe en ${!fs.existsSync(rutaCodex) ? 'codex' : 'antigravity'}`);
+      return;
+    }
+
+    assert.strictEqual(
+      md5DeTexto(extractorToml(fs.readFileSync(rutaCodex, 'utf8'))),
+      md5DeTexto(extractorMd(fs.readFileSync(rutaAntigravity, 'utf8'))),
+      `El agente "${agente}" difiere entre codex y antigravity. `
+        + 'Los agentes identicos-por-diseno deben tener el mismo cuerpo de instrucciones '
+        + 'una vez normalizado el envoltorio (TOML vs Markdown+frontmatter).'
+    );
+  });
+}
