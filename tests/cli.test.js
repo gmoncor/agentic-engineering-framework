@@ -90,6 +90,13 @@ test('sin subcomando muestra uso y sale sin error', () => {
   assert.match(stdout, /Uso: agentic-engineering-framework/);
 });
 
+test('subcomando desconocido sale con codigo 1 y error a stderr', () => {
+  const { codigo, stderr } = ejecutar(['instal'], { cwd: dirTemporal() });
+  assert.strictEqual(codigo, 1);
+  assert.match(stderr, /no reconocido/);
+  assert.match(stderr, /install/);
+});
+
 test('--version imprime la version de package.json y sale sin error', () => {
   const paquete = crearPaqueteFixture({ common: [], claude: [] });
   const { codigo, stdout } = ejecutar(['--version'], {

@@ -487,7 +487,8 @@ async function main() {
     return;
   }
 
-  mostrarAyuda();
+  process.stderr.write(`Subcomando '${subcomando}' no reconocido. Subcomandos validos: install, update, --help, --version.\n`);
+  process.exit(1);
 }
 
 main().catch(err => {
