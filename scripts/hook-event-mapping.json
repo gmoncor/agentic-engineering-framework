@@ -39,7 +39,7 @@
     }
   },
   "notes": {
-    "read-before-edit": "Codex no cablea este aviso: carece de un evento de lectura equivalente a read_file en los demas backends para alimentar el rastreador, y el refuerzo duro para Codex vive en .codex/rules/.",
+    "read-before-edit": "Codex no cablea este aviso: carece de un evento de lectura equivalente a read_file en los demas backends para alimentar el rastreador. Las reglas de .codex/rules/ NO compensan este hueco: solo cubren --no-verify en git commit/push, nada relacionado con leer antes de editar.",
     "turn-budget": "Codex no cablea este aviso: el conteo de acciones sin commit depende de un session_id persistente que este backend no expone de la misma forma que los demas.",
     "review-gate": "Solo Claude Code cablea este aviso: la senal que lo silencia la emite el motor de workflows de comandos/agentes, que solo existe en ese backend. Cablearlo donde no hay emisor daria un aviso que nada puede silenciar por una via legitima."
   }
