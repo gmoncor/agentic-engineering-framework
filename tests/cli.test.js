@@ -1759,10 +1759,83 @@ test('install con fallo durante la copia deja .sdd-install-in-progress en disco'
     env: { SDD_FRAMEWORK_ROOT: paquete },
   });
   assert.strictEqual(codigo, 1);
-  assert.match(stderr, /Error inesperado/);
+  assert.match(stderr, /Rutas que fallaron al copiar/);
+  assert.match(stderr, /archivo\.md/);
   assert.ok(
     fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
     'el lockfile debe permanecer tras un fallo de copia',
+  );
+});
+
+test('install con un subdirectorio sin permisos de escritura reporta rutas fallidas, copia las demas y sale con exit != 0', () => {
+  if (process.platform === 'win32') return; // chmod no restringe escritura de forma fiable en Windows.
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['.claude/workflows', 'CLAUDE.md'] },
+    { '.claude/workflows/flujo.md': 'workflow', 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  fs.mkdirSync(path.join(proyecto, '.claude'));
+  fs.chmodSync(path.join(proyecto, '.claude'), 0o555);
+
+  try {
+    const { codigo, stdout, stderr } = ejecutar(['install', '--backend', 'claude', '--force'], {
+      cwd: proyecto,
+      env: { SDD_FRAMEWORK_ROOT: paquete },
+    });
+
+    assert.notStrictEqual(codigo, 0, 'debe salir con codigo distinto de cero si hubo fallos');
+    assert.match(stdout, /Rutas copiadas/);
+    assert.match(stdout, /CLAUDE\.md/, 'la ruta sin conflicto debe copiarse igual');
+    assert.match(stderr, /Rutas que fallaron al copiar/);
+    assert.match(stderr, /\.claude\/workflows/);
+    assert.strictEqual(
+      fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'),
+      'contexto',
+      'la ruta que si pudo copiarse no debe verse afectada por el fallo de la otra',
+    );
+    assert.ok(
+      !fs.existsSync(path.join(proyecto, '.claude', 'workflows')),
+      'la ruta fallida no debe dejar contenido a medio copiar',
+    );
+
+    const sidecar = JSON.parse(
+      fs.readFileSync(path.join(proyecto, '.sdd-installed-hashes.json'), 'utf8'),
+    );
+    assert.ok('CLAUDE.md' in sidecar, 'el sidecar debe registrar la ruta exitosa');
+    assert.ok(
+      !Object.keys(sidecar).some(archivo => archivo.startsWith('.claude/workflows')),
+      'el sidecar no debe registrar hashes de la ruta que fallo',
+    );
+  } finally {
+    fs.chmodSync(path.join(proyecto, '.claude'), 0o755);
+  }
+});
+
+test('install sin fallos se comporta igual que antes: todas las rutas copiadas, sin reporte de fallidas, exit 0', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: ['.claude', 'CLAUDE.md'] },
+    {
+      'hooks/sdd-commit-guard.js': 'hook',
+      '.claude/agents/planificador.md': 'contenido agente',
+      'CLAUDE.md': 'contexto',
+    },
+  );
+  const proyecto = dirTemporal();
+  const { codigo, stdout, stderr } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /Rutas copiadas/);
+  assert.doesNotMatch(stderr, /Rutas que fallaron al copiar/);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'),
+    'contexto',
+  );
+  assert.ok(
+    !fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
+    'sin fallos el lockfile debe eliminarse al completar',
   );
 });
 
