@@ -87,7 +87,16 @@ Al terminar la ultima task de una spec, `/implementar-spec` verifica automaticam
 npx github:gmoncor/agentic-engineering-framework install --backend <claude|gemini|codex|antigravity|all>
 ```
 
-Copia las rutas del backend elegido (segun `scripts/backend-manifest.json`) y crea `ai_docs/{core,tasks,refs}/` si no existen. Tambien copia un `.gitignore` con las reglas del framework (protege `.sdd-installed-hashes.json`, `ai_docs/tasks/`, `ai_docs/refs/`, `.worktrees/`, etc.); si ya tenias uno propio, `update` posterior respeta tus ediciones (ver Actualizacion). Sin `--backend`, pregunta interactivamente que backend instalar (requiere terminal). Usa `all` para instalar los cuatro a la vez. Requiere `npx` con Node.js >= 20 (ver Prerequisitos) y acceso al repo. Si el proyecto ya tiene otro backend instalado, `install`/`update` avisan (sin bloquear) antes de copiar.
+Copia las rutas del backend elegido (segun `scripts/backend-manifest.json`) y crea `ai_docs/{core,tasks,refs}/` si no existen. Tambien copia un `.gitignore` con las reglas del framework (protege `.sdd-installed-hashes.json`, `ai_docs/tasks/`, `ai_docs/refs/`, `.worktrees/`, etc.); si ya tenias uno propio, `update` posterior respeta tus ediciones (ver Actualizacion). Sin `--backend`, pregunta interactivamente que backend instalar (requiere terminal). Usa `all` para instalar los cuatro a la vez. Requiere `npx` con Node.js >= 20 (ver Prerequisitos) y acceso al repo.
+
+> **Proyecto existente:** si el directorio ya tiene archivos propios con el mismo nombre que los
+> del framework (`hooks/`, `scripts/`, etc.), `install`/`update` detectan la colision antes de
+> escribir nada: en terminal interactivo piden confirmacion (`y/N`, por defecto cancela); en
+> CI/pipe (sin terminal) abortan con exit 1 salvo que uses `--force`. Usa `--dry-run` para
+> previsualizar que ficheros se copiarian o saltarian sin tocar disco antes de decidir. Los
+> archivos protegidos (`CLAUDE.md`, `hooks/config.json`, `.claude/settings.json`, `.gitignore`,
+> etc.) quedan fuera de esta deteccion de colision: se saltan solos si tienen ediciones locales,
+> incluso con `--force` (ver Actualizacion para el detalle del mecanismo de hashes).
 
 ### Claude Code
 
@@ -260,7 +269,9 @@ Cada plantilla genera un documento en `ai_docs/core/`. El repo incluye 3 ejemplo
 
 ### Proyecto existente
 
-Tu equipo ya tiene codigo y arquitectura. Aun asi, **documenta `ai_docs/core/` antes de planificar**:
+Tu equipo ya tiene codigo y arquitectura. Antes de nada, corre `install` con `--dry-run` para ver
+que ficheros se copiarian o saltarian sin tocar disco (ver aviso de "Proyecto existente" en
+Instalacion). Luego, **documenta `ai_docs/core/` antes de planificar**:
 
 ```
 1. Usa 01_vision_del_proyecto.md   → Documenta lo que YA existe (el LLM analiza tu codigo)
