@@ -154,12 +154,12 @@ Presenta al usuario un resumen de la revision:
 - [Ajuste 2 — que cambiar y por que]
 
 ### Veredicto
-[LISTO PARA IMPLEMENTAR / NECESITA AJUSTES / NECESITA REPLANTEAMIENTO]
+[LISTO_PARA_IMPLEMENTAR / NECESITA_AJUSTES / NECESITA_REPLANTEAMIENTO]
 ```
 
 **PUNTO DE ESPERA (uso manual):**
 - DETENTE aqui y espera la respuesta del usuario
-- Si el veredicto es "NECESITA REPLANTEAMIENTO", NO continues hasta que el usuario decida como proceder
+- Si el veredicto es "NECESITA_REPLANTEAMIENTO", NO continues hasta que el usuario decida como proceder
 - Si el usuario aprueba los ajustes, actualiza el documento de task. Si quedan tasks por revisar, continuar con la siguiente. Cuando todas esten revisadas, proceder a auditoria con `auditar_spec.md`
 
 ---
