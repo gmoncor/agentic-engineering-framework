@@ -94,7 +94,7 @@ Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
 
 ## Modelo por defecto
 
-La extension no fija modelo: usa el que tengas configurado en el CLI (`gemini` arranca con su default; `/model` lo cambia en caliente). Elige uno capaz para planificar y revisar — la planificacion es donde el framework se juega la calidad — y baja a uno mas rapido para tareas mecanicas.
+Los 4 agentes (`asesor`, `implementador`, `planificador`, `revisor`) fijan `model: gemini-2.5-pro` en su frontmatter — a diferencia de Claude, aqui no se diferencia por rol, los 4 comparten el mismo modelo. Para cambiarlo, edita el campo `model:` en el archivo del agente correspondiente (`agents/<nombre>.md`).
 
 ## Hooks (enforcement mecanico)
 
