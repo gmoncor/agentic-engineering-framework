@@ -92,15 +92,23 @@ function parseFlag(args, flag) {
   return indice === -1 ? undefined : args[indice + 1];
 }
 
-/** Si una ruta es subdirectorio de otra ya incluida, descarta la mas especifica. */
+/**
+ * Elimina rutas que ya estan cubiertas por una ruta padre presente en la
+ * misma lista (p.ej. "hooks/tests" se descarta si "hooks" tambien esta).
+ * El ordenamiento por longitud es solo un detalle interno del algoritmo de
+ * deteccion de cobertura: el resultado se devuelve en el orden original de
+ * entrada para no alterar la prioridad de copia definida por el manifiesto.
+ */
 function deduplicarRutas(rutas) {
-  const ordenadas = [...new Set(rutas)].sort((a, b) => a.length - b.length);
-  const resultado = [];
-  for (const ruta of ordenadas) {
-    const yaCubierta = resultado.some(base => ruta === base || ruta.startsWith(`${base}/`));
-    if (!yaCubierta) resultado.push(ruta);
+  const unicas = [...new Set(rutas)];
+  const ordenadasPorLongitud = [...unicas].sort((a, b) => a.length - b.length);
+  const noCubiertas = [];
+  for (const ruta of ordenadasPorLongitud) {
+    const yaCubierta = noCubiertas.some(base => ruta === base || ruta.startsWith(`${base}/`));
+    if (!yaCubierta) noCubiertas.push(ruta);
   }
-  return resultado;
+  const supervivientes = new Set(noCubiertas);
+  return unicas.filter(ruta => supervivientes.has(ruta));
 }
 
 /**
