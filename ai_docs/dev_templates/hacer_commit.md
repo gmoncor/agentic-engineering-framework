@@ -1,6 +1,6 @@
 # Plantilla de Commit Git
 
-> **Cuando usar:** Cuando quieras guardar tus cambios en Git con un commit limpio y ordenado. En el flujo SDD, cada task genera al menos un commit.
+> **Cuando usar:** Cuando quieras guardar tus cambios en Git con un commit limpio y ordenado. En el flujo SDD, cada task aprobada genera al menos un commit; las tasks fallidas (revision adversarial no superada) se descartan sin commit.
 > **Como usar:** Copia este documento completo y pegalo en tu asistente de IA. Luego dile que quieres hacer commit.
 
 ---

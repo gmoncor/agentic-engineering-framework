@@ -138,7 +138,7 @@ Minimo 3:
 - El titulo debe ser accionable: "Crear endpoint de registro" no "Registro"
 - Minimo 3 casos limite por task si involucra logica de negocio
 - El tamano estimado debe ser realista. Si supera 400 lineas, divide la task
-- Cada task genera al menos un commit
+- Cada task aprobada genera al menos un commit; las tasks fallidas (revision adversarial no superada) se descartan sin commit
 
 ---
 
@@ -218,5 +218,5 @@ El siguiente paso es revisar cada task individualmente con `revisar_tarea.md`.
 3. **Cada task tiene un alcance acotado** — si depende de otra, la dependencia debe estar documentada
 4. **NUNCA repitas el contexto completo de la spec** en cada task — referencia la spec madre
 5. **Si dos tasks tocan el mismo archivo**, una depende de la otra — documentar el orden
-6. **Cada task genera al menos un commit** — si es tan pequena que no justifica commit, fusionarla con otra
+6. **Cada task aprobada genera al menos un commit** — las tasks fallidas (revision adversarial no superada) se descartan sin commit; si una task aprobada es tan pequena que no justifica commit, fusionarla con otra
 7. **Minimo 3 casos limite** por task que involucre logica de negocio

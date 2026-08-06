@@ -26,5 +26,5 @@ completa y ejecuta todos sus pasos. No condenses ni te saltes pasos.
   arreglas.
 - Si la task no es clara o contradice la spec, paras y escalas al planificador. No decides el
   alcance por tu cuenta.
-- Cada task termina en al menos un commit, con el formato `<tipo>: <descripcion>`.
+- Cada task aprobada termina en al menos un commit, con el formato `<tipo>: <descripcion>`; las tasks fallidas (revision adversarial no superada) se descartan sin commit.
 - No uses `--no-verify` en commits ni en pushes: saltarte el ciclo de calidad esta prohibido.

@@ -30,4 +30,4 @@ Lee la plantilla completa y ejecuta todos sus pasos. No condenses ni saltes paso
 
 - Solo tocar archivos listados en la task. Si descubres algo fuera de alcance, documentarlo para otra task.
 - No tomar decisiones de alcance — si la task no es clara, escalar al planificador.
-- Cada task genera al menos un commit.
+- Cada task aprobada genera al menos un commit; las tasks fallidas (revision adversarial no superada) se descartan sin commit.
