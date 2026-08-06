@@ -461,6 +461,92 @@ test('install --backend gemini sobre proyecto con marcador de claude avisa del b
   assert.doesNotMatch(stdout, /opus/i, 'install de gemini no debe avisar del modelo de Claude Code');
 });
 
+test('install --backend gemini crea las rutas del framework bajo el namespace .gemini/ en el destino', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], gemini: ['.gemini/agents', '.gemini/commands', '.gemini/skills', 'GEMINI.md'] },
+    {
+      '.gemini/agents/planificador.md': 'agente',
+      '.gemini/commands/estado.toml': 'comando',
+      '.gemini/skills/commit/SKILL.md': 'skill',
+      'GEMINI.md': 'contexto gemini',
+    },
+  );
+  const proyecto = dirTemporal();
+
+  const { codigo, stdout } = ejecutar(['install', '--backend', 'gemini'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /Rutas copiadas/);
+  assert.ok(fs.existsSync(path.join(proyecto, '.gemini', 'agents', 'planificador.md')));
+  assert.ok(fs.existsSync(path.join(proyecto, '.gemini', 'commands', 'estado.toml')));
+  assert.ok(fs.existsSync(path.join(proyecto, '.gemini', 'skills', 'commit', 'SKILL.md')));
+});
+
+test('install --backend gemini no toca un directorio commands/ propio del proyecto (namespace evita la colision)', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], gemini: ['.gemini/commands', 'GEMINI.md'] },
+    { '.gemini/commands/estado.toml': 'comando del framework', 'GEMINI.md': 'contexto gemini' },
+  );
+  const proyecto = dirTemporal();
+  escribirArchivo(proyecto, 'commands/mi-negocio.js', 'logica de negocio del usuario');
+
+  const { codigo } = ejecutar(['install', '--backend', 'gemini'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+    input: '',
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'commands', 'mi-negocio.js'), 'utf8'),
+    'logica de negocio del usuario',
+    'commands/ propio del usuario no debe tocarse: el framework instala bajo .gemini/commands/',
+  );
+  assert.ok(fs.existsSync(path.join(proyecto, '.gemini', 'commands', 'estado.toml')));
+});
+
+test('update --backend gemini avisa si detecta el layout antiguo (agents/, commands/, skills/ sueltos)', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], gemini: ['.gemini/commands', 'GEMINI.md'] },
+    { '.gemini/commands/estado.toml': 'comando del framework', 'GEMINI.md': 'contexto\n<!-- sdd-framework: 1.0.0 -->\n' },
+  );
+  const proyecto = dirTemporal();
+  escribirArchivo(proyecto, 'GEMINI.md', 'contexto\n<!-- sdd-framework: 1.0.0 -->\n');
+  escribirArchivo(proyecto, 'commands/estado.toml', 'layout antiguo');
+  escribirArchivo(proyecto, 'agents/planificador.md', 'layout antiguo');
+
+  const { codigo, stderr } = ejecutar(['update', '--backend', 'gemini'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stderr, /layout antiguo de Gemini/);
+  assert.match(stderr, /agents/);
+  assert.match(stderr, /commands/);
+});
+
+test('install --backend gemini en un proyecto nuevo (sin marcador previo) no avisa de layout antiguo', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], gemini: ['.gemini/commands', 'GEMINI.md'] },
+    { '.gemini/commands/estado.toml': 'comando del framework', 'GEMINI.md': 'contexto gemini' },
+  );
+  const proyecto = dirTemporal();
+  escribirArchivo(proyecto, 'commands/mi-negocio.js', 'del usuario, nunca tuvo el framework instalado');
+
+  const { codigo, stderr } = ejecutar(['install', '--backend', 'gemini'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+    input: '',
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.doesNotMatch(stderr, /layout antiguo/);
+});
+
 test('install --backend all no avisa de backend equivocado aunque no haya marcador previo', () => {
   const paquete = crearPaqueteFixture({ common: [], claude: ['CLAUDE.md'], gemini: ['GEMINI.md'] }, {
     'CLAUDE.md': 'contexto',

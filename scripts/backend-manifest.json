@@ -40,9 +40,9 @@
     ]
   },
   "gemini": [
-    "agents",
-    "commands",
-    "skills",
+    ".gemini/agents",
+    ".gemini/commands",
+    ".gemini/skills",
     "gemini-extension.json",
     "GEMINI.md"
   ],

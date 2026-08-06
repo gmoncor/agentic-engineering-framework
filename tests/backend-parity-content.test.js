@@ -58,7 +58,7 @@ const CONTEXT_FILES = [
   '.agents/skills/implementar-spec/SKILL.md',
   'hooks/tests/implementar-spec.test.js',
   '.claude/agents/planificador.md',
-  'agents/planificador.md',
+  '.gemini/agents/planificador.md',
   '.codex/agents/planificador.toml',
   '.agents/plugins/sdd/agents/planificador.md',
   '.agents/skills/tareas/SKILL.md',
@@ -143,7 +143,7 @@ const IDENTICAL_SKILLS = ['cleanup', 'diff', 'revisar-tarea', 'revision-adversar
 
 const SKILL_BACKENDS = {
   claude: '.claude/skills',
-  gemini: 'skills',
+  gemini: '.gemini/skills',
   codex: '.agents/skills'
 };
 

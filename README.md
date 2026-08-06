@@ -127,7 +127,7 @@ claude                     # abre Claude Code — los comandos estan listos
 
 **Alternativa manual — proyecto existente:** copia `.claude/`, `hooks/`, `ai_docs/` y `CLAUDE.md` a la raiz de tu proyecto.
 
-> **Plugin nativo de Claude Code (`.claude-plugin/plugin.json`):** el repositorio incluye metadatos basicos de plugin (nombre, version, autor), pero hoy NO es una via de instalacion funcional. La raiz del repo ya usa `agents/`, `commands/` y `hooks/hooks.json` para el backend de Gemini (formato y nombres de evento distintos a los que espera un plugin de Claude Code), asi que cargarla como plugin no entregaria los agentes, comandos ni hooks correctos. Es experimental/futuro — usa `npx github:gmoncor/agentic-engineering-framework install --backend claude` en su lugar.
+> **Plugin nativo de Claude Code (`.claude-plugin/plugin.json`):** el repositorio incluye metadatos basicos de plugin (nombre, version, autor), pero hoy NO es una via de instalacion funcional. La raiz del repo ya usa `.gemini/agents/`, `.gemini/commands/` y `hooks/hooks.json` para el backend de Gemini (formato y nombres de evento distintos a los que espera un plugin de Claude Code), asi que cargarla como plugin no entregaria los agentes, comandos ni hooks correctos. Es experimental/futuro — usa `npx github:gmoncor/agentic-engineering-framework install --backend claude` en su lugar.
 
 ### Gemini CLI
 
@@ -135,7 +135,7 @@ claude                     # abre Claude Code — los comandos estan listos
 ```bash
 npx github:gmoncor/agentic-engineering-framework install --backend gemini
 ```
-Copia `agents/`, `commands/`, `skills/`, `hooks/`, `gemini-extension.json`, `GEMINI.md` y las plantillas de `ai_docs/`. Equivale a copiar los archivos a mano.
+Copia `.gemini/agents/`, `.gemini/commands/`, `.gemini/skills/`, `hooks/`, `gemini-extension.json`, `GEMINI.md` y las plantillas de `ai_docs/`. Equivale a copiar los archivos a mano. El namespace `.gemini/` evita colisionar con una carpeta `agents/`, `commands/` o `skills/` que ya exista en tu proyecto por otro motivo, y coincide con la convencion de Gemini CLI para comandos y subagentes de proyecto.
 
 > **Version instalada:** el archivo de contexto incluye un marcador de version al pie (`<!-- sdd-framework: X.Y.Z -->`). Cotejalo contra el `CHANGELOG.md` del repositorio para saber si hay actualizaciones.
 >
@@ -145,11 +145,11 @@ Copia `agents/`, `commands/`, `skills/`, `hooks/`, `gemini-extension.json`, `GEM
 ```bash
 gemini extensions install https://github.com/gmoncor/agentic-engineering-framework
 ```
-Instala los 13 comandos, 4 agentes y 8 skills. Comprueba con `gemini extensions list`.
+> **Limitacion conocida.** El instalador de extensiones de Gemini CLI busca `commands/`, `skills/` y `agents/` sueltos en la raiz del repositorio de la extension; como el framework los guarda bajo `.gemini/` (para evitar la colision de nombres descrita arriba), esta via solo instala el contexto (`GEMINI.md`) y no cablea `hooks/` por si sola. Usa **Via CLI (framework)** de arriba para una instalacion completa; conserva esta via solo si ya usas el gestor de extensiones para otra cosa.
 
 > **Los hooks no viajan con la extension.** `hooks/hooks.json` los invoca con rutas relativas a la raiz del proyecto, asi que copia tambien la carpeta `hooks/` ahi (via CLI del framework o a mano). Sin ella no hay enforcement: el pipeline se convierte en una sugerencia.
 
-**Alternativa manual:** copia `agents/`, `commands/`, `skills/`, `hooks/`, `GEMINI.md`, `gemini-extension.json` y `ai_docs/` a la raiz de tu proyecto.
+**Alternativa manual:** copia `.gemini/agents/`, `.gemini/commands/`, `.gemini/skills/`, `hooks/`, `GEMINI.md`, `gemini-extension.json` y `ai_docs/` a la raiz de tu proyecto.
 
 ### Codex
 
@@ -205,9 +205,9 @@ No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` par
 
 | Componente | Donde (Claude) | Donde (Gemini) | Donde (Codex) | Donde (Antigravity) |
 |------------|-----------------|-----------------|----------------|----------------------|
-| Comandos | `.claude/commands/` (13) | `commands/` (13) | — (entregados como skills) | — (entregados como skills) |
-| Agentes | `.claude/agents/` (4) | `agents/` (4) | `.codex/agents/` (4, `.toml`) | `.agents/plugins/sdd/agents/` (4) |
-| Skills | `.claude/skills/` (9)* | `skills/` (8) | `.agents/skills/` (18) | `.agents/skills/` (18) |
+| Comandos | `.claude/commands/` (13) | `.gemini/commands/` (13) | — (entregados como skills) | — (entregados como skills) |
+| Agentes | `.claude/agents/` (4) | `.gemini/agents/` (4) | `.codex/agents/` (4, `.toml`) | `.agents/plugins/sdd/agents/` (4) |
+| Skills | `.claude/skills/` (9)* | `.gemini/skills/` (8) | `.agents/skills/` (18) | `.agents/skills/` (18) |
 | Hooks | `hooks/` (5, wired en settings) | `hooks/` (4, wired en `hooks/hooks.json`) | `hooks/` (2, wired en `.codex/hooks.json`) | `hooks/` (4, wired en `.agents/hooks.json`) |
 | Workflows | `.claude/workflows/` (2) | — (el orquestador implementa en orden) | — (idem) | — (idem) |
 | Contexto | `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` | `AGENTS.md` |
@@ -379,9 +379,10 @@ agentic-engineering-framework/
 │   ├── skills/                  #   9 skills (auto-activacion; 1 exclusiva de Claude Code)
 │   └── workflows/               #   planificar.js + implementar-spec.js
 │
-├── agents/                      # Agentes Gemini CLI (4)
-├── commands/                    # 13 comandos Gemini CLI (.toml)
-├── skills/                      # 8 skills Gemini CLI
+├── .gemini/                     # Configuracion Gemini CLI (namespace evita colision con carpetas del usuario)
+│   ├── agents/                  #   4 agentes Gemini CLI
+│   ├── commands/                #   13 comandos Gemini CLI (.toml)
+│   └── skills/                  #   8 skills Gemini CLI
 ├── gemini-extension.json        # Manifest extension Gemini
 │
 ├── AGENTS.md                    # Contexto compartido (Codex + Antigravity)
@@ -512,8 +513,8 @@ framework ni en ninguna ejecucion futura.
 - **Claude Code:** crea `.claude/skills/<tu-skill>/SKILL.md` con frontmatter `name` +
   `description` (activacion automatica por el propio Claude Code), o
   `.claude/commands/<tu-comando>.md` para un slash command explicito.
-- **Gemini CLI:** crea `skills/<tu-skill>/SKILL.md` (mismo frontmatter `name` +
-  `description`), o `commands/<tu-comando>.toml` con las claves `description` y
+- **Gemini CLI:** crea `.gemini/skills/<tu-skill>/SKILL.md` (mismo frontmatter `name` +
+  `description`), o `.gemini/commands/<tu-comando>.toml` con las claves `description` y
   `prompt`.
 - **Codex:** crea `.agents/skills/<tu-skill>/SKILL.md` (carpeta compartida con
   Antigravity, mismo frontmatter que arriba).
