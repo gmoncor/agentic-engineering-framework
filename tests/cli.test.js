@@ -160,6 +160,7 @@ test('install --backend claude copia rutas comunes y de backend, y crea director
 
   assert.strictEqual(codigo, 0);
   assert.match(stdout, /Rutas copiadas/);
+  assert.match(stdout, /opus/i, 'debe avisar del modelo default en install de claude');
   assert.strictEqual(
     fs.readFileSync(path.join(proyecto, '.claude', 'agents', 'planificador.md'), 'utf8'),
     'contenido agente',
@@ -448,7 +449,7 @@ test('install --backend gemini sobre proyecto con marcador de claude avisa del b
   const proyecto = dirTemporal();
   escribirArchivo(proyecto, 'CLAUDE.md', 'contexto\n<!-- sdd-framework: 1.0.0 -->\n');
 
-  const { codigo, stderr } = ejecutar(['install', '--backend', 'gemini'], {
+  const { codigo, stderr, stdout } = ejecutar(['install', '--backend', 'gemini'], {
     cwd: proyecto,
     env: { SDD_FRAMEWORK_ROOT: paquete },
   });
@@ -457,6 +458,7 @@ test('install --backend gemini sobre proyecto con marcador de claude avisa del b
   assert.match(stderr, /Aviso/);
   assert.match(stderr, /claude/);
   assert.match(stderr, /CLAUDE\.md/);
+  assert.doesNotMatch(stdout, /opus/i, 'install de gemini no debe avisar del modelo de Claude Code');
 });
 
 test('install --backend all no avisa de backend equivocado aunque no haya marcador previo', () => {
@@ -466,13 +468,14 @@ test('install --backend all no avisa de backend equivocado aunque no haya marcad
   });
   const proyecto = dirTemporal();
 
-  const { codigo, stderr } = ejecutar(['install', '--backend', 'all'], {
+  const { codigo, stderr, stdout } = ejecutar(['install', '--backend', 'all'], {
     cwd: proyecto,
     env: { SDD_FRAMEWORK_ROOT: paquete },
   });
 
   assert.strictEqual(codigo, 0);
   assert.doesNotMatch(stderr, /Aviso/);
+  assert.match(stdout, /opus/i, 'install --backend all incluye claude, debe avisar del modelo');
 });
 
 test('install --backend codex sobre proyecto con AGENTS.md de antigravity no avisa (comparten archivo)', () => {
@@ -655,6 +658,7 @@ test('update --backend claude preserva intacto el contenido de ai_docs/core', ()
   assert.strictEqual(codigo, 0);
   assert.match(stdout, /Rutas actualizadas/);
   assert.match(stdout, /Framework actualizado a la version/);
+  assert.doesNotMatch(stdout, /opus/i, 'update no debe repetir el aviso de modelo default (solo install)');
   assert.strictEqual(
     fs.readFileSync(path.join(proyecto, 'ai_docs', 'core', 'test.md'), 'utf8'),
     'MIO SIN TOCAR',

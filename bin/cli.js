@@ -519,7 +519,7 @@ function reportarArchivosProtegidos(saltadasPorEdicion) {
   saltadasPorEdicion.forEach(ruta => console.log(`  - ${ruta}`));
 }
 
-function reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, scriptsTestMergeado) {
+function reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, scriptsTestMergeado, backend) {
   if (copiadas.length) {
     console.log('Rutas copiadas:');
     copiadas.forEach(ruta => console.log(`  - ${ruta}`));
@@ -535,6 +535,9 @@ function reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, sc
   }
   if (scriptsTestMergeado) {
     console.log('Anadido scripts.test a package.json para correr los tests de los hooks.');
+  }
+  if (backend === 'claude' || backend === 'all') {
+    console.log('Nota: .claude/settings.json configura claude-opus-4-8 como modelo de sesion (tier capaz, precio alto). Cambialo con /model o editando settings.json.');
   }
   console.log("Framework instalado. Configura ai_docs/core/ con las plantillas de ai_docs/core_templates/. Ejecuta 'npm test' para verificar los hooks.");
 }
@@ -568,7 +571,7 @@ async function cmdInstall(args) {
   });
   const scriptsTestMergeado = mergeScriptsTest(dryRun);
   if (!dryRun) sincronizarMarcadores(backend, copiadas, obtenerVersion());
-  reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, scriptsTestMergeado);
+  reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, scriptsTestMergeado, backend);
 }
 
 async function cmdUpdate(args) {
