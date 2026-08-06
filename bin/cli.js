@@ -32,8 +32,12 @@ const ARCHIVO_CONTEXTO_POR_BACKEND = {
   antigravity: 'AGENTS.md',
 };
 
-// Archivos que el usuario personaliza tras instalar (umbrales, permisos,
-// hooks propios) y que `update` no debe pisar si detecta ediciones locales.
+// `update` protege por hash-sidecar CUALQUIER archivo que copie (ver
+// `archivosDe`/`editadaLocalmente`), no solo estos 6. La lista se conserva
+// para dos usos mas acotados: (a) en `install`, donde una colision con un
+// archivo fuera de esta lista se resuelve via el preflight de colision
+// (confirmacion o --force) en lugar de protegerse por hash; (b) excluir estos
+// 6 del preflight de colision, porque su proteccion por hash ya es suficiente.
 const ARCHIVO_SIDECAR_HASHES = '.sdd-installed-hashes.json';
 const ARCHIVOS_PROTEGIDOS = ['hooks/config.json', '.claude/settings.json', 'CLAUDE.md', 'GEMINI.md', 'AGENTS.md', '.gitignore'];
 
@@ -77,7 +81,7 @@ Actualiza el framework instalado en el directorio actual: copia las rutas del ba
 
 Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).
 --skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing, pr); solo aplica al backend claude.
---reset-protected sobrescribe archivos protegidos con ediciones locales (hooks/config.json, .claude/settings.json, CLAUDE.md, GEMINI.md, AGENTS.md, .gitignore) y refresca el sidecar de hashes al final.
+--reset-protected sobrescribe cualquier archivo del framework con ediciones locales detectadas (no solo los archivos nucleares como CLAUDE.md o hooks/config.json) y refresca el sidecar de hashes al final.
 --dry-run muestra que ficheros se copiarian/saltarian sin escribir nada en disco.
 --force si hay archivos no protegidos que se sobrescribirian, salta la confirmacion (util en CI/pipe). No afecta a los archivos protegidos con ediciones locales: para esos sigue haciendo falta --reset-protected.`);
 }
@@ -223,13 +227,22 @@ function hashFile(rutaAbsoluta) {
   return crypto.createHash('sha256').update(fs.readFileSync(rutaAbsoluta)).digest('hex');
 }
 
-/** Lee el sidecar de hashes instalados del destino. JSON ausente o invalido => {}. */
+/**
+ * Lee el sidecar de hashes instalados del destino. Ausente => {} en silencio
+ * (proyecto sin sidecar previo, caso normal). JSON invalido (corrupcion, o una
+ * escritura anterior interrumpida a mitad de proceso) => avisa por stderr y
+ * continua con {}, tratando todos los archivos como sin hash previo en lugar
+ * de abortar.
+ */
 function loadInstalledHashes(dest) {
   const sidecarPath = path.join(dest, ARCHIVO_SIDECAR_HASHES);
   if (!fs.existsSync(sidecarPath)) return {};
   try {
     return JSON.parse(fs.readFileSync(sidecarPath, 'utf8'));
-  } catch {
+  } catch (err) {
+    process.stderr.write(
+      `${ARCHIVO_SIDECAR_HASHES} tiene formato invalido, se ignora (los archivos se tratan como sin hash previo): ${err.message}\n`,
+    );
     return {};
   }
 }
@@ -260,6 +273,20 @@ function listarArchivos(dirAbsoluto) {
     }
   }
   return resultado;
+}
+
+/**
+ * Expande una ruta del manifiesto a sus archivos individuales: ella misma si
+ * es un archivo, o su contenido recursivo (rutas relativas a PACKAGE_ROOT) si
+ * es un directorio. Ruta ausente en el origen => []. Base de la proteccion
+ * por hash generalizada: a diferencia de `protegidasEn`, no filtra contra
+ * ARCHIVOS_PROTEGIDOS.
+ */
+function archivosDe(ruta) {
+  const origen = path.join(PACKAGE_ROOT, ruta);
+  if (!fs.existsSync(origen)) return [];
+  if (!fs.statSync(origen).isDirectory()) return [ruta];
+  return listarArchivos(origen).map(relativa => `${ruta}/${relativa}`);
 }
 
 /**
@@ -332,23 +359,28 @@ function editadaLocalmente(rutaRelativa, hashesInstalados) {
 }
 
 /**
- * Copia una ruta del manifiesto, saltando los archivos protegidos con
- * ediciones locales. Con `resetProtected` la proteccion se ignora por
- * completo para este run (el usuario eligio explicitamente sobrescribir).
- * Con `dryRun` no se escribe nada en disco: se reporta por consola lo que
- * habria pasado y se retorna el mismo resultado que produciria el run real.
+ * Copia una ruta del manifiesto, saltando los archivos con ediciones locales.
+ * Con `generalizado` (solo `update`) la proteccion por hash cubre TODOS los
+ * archivos que produciria copiar `ruta`; sin el (solo `install`), se limita a
+ * ARCHIVOS_PROTEGIDOS -- una colision con otro archivo en `install` ya la
+ * resuelve el preflight (confirmacion o --force). Con `resetProtected` la
+ * proteccion se ignora por completo para este run (el usuario eligio
+ * explicitamente sobrescribir). Con `dryRun` no se escribe nada en disco: se
+ * reporta por consola lo que habria pasado y se retorna el mismo resultado
+ * que produciria el run real.
  */
-function copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, resetProtected, dryRun) {
+function copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, resetProtected, dryRun, generalizado) {
   const origen = path.join(PACKAGE_ROOT, ruta);
   if (!fs.existsSync(origen)) {
     return { ruta, copiada: false };
   }
   const destino = path.join(DEST, ruta);
 
+  const candidatas = generalizado ? archivosDe(ruta) : protegidasEn(ruta);
   const editadas = resetProtected
     ? []
-    : protegidasEn(ruta).filter(protegida => editadaLocalmente(protegida, hashesInstalados));
-  editadas.forEach(protegida => saltadasPorEdicion.push(protegida));
+    : candidatas.filter(archivo => editadaLocalmente(archivo, hashesInstalados));
+  editadas.forEach(archivo => saltadasPorEdicion.push(archivo));
 
   const esDirectorio = fs.statSync(origen).isDirectory();
 
@@ -379,15 +411,21 @@ function copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, resetProtected, 
   return { ruta, copiada: true };
 }
 
-/** Recalcula y persiste los hashes de los archivos protegidos copiados sin saltar en este run. */
+/**
+ * Recalcula y persiste en el sidecar los hashes de TODOS los archivos
+ * copiados en este run (no solo ARCHIVOS_PROTEGIDOS), para que `update`
+ * disponga de una linea base de comparacion completa la proxima vez. Se
+ * ejecuta igual en `install` y `update`: sembrar el hash no cambia el
+ * comportamiento de `install` (que solo consulta ARCHIVOS_PROTEGIDOS), pero
+ * deja lista la cobertura generalizada para el primer `update` posterior.
+ */
 function actualizarHashesInstalados(hashesInstalados, rutas, saltadasPorEdicion) {
   const hashesActualizados = { ...hashesInstalados };
-  const protegidasEnAlcance = rutas.flatMap(protegidasEn);
-  for (const protegida of protegidasEnAlcance) {
-    if (saltadasPorEdicion.includes(protegida)) continue;
-    if (!fs.existsSync(path.join(PACKAGE_ROOT, protegida))) continue;
-    const hashActual = hashFile(path.join(DEST, protegida));
-    if (hashActual !== null) hashesActualizados[protegida] = hashActual;
+  const archivosEnAlcance = rutas.flatMap(archivosDe);
+  for (const archivo of archivosEnAlcance) {
+    if (saltadasPorEdicion.includes(archivo)) continue;
+    const hashActual = hashFile(path.join(DEST, archivo));
+    if (hashActual !== null) hashesActualizados[archivo] = hashActual;
   }
   saveInstalledHashes(DEST, hashesActualizados);
 }
@@ -496,7 +534,7 @@ function copiarRutasFramework(backend, skip, opciones = {}) {
   const hashesInstalados = loadInstalledHashes(DEST);
   const saltadasPorEdicion = [];
   const resultados = rutas.map(ruta =>
-    copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, opciones.resetProtected, opciones.dryRun),
+    copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, opciones.resetProtected, opciones.dryRun, opciones.generalizado),
   );
   const copiadas = resultados.filter(r => r.copiada).map(r => r.ruta);
   const saltadas = resultados
@@ -626,6 +664,7 @@ async function cmdUpdate(args) {
     crearDirsUsuario: false,
     resetProtected,
     dryRun,
+    generalizado: true,
   });
   const scriptsTestMergeado = mergeScriptsTest(dryRun);
   const version = obtenerVersion();

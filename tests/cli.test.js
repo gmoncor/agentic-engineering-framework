@@ -888,8 +888,11 @@ test('update --backend all anade las rutas de los backends nuevos sobre una inst
   fs.writeFileSync(path.join(proyecto, '.claude', 'agents', 'planificador.md'), 'agente viejo');
   fs.writeFileSync(path.join(proyecto, 'CLAUDE.md'), 'contexto viejo');
 
-  // .claude/agents/planificador.md preexiste sin haber pasado por install/update
-  // (no protegido): el preflight lo trata como colision, --force la asume.
+  // .claude/agents/planificador.md y CLAUDE.md preexisten sin haber pasado por
+  // install/update (sin sidecar de hashes previo): el preflight los trata como
+  // colision, --force la asume, pero la proteccion por hash-sidecar de `update`
+  // es generalizada -- cubre cualquier archivo, no solo los 6 nucleares -- asi
+  // que ambos se tratan como posible edicion local y no se sobrescriben.
   const { codigo } = ejecutar(['update', '--backend', 'all', '--force'], {
     cwd: proyecto,
     env: { SDD_FRAMEWORK_ROOT: paquete },
@@ -898,12 +901,10 @@ test('update --backend all anade las rutas de los backends nuevos sobre una inst
   assert.strictEqual(codigo, 0);
   assert.ok(fs.existsSync(path.join(proyecto, 'GEMINI.md')), 'debe anadir la ruta nueva de gemini');
   assert.ok(fs.existsSync(path.join(proyecto, 'AGENTS.md')), 'debe anadir la ruta nueva de codex');
-  // CLAUDE.md ya existia sin haber pasado nunca por install/update (sin sidecar de
-  // hashes previo): se trata como posible edicion local y no se sobrescribe.
   assert.strictEqual(fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'), 'contexto viejo');
   assert.strictEqual(
     fs.readFileSync(path.join(proyecto, '.claude', 'agents', 'planificador.md'), 'utf8'),
-    'agente',
+    'agente viejo',
   );
 });
 
@@ -1178,6 +1179,187 @@ test('update --reset-protected sobrescribe archivos protegidos con ediciones loc
     crypto.createHash('sha256').update('{"turn_budget":{"hard_stop_at":40,"warn_at":30}}').digest('hex'),
     'el sidecar debe refrescarse con el hash del archivo recien copiado',
   );
+});
+
+test('update generaliza la proteccion a un hook fuera de la lista fija de 6 rutas', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: [] },
+    { 'hooks/sdd-turn-budget.js': 'module.exports = { hardStopAt: 40 };' },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+
+  const instalacion = ejecutar(['install', '--backend', 'claude'], opts);
+  assert.strictEqual(instalacion.codigo, 0);
+
+  // El usuario parchea el hook localmente tras instalar (umbral ajustado).
+  fs.writeFileSync(
+    path.join(proyecto, 'hooks', 'sdd-turn-budget.js'),
+    'module.exports = { hardStopAt: 999 };',
+  );
+  // El framework publica una nueva version del mismo hook.
+  fs.writeFileSync(
+    path.join(paquete, 'hooks', 'sdd-turn-budget.js'),
+    'module.exports = { hardStopAt: 40, warnAt: 30 };',
+  );
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude', '--force'], opts);
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'hooks', 'sdd-turn-budget.js'), 'utf8'),
+    'module.exports = { hardStopAt: 999 };',
+    'un hook fuera de ARCHIVOS_PROTEGIDOS tambien debe protegerse si tiene ediciones locales',
+  );
+  assert.match(stdout, /cambios locales/);
+  assert.match(stdout, /hooks\/sdd-turn-budget\.js/);
+});
+
+test('update generaliza la proteccion a CHANGELOG.md editado localmente', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['CHANGELOG.md'], claude: [] },
+    { 'CHANGELOG.md': '# Changelog\n\n## [Unreleased]\n' },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+
+  const instalacion = ejecutar(['install', '--backend', 'claude'], opts);
+  assert.strictEqual(instalacion.codigo, 0);
+
+  // El usuario anade notas propias al CHANGELOG tras instalar.
+  fs.writeFileSync(
+    path.join(proyecto, 'CHANGELOG.md'),
+    '# Changelog\n\n## [Unreleased]\n\n- nota propia del equipo\n',
+  );
+  // El framework publica una nueva entrada en el mismo archivo.
+  fs.writeFileSync(
+    path.join(paquete, 'CHANGELOG.md'),
+    '# Changelog\n\n## [Unreleased]\n\n- nueva entrada del framework\n',
+  );
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude', '--force'], opts);
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'CHANGELOG.md'), 'utf8'),
+    '# Changelog\n\n## [Unreleased]\n\n- nota propia del equipo\n',
+    'CHANGELOG.md no esta en ARCHIVOS_PROTEGIDOS pero debe protegerse igual',
+  );
+  assert.match(stdout, /cambios locales/);
+  assert.match(stdout, /CHANGELOG\.md/);
+});
+
+test('update --reset-protected sobrescribe tambien archivos fuera de la lista fija de 6 rutas', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: [] },
+    { 'hooks/sdd-turn-budget.js': 'module.exports = { hardStopAt: 40 };' },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+
+  const instalacion = ejecutar(['install', '--backend', 'claude'], opts);
+  assert.strictEqual(instalacion.codigo, 0);
+
+  fs.writeFileSync(
+    path.join(proyecto, 'hooks', 'sdd-turn-budget.js'),
+    'module.exports = { hardStopAt: 999 };',
+  );
+  fs.writeFileSync(
+    path.join(paquete, 'hooks', 'sdd-turn-budget.js'),
+    'module.exports = { hardStopAt: 40, warnAt: 30 };',
+  );
+
+  const { codigo, stdout } = ejecutar(
+    ['update', '--backend', 'claude', '--force', '--reset-protected'],
+    opts,
+  );
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'hooks', 'sdd-turn-budget.js'), 'utf8'),
+    'module.exports = { hardStopAt: 40, warnAt: 30 };',
+    '--reset-protected debe sobrescribir tambien archivos fuera de la lista fija',
+  );
+  assert.doesNotMatch(stdout, /cambios locales/);
+});
+
+test('update sin sidecar previo protege por retrocompatibilidad un archivo fuera de la lista fija', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: [] },
+    { 'hooks/sdd-turn-budget.js': 'module.exports = { hardStopAt: 40 };' },
+  );
+  const proyecto = dirTemporal();
+  // Proyecto pre-existente que nunca paso por install/update con sidecar de hashes.
+  fs.mkdirSync(path.join(proyecto, 'hooks'), { recursive: true });
+  fs.writeFileSync(
+    path.join(proyecto, 'hooks', 'sdd-turn-budget.js'),
+    'module.exports = { hardStopAt: 999 }; // ajuste del equipo',
+  );
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'hooks', 'sdd-turn-budget.js'), 'utf8'),
+    'module.exports = { hardStopAt: 999 }; // ajuste del equipo',
+  );
+  assert.match(stdout, /cambios locales/);
+  assert.match(stdout, /hooks\/sdd-turn-budget\.js/);
+});
+
+test('update con sidecar de hashes corrupto avisa por stderr y no aborta', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto nuevo' },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+
+  const instalacion = ejecutar(['install', '--backend', 'claude'], opts);
+  assert.strictEqual(instalacion.codigo, 0);
+
+  // Sidecar corrupto: simula tanto una corrupcion como una escritura anterior
+  // interrumpida a mitad de proceso (mismo sintoma: JSON no parseable).
+  fs.writeFileSync(path.join(proyecto, '.sdd-installed-hashes.json'), '{"CLAUDE.md": "abc');
+
+  const { codigo, stderr } = ejecutar(['update', '--backend', 'claude', '--force'], opts);
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stderr, /\.sdd-installed-hashes\.json/);
+  // Contenido identico al del paquete: sin hash previo utilizable, la
+  // comparacion retrocompatible contra el origen determina que no hay edicion.
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'), 'contexto nuevo');
+});
+
+test('update recrea un archivo del framework que el usuario elimino (no lo trata como editado)', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: [] },
+    { 'hooks/sdd-turn-budget.js': 'module.exports = { hardStopAt: 40 };' },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+
+  const instalacion = ejecutar(['install', '--backend', 'claude'], opts);
+  assert.strictEqual(instalacion.codigo, 0);
+
+  fs.rmSync(path.join(proyecto, 'hooks', 'sdd-turn-budget.js'));
+  fs.writeFileSync(
+    path.join(paquete, 'hooks', 'sdd-turn-budget.js'),
+    'module.exports = { hardStopAt: 45 };',
+  );
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude'], opts);
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'hooks', 'sdd-turn-budget.js'), 'utf8'),
+    'module.exports = { hardStopAt: 45 };',
+    'un archivo borrado por el usuario debe recrearse, no tratarse como edicion local',
+  );
+  assert.doesNotMatch(stdout, /cambios locales/);
 });
 
 test('update --reset-protected sin --backend sigue el flujo interactivo normal', () => {
