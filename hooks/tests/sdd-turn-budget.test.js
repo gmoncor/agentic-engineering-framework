@@ -43,10 +43,25 @@ const accionSubagente = (session) => ({
   agent_type: 'implementador',
 });
 
+// Payload de subagente que solo trae is_sidechain (sin agent_id ni agent_type).
+const accionSidechain = (session, valor) => ({
+  tool_name: 'Read',
+  tool_input: { file_path: '/x' },
+  session_id: session,
+  is_sidechain: valor,
+});
+
 // Como repetir(), pero con el payload de subagente (agent_id/agent_type presentes).
 function repetirSubagente(n, env, session) {
   let r;
   for (let i = 0; i < n; i++) r = runHook(HOOK, accionSubagente(session || SESSION), env);
+  return r;
+}
+
+// Como repetir(), pero con un payload que solo trae is_sidechain.
+function repetirSidechain(n, env, session, valor) {
+  let r;
+  for (let i = 0; i < n; i++) r = runHook(HOOK, accionSidechain(session || SESSION, valor), env);
   return r;
 }
 
@@ -186,6 +201,29 @@ test('enforce + hilo principal (sin agent_id/agent_type): sigue denegando igual 
   assert.strictEqual(r.decision.decision, 'deny');
   assert.match(r.decision.reason, /INTERRUMPE y espera/);
   assert.strictEqual(r.decision.code, 'TURN_BUDGET_HARD_STOP');
+});
+
+test('enforce + subagente detectado solo por is_sidechain: avisa (no deniega)', () => {
+  const e = entorno(CONFIG_ENFORCE);
+  const r = repetirSidechain(3, e.env, SESSION, true); // block_at = 3
+  assert.strictEqual(r.decision.decision, 'warn');
+  assert.match(r.decision.reason, /busca un punto para hacer commit/);
+  assert.strictEqual(r.decision.code, 'TURN_BUDGET_BLOCK');
+});
+
+test('enforce + is_sidechain: false (presente pero falsy): sigue denegando como hilo principal', () => {
+  const e = entorno(CONFIG_ENFORCE);
+  const r = repetirSidechain(4, e.env, SESSION, false); // hard_stop_at = 4
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.match(r.decision.reason, /INTERRUMPE y espera/);
+  assert.strictEqual(r.decision.code, 'TURN_BUDGET_HARD_STOP');
+});
+
+test('enforce + is_sidechain como string "true": se detecta como subagente (truthy)', () => {
+  const e = entorno(CONFIG_ENFORCE);
+  const r = repetirSidechain(3, e.env, SESSION, 'true'); // block_at = 3
+  assert.strictEqual(r.decision.decision, 'warn');
+  assert.strictEqual(r.decision.code, 'TURN_BUDGET_BLOCK');
 });
 
 test('advisory + subagente: supera hard_stop_at -> avisa igual que un subagente ausente, nunca deniega', () => {

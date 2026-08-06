@@ -87,11 +87,12 @@ function threshold(cfg, key) {
   return Number.isFinite(n) ? n : DEFAULTS[key];
 }
 
-// `agent_id`/`agent_type` solo aparecen en el payload cuando la tool call se
-// origina dentro de un subagente (contrato de hooks de Claude Code); el hilo
-// principal nunca los trae.
+// `agent_id`/`is_sidechain`/`agent_type` solo aparecen en el payload cuando la
+// tool call se origina dentro de un subagente (contrato de hooks de Claude
+// Code); el hilo principal nunca los trae. Comprobar las tres senales evita
+// que un payload que solo trae `is_sidechain` se trate como hilo principal.
 function isSubagentCall(data) {
-  return !!(data && (data.agent_id || data.agent_type));
+  return !!(data && (data.agent_id || data.is_sidechain || data.agent_type));
 }
 
 function avisoWarn(count) {
