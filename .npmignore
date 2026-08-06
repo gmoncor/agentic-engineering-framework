@@ -1,0 +1,25 @@
+# npm excluye .gitignore por defecto al empaquetar, incluso con este
+# .npmignore presente (regla hardcodeada en npm-packlist). Se fuerza su
+# inclusion explicitamente para que llegue como archivo regular al paquete.
+!.gitignore
+
+# Tests (no necesarios en el paquete distribuido)
+tests/
+hooks/tests/
+
+# Desarrollo
+.cursor/
+.github/
+.claude-plugin/
+
+# Documentacion de desarrollo (no del framework)
+ai_docs/core/
+ai_docs/tasks/
+ai_docs/refs/
+
+# Archivos de CI/entorno
+.worktrees/
+.sdd-installed-hashes.json
+.env
+.env.*
+node_modules/

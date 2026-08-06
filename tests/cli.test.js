@@ -1228,3 +1228,52 @@ test('update --dry-run reporta un archivo protegido editado localmente sin sobre
     'dry-run no debe modificar el sidecar de hashes',
   );
 });
+
+test('.npmignore existe, fuerza la inclusion de .gitignore y no excluye rutas criticas del manifiesto', () => {
+  const rutaNpmignore = path.join(RAIZ, '.npmignore');
+  assert.ok(fs.existsSync(rutaNpmignore), '.npmignore debe existir en la raiz del repo');
+
+  const lineas = fs
+    .readFileSync(rutaNpmignore, 'utf8')
+    .split('\n')
+    .map((linea) => linea.trim())
+    .filter((linea) => linea && !linea.startsWith('#'));
+
+  // npm excluye .gitignore por defecto al empaquetar (regla interna de
+  // npm-packlist), incluso con un .npmignore presente en el repo. La unica
+  // forma de que .gitignore llegue como archivo regular al paquete es negar
+  // esa exclusion explicitamente.
+  assert.ok(
+    lineas.includes('!.gitignore'),
+    '.npmignore debe forzar la inclusion de .gitignore con la linea "!.gitignore"',
+  );
+
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(RAIZ, 'scripts', 'backend-manifest.json'), 'utf8'),
+  );
+  const rutasCriticas = [
+    'bin/cli.js',
+    'scripts/backend-manifest.json',
+    'CLAUDE.md',
+    '.claude',
+    'hooks',
+    ...manifest.common,
+    ...manifest.claude.core,
+    ...manifest.claude.optional.flatMap((opcion) => opcion.rutas),
+    ...manifest.gemini,
+    ...manifest.codex,
+    ...manifest.antigravity,
+  ];
+
+  const exclusiones = lineas.filter((linea) => !linea.startsWith('!'));
+  for (const ruta of rutasCriticas) {
+    const raizRuta = ruta.split('/')[0];
+    const excluida = exclusiones.some((patron) => {
+      const patronLimpio = patron.replace(/\/$/, '');
+      return (
+        patronLimpio === raizRuta || patronLimpio === ruta || ruta.startsWith(`${patronLimpio}/`)
+      );
+    });
+    assert.ok(!excluida, `.npmignore no debe excluir la ruta del manifiesto: ${ruta}`);
+  }
+});
