@@ -8,8 +8,16 @@
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { parseAffectedFiles } = require('./sdd-task-files');
+
+// Directorio temporal del sistema: nunca es la raiz de un proyecto, sino un espacio
+// compartido por procesos ajenos entre si. Sirve de techo para el ascenso de
+// findTasksDir: sin el, un ai_docs/tasks/ que quede residual ahi (o en cualquier
+// directorio por encima) se "prestaria" a cualquier archivo que se este escribiendo
+// dentro de /tmp, como si perteneciera a su proyecto.
+const TMP_ROOT = path.resolve(os.tmpdir());
 
 /** Escribir documentacion ES planificar: ai_docs/ nunca se bloquea. */
 function isInsideAiDocs(resolved) {
@@ -20,6 +28,7 @@ function isInsideAiDocs(resolved) {
 function findTasksDir(filePath) {
   let dir = path.dirname(filePath);
   for (let i = 0; i < 10; i++) {
+    if (dir === TMP_ROOT) break;
     const candidate = path.join(dir, 'ai_docs', 'tasks');
     if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) return candidate;
     const parent = path.dirname(dir);
