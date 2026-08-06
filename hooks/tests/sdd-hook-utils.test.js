@@ -16,7 +16,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { readPayload, warn, deny, loadConfig } = require('../sdd-hook-utils');
+const { readPayload, warn, deny, loadConfig, purgeExpired } = require('../sdd-hook-utils');
 
 const originalStdin = process.stdin;
 
@@ -208,6 +208,128 @@ test('readPayload() con Node < 20 -> emite aviso de version a stderr', async () 
     restoreStdin();
     delete require.cache[rutaModulo];
   }
+});
+
+// purgeExpired(dir, prefix, currentFile, ttlMs): purga oportunista de ficheros
+// de estado por sesion (sdd-turns-*.json, sdd-reads-*.json) usada por
+// sdd-turn-budget.js y sdd-read-tracker.js al escribir el estado de la sesion
+// actual.
+function tempPurgeDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-purge-'));
+}
+
+function conMtime(file, msAtras) {
+  const t = (Date.now() - msAtras) / 1000;
+  fs.utimesSync(file, t, t);
+}
+
+test('purgeExpired: elimina ficheros con el prefijo dado cuyo mtime supera el TTL', () => {
+  const dir = tempPurgeDir();
+  const viejo = path.join(dir, 'sdd-turns-vieja.json');
+  fs.writeFileSync(viejo, '{}');
+  conMtime(viejo, 25 * 60 * 60 * 1000); // 25h: supera un TTL de 24h
+  try {
+    purgeExpired(dir, 'sdd-turns-', path.join(dir, 'sdd-turns-actual.json'), 24 * 60 * 60 * 1000);
+    assert.strictEqual(fs.existsSync(viejo), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('purgeExpired: NO elimina ficheros dentro del TTL', () => {
+  const dir = tempPurgeDir();
+  const reciente = path.join(dir, 'sdd-turns-reciente.json');
+  fs.writeFileSync(reciente, '{}');
+  conMtime(reciente, 60 * 60 * 1000); // 1h: dentro de un TTL de 24h
+  try {
+    purgeExpired(dir, 'sdd-turns-', path.join(dir, 'sdd-turns-actual.json'), 24 * 60 * 60 * 1000);
+    assert.strictEqual(fs.existsSync(reciente), true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Estos dos tests fijan Date.now() en vez de dejar pasar tiempo real entre el
+// setup y la llamada: leen el mtime real (sin tocarlo con utimesSync, para no
+// depender de la resolucion de conversion seg<->ms del filesystem) y calculan
+// "ahora" a partir de el, de forma que la diferencia sea exactamente ttlMs (o
+// ttlMs + 1ms). Con tiempo real, cualquier margen de ejecucion entre el setup
+// y la purga desplazaria el borde y volveria el test inestable.
+test('purgeExpired: diff === ttlMs exacto -> NO se purga (solo estrictamente superior)', () => {
+  const dir = tempPurgeDir();
+  const borde = path.join(dir, 'sdd-turns-borde.json');
+  fs.writeFileSync(borde, '{}');
+  const ttl = 24 * 60 * 60 * 1000;
+  const mtimeMs = fs.statSync(borde).mtimeMs;
+  const originalNow = Date.now;
+  Date.now = () => mtimeMs + ttl;
+  try {
+    purgeExpired(dir, 'sdd-turns-', path.join(dir, 'sdd-turns-actual.json'), ttl);
+    assert.strictEqual(fs.existsSync(borde), true, 'diff === ttlMs no debe purgarse, solo lo estrictamente mayor');
+  } finally {
+    Date.now = originalNow;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('purgeExpired: diff === ttlMs + 1ms -> SI se purga', () => {
+  const dir = tempPurgeDir();
+  const pasado = path.join(dir, 'sdd-turns-pasado.json');
+  fs.writeFileSync(pasado, '{}');
+  const ttl = 24 * 60 * 60 * 1000;
+  const mtimeMs = fs.statSync(pasado).mtimeMs;
+  const originalNow = Date.now;
+  Date.now = () => mtimeMs + ttl + 1;
+  try {
+    purgeExpired(dir, 'sdd-turns-', path.join(dir, 'sdd-turns-actual.json'), ttl);
+    assert.strictEqual(fs.existsSync(pasado), false, 'diff = ttlMs + 1ms ya supera el TTL: debe purgarse');
+  } finally {
+    Date.now = originalNow;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('purgeExpired: nunca elimina currentFile aunque su mtime supere el TTL', () => {
+  const dir = tempPurgeDir();
+  const actual = path.join(dir, 'sdd-turns-actual.json');
+  fs.writeFileSync(actual, '{}');
+  conMtime(actual, 48 * 60 * 60 * 1000);
+  try {
+    purgeExpired(dir, 'sdd-turns-', actual, 24 * 60 * 60 * 1000);
+    assert.strictEqual(fs.existsSync(actual), true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('purgeExpired: ignora ficheros que no matchean el prefijo, aunque esten expirados', () => {
+  const dir = tempPurgeDir();
+  const otro = path.join(dir, 'otro-hook-vieja.json');
+  fs.writeFileSync(otro, '{}');
+  conMtime(otro, 48 * 60 * 60 * 1000);
+  try {
+    purgeExpired(dir, 'sdd-turns-', path.join(dir, 'sdd-turns-actual.json'), 24 * 60 * 60 * 1000);
+    assert.strictEqual(fs.existsSync(otro), true, 'un fichero de otro prefijo no debe tocarse');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('purgeExpired: sin ficheros previos -> no lanza, 0 eliminados', () => {
+  const dir = tempPurgeDir();
+  try {
+    assert.doesNotThrow(() => {
+      purgeExpired(dir, 'sdd-turns-', path.join(dir, 'sdd-turns-actual.json'), 24 * 60 * 60 * 1000);
+    });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('purgeExpired: directorio no listable -> falla en silencio, no lanza', () => {
+  assert.doesNotThrow(() => {
+    purgeExpired('/ruta/que/no/existe/en/absoluto', 'sdd-turns-', '/tmp/actual.json', 1000);
+  });
 });
 
 test('readPayload() con Node >= 20 -> no emite aviso de version', async () => {

@@ -16,6 +16,9 @@
  * Cada tool call incrementa el contador; una tool call de shell con `git commit`
  * lo resetea a 0 (el commit es el checkpoint que el budget vigila). El estado vive
  * fuera del proceso porque cada tool call es una invocacion distinta del hook.
+ * Al escribir el contador de la sesion actual se purgan (best-effort) los
+ * ficheros `sdd-turns-*.json` de otras sesiones con mas de 24h sin actividad,
+ * para que no se acumulen indefinidamente en maquinas de larga duracion.
  *
  * MODO (config .mode)
  *   - "advisory" (default): los tres umbrales AVISAN, nunca bloquean.
@@ -45,12 +48,13 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { readPayload, readToolCall, warn, deny, skipRequested, loadConfig } = require('./sdd-hook-utils');
+const { readPayload, readToolCall, warn, deny, skipRequested, loadConfig, purgeExpired } = require('./sdd-hook-utils');
 
 const SHELL_TOOLS = new Set(['Bash', 'run_command', 'shell']);
 const COMMIT_RE = /\bgit\s+commit\b/;
 
 const DEFAULTS = { warn_at: 30, block_at: 60, hard_stop_at: 90 };
+const TTL_MS = 24 * 60 * 60 * 1000; // 24h: ficheros de sesiones sin actividad reciente se purgan
 
 function turnsDir() {
   return process.env.SDD_TURNS_DIR || os.tmpdir();
@@ -73,12 +77,17 @@ function loadCount(sessionId) {
 }
 
 function saveCount(sessionId, count) {
+  const file = turnsPath(sessionId);
   try {
-    fs.writeFileSync(turnsPath(sessionId), JSON.stringify({ count }));
+    fs.writeFileSync(file, JSON.stringify({ count }));
   } catch {
     // Disco lento o de solo lectura: perder un incremento solo relaja el aviso,
     // nunca lo endurece. No se propaga.
+    return;
   }
+  // Purga oportunista: retira contadores de sesiones anteriores sin actividad
+  // en el ultimo TTL. Ver purgeExpired en sdd-hook-utils.js.
+  purgeExpired(turnsDir(), 'sdd-turns-', file, TTL_MS);
 }
 
 // Umbral configurado, o su default. <= 0 desactiva ese tier.
