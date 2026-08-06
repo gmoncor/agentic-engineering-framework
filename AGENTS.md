@@ -25,6 +25,7 @@ entre. Tambien puedes nombrarla explicitamente.
 
 | Skill | Paso | Que hace |
 |-------|------|----------|
+| `inicio` | — | Bootstrap de `ai_docs/core/`: genera los 4 documentos fundamentales del proyecto (paso previo, opcional) |
 | `planificar` | 2 | Ciclo completo: analisis previo + spec + tasks + revision + auditoria |
 | `spec` | — | Crea una spec individual (paso aislado) |
 | `tareas` | — | Deriva tasks de una spec aprobada (paso aislado) |

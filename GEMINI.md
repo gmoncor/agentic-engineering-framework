@@ -18,6 +18,7 @@
 
 | Comando | Paso | Que hace |
 |---------|------|----------|
+| `/inicio` | — | Bootstrap de `ai_docs/core/`: genera los 4 documentos fundamentales del proyecto (paso previo, opcional) |
 | `/planificar` | 2 | **Ciclo completo**: spec + tasks + revision + auditoria. Detecta multi-spec |
 | `/spec` | — | Crea una spec individual (paso aislado) |
 | `/tareas` | — | Deriva tasks de una spec (paso aislado) |
