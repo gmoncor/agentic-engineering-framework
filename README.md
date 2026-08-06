@@ -113,6 +113,8 @@ claude                     # abre Claude Code — los comandos estan listos
 
 **Alternativa manual — proyecto existente:** copia `.claude/`, `hooks/`, `ai_docs/` y `CLAUDE.md` a la raiz de tu proyecto.
 
+> **Plugin nativo de Claude Code (`.claude-plugin/plugin.json`):** el repositorio incluye metadatos basicos de plugin (nombre, version, autor), pero hoy NO es una via de instalacion funcional. La raiz del repo ya usa `agents/`, `commands/` y `hooks/hooks.json` para el backend de Gemini (formato y nombres de evento distintos a los que espera un plugin de Claude Code), asi que cargarla como plugin no entregaria los agentes, comandos ni hooks correctos. Es experimental/futuro — usa `npx github:gmoncor/agentic-engineering-framework install --backend claude` en su lugar.
+
 ### Gemini CLI
 
 **Via CLI (framework):**
