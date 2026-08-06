@@ -1,6 +1,6 @@
 {
   "name": "sdd-framework",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "Framework SDD (Spec-Driven Development) para desarrollo asistido por IA. Planificacion exhaustiva, implementacion lineal (una task tras otra en orden de dependencias), revision adversarial.",
   "contextFileName": "GEMINI.md"
 }
