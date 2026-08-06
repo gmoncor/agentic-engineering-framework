@@ -153,9 +153,9 @@ Dos detalles del contrato de esta CLI, distintos de los otros backends:
   valores admitidos son `allow`, `deny`, `ask` y `force_ask`. El bloqueo (`deny`) es real, no un
   aviso. Como no hay `warn`, un aviso se expresa como `allow` con motivo.
 
-**Comandos.** Los `.toml` de `commands/` siguen siendo validos: dentro de un plugin, la CLI los
-convierte a skills al cargarlos. No hace falta reescribirlos, y las skills de `.agents/skills/`
-cubren ya el mismo flujo.
+**Comandos.** Este backend no instala `commands/`: el manifiesto de instalacion solo copia `.agents/`
+y `AGENTS.md`. No hace falta, porque las skills nativas de `.agents/skills/` cubren ya el mismo flujo
+que esos `.toml`.
 
 **Verificado contra `agy` 1.1.1.** La CLI esta en desarrollo activo: si una version posterior
 cambia los formatos, esta seccion es lo primero que hay que revisar. Un hueco conocido: no se pudo
