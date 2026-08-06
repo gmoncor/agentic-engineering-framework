@@ -248,6 +248,8 @@ Para CADA restriccion de la spec, verificar que se respeta:
 - Para correcciones menores (1-2 archivos, sin cambio de alcance): aplicar directamente usando `implementar.md` y re-ejecutar la revision sobre los puntos afectados
 - Para correcciones mayores (3+ archivos o cambio de alcance): crear nueva task via `tareas.md` referenciando los hallazgos, implementar, y re-ejecutar la revision completa
 - No es necesario repetir la revision completa si solo se corrigen puntos especificos
+
+> **Nota sobre el workflow mecanizado** (`/implementar-spec` u otro flujo automatizado equivalente): actualmente solo ejecuta UNA pasada de correccion, sin distinguir menor de mayor. Si esa pasada no deja la task en `APROBADA`, el workflow la marca `FALLIDA` y descarta los cambios — no crea una task nueva automaticamente. La distincion menor/mayor de arriba aplica al flujo MANUAL (humano o asistente operando fuera del workflow), donde si corresponde crear la task nueva via `tareas.md`. Si un futuro workflow implementa la rama "mayor" automaticamente, actualiza esta nota.
 ```
 
 **PUNTO DE ESPERA (revision manual/standalone):**
