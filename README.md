@@ -102,6 +102,11 @@ Copia `.claude/` (agentes, comandos, skills, workflows, settings), `hooks/`, `CL
 > **Nota:** `ai_docs/core/` incluye 3 documentos de ejemplo (dogfooding del framework) solo si clonas el repo completo; el CLI crea la carpeta vacia. Usa las plantillas de `ai_docs/core_templates/` para los tuyos.
 >
 > **Version instalada:** el archivo de contexto incluye un marcador de version al pie (`<!-- sdd-framework: X.Y.Z -->`). Cotejalo contra el `CHANGELOG.md` del repositorio para saber si hay actualizaciones.
+>
+> **Modelo default:** `settings.json` configura `claude-opus-4-8` como modelo de sesion — el mas capaz
+> para planificacion y revision, pero el de precio mas alto. Si prefieres un modelo mas economico,
+> cambialo con `/model sonnet` durante la sesion o editando `.claude/settings.json` directamente.
+> Ver "Modelo por defecto" en CLAUDE.md para mas detalle.
 
 **Alternativa manual — proyecto nuevo (clonar y empezar):**
 ```bash
