@@ -821,6 +821,8 @@ test('update --backend claude preserva intacto el contenido de ai_docs/core', ()
   const proyecto = dirTemporal();
   fs.mkdirSync(path.join(proyecto, 'ai_docs', 'core'), { recursive: true });
   fs.writeFileSync(path.join(proyecto, 'ai_docs', 'core', 'test.md'), 'MIO SIN TOCAR');
+  // Instalacion previa (marca minima de deteccion; no interfiere con la proteccion por hash).
+  fs.writeFileSync(path.join(proyecto, '.sdd-installed-hashes.json'), '{}');
 
   const { codigo, stdout } = ejecutar(['update', '--backend', 'claude'], {
     cwd: proyecto,
@@ -850,21 +852,75 @@ test('update --backend claude preserva intacto el contenido de ai_docs/core', ()
   );
 });
 
-test('update sobre un directorio sin instalacion previa funciona como copia limpia', () => {
+test('update sobre un directorio sin instalacion previa aborta y recomienda install', () => {
   const paquete = crearPaqueteFixture(
     { common: ['CLAUDE.md'], claude: ['.claude'] },
     { 'CLAUDE.md': 'contexto', '.claude/agents/planificador.md': 'agente' },
   );
   const proyecto = dirTemporal();
 
-  const { codigo } = ejecutar(['update', '--backend', 'claude'], {
+  const { codigo, stderr } = ejecutar(['update', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 1);
+  assert.match(stderr, /No se detecto una instalacion previa/);
+  assert.match(stderr, /install/);
+  assert.ok(!fs.existsSync(path.join(proyecto, 'CLAUDE.md')), 'no debe copiar nada sin instalacion previa');
+  assert.deepStrictEqual(fs.readdirSync(proyecto), []);
+});
+
+test('update --force sobre un directorio sin instalacion previa tambien aborta', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['CLAUDE.md'], claude: [] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+
+  const { codigo, stderr } = ejecutar(['update', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 1);
+  assert.match(stderr, /No se detecto una instalacion previa/);
+});
+
+test('update sobre un directorio con solo ai_docs/core creado a mano aborta y recomienda install', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['CLAUDE.md'], claude: [] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  fs.mkdirSync(path.join(proyecto, 'ai_docs', 'core'), { recursive: true });
+  fs.writeFileSync(path.join(proyecto, 'ai_docs', 'core', 'master_idea.md'), 'notas del usuario');
+
+  const { codigo, stderr } = ejecutar(['update', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 1);
+  assert.match(stderr, /No se detecto una instalacion previa/);
+});
+
+test('update sobre una instalacion antigua sin sidecar pero con marcador en CLAUDE.md continua normalmente', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto nuevo\n<!-- sdd-framework: 9.9.9 -->\n' },
+  );
+  const proyecto = dirTemporal();
+  // Instalacion anterior a la introduccion del sidecar de hashes: solo dejo el marcador.
+  fs.writeFileSync(path.join(proyecto, 'CLAUDE.md'), 'contexto viejo\n<!-- sdd-framework: 1.0.0 -->\n');
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude'], {
     cwd: proyecto,
     env: { SDD_FRAMEWORK_ROOT: paquete },
   });
 
   assert.strictEqual(codigo, 0);
-  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'), 'contexto');
-  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'agents', 'planificador.md')));
+  assert.match(stdout, /Framework actualizado a la version/);
 });
 
 test('update --backend all anade las rutas de los backends nuevos sobre una instalacion parcial', () => {
@@ -887,6 +943,8 @@ test('update --backend all anade las rutas de los backends nuevos sobre una inst
   fs.mkdirSync(path.join(proyecto, '.claude', 'agents'), { recursive: true });
   fs.writeFileSync(path.join(proyecto, '.claude', 'agents', 'planificador.md'), 'agente viejo');
   fs.writeFileSync(path.join(proyecto, 'CLAUDE.md'), 'contexto viejo');
+  // Instalacion previa (marca minima de deteccion; no interfiere con la proteccion por hash).
+  fs.writeFileSync(path.join(proyecto, '.sdd-installed-hashes.json'), '{}');
 
   // .claude/agents/planificador.md y CLAUDE.md preexisten sin haber pasado por
   // install/update (sin sidecar de hashes previo): el preflight los trata como
@@ -1005,7 +1063,9 @@ test('update sin sidecar previo trata los archivos protegidos preexistentes como
     { 'hooks/config.json': '{"nuevo":true}', 'CLAUDE.md': 'contexto nuevo' },
   );
   const proyecto = dirTemporal();
-  // Proyecto pre-existente que nunca paso por install/update con sidecar de hashes.
+  // Instalacion previa a la introduccion del sidecar de hashes: el archivo existe
+  // pero sin entradas para estos archivos concretos.
+  fs.writeFileSync(path.join(proyecto, '.sdd-installed-hashes.json'), '{}');
   fs.writeFileSync(path.join(proyecto, 'CLAUDE.md'), 'contexto original del usuario');
   fs.mkdirSync(path.join(proyecto, 'hooks'), { recursive: true });
   fs.writeFileSync(path.join(proyecto, 'hooks', 'config.json'), '{"original":true}');
@@ -1098,6 +1158,7 @@ test('update sin sidecar previo y contenido identico al del paquete copia el arc
   );
   const proyecto = dirTemporal();
   // Instalacion anterior al sidecar de hashes: el contenido nunca diverge del origen.
+  fs.writeFileSync(path.join(proyecto, '.sdd-installed-hashes.json'), '{}');
   fs.writeFileSync(path.join(proyecto, 'CLAUDE.md'), 'contexto identico al del paquete');
 
   const { codigo, stdout } = ejecutar(['update', '--backend', 'claude'], {
@@ -1123,6 +1184,7 @@ test('update sin sidecar previo y contenido distinto al del paquete protege el a
   );
   const proyecto = dirTemporal();
   // Instalacion anterior al sidecar de hashes, con ediciones genuinas del usuario.
+  fs.writeFileSync(path.join(proyecto, '.sdd-installed-hashes.json'), '{}');
   fs.writeFileSync(path.join(proyecto, 'CLAUDE.md'), 'contexto editado por el usuario');
 
   const { codigo, stdout } = ejecutar(['update', '--backend', 'claude'], {
@@ -1289,7 +1351,9 @@ test('update sin sidecar previo protege por retrocompatibilidad un archivo fuera
     { 'hooks/sdd-turn-budget.js': 'module.exports = { hardStopAt: 40 };' },
   );
   const proyecto = dirTemporal();
-  // Proyecto pre-existente que nunca paso por install/update con sidecar de hashes.
+  // Instalacion previa a la introduccion del sidecar de hashes: el archivo existe
+  // pero sin entradas para estos archivos concretos.
+  fs.writeFileSync(path.join(proyecto, '.sdd-installed-hashes.json'), '{}');
   fs.mkdirSync(path.join(proyecto, 'hooks'), { recursive: true });
   fs.writeFileSync(
     path.join(proyecto, 'hooks', 'sdd-turn-budget.js'),
