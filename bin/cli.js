@@ -60,24 +60,26 @@ Si se omite --backend, se muestra un menu interactivo para elegir (requiere term
 }
 
 function mostrarAyudaInstall() {
-  console.log(`Uso: agentic-engineering-framework install --backend <claude|gemini|codex|antigravity|all> [--skip <nombre,nombre>] [--dry-run]
+  console.log(`Uso: agentic-engineering-framework install --backend <claude|gemini|codex|antigravity|all> [--skip <nombre,nombre>] [--dry-run] [--force]
 
 Instala el framework en el directorio actual: copia las rutas del backend elegido y crea ai_docs/{core,tasks,refs}/ si no existen.
 
 Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).
 --skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing, pr); solo aplica al backend claude.
---dry-run muestra que ficheros se copiarian/saltarian sin escribir nada en disco.`);
+--dry-run muestra que ficheros se copiarian/saltarian sin escribir nada en disco.
+--force si hay archivos no protegidos que se sobrescribirian, salta la confirmacion (util en CI/pipe). No afecta a los archivos protegidos con ediciones locales: para esos sigue haciendo falta --reset-protected.`);
 }
 
 function mostrarAyudaUpdate() {
-  console.log(`Uso: agentic-engineering-framework update --backend <claude|gemini|codex|antigravity|all> [--skip <nombre,nombre>] [--reset-protected] [--dry-run]
+  console.log(`Uso: agentic-engineering-framework update --backend <claude|gemini|codex|antigravity|all> [--skip <nombre,nombre>] [--reset-protected] [--dry-run] [--force]
 
 Actualiza el framework instalado en el directorio actual: copia las rutas del backend elegido sin tocar ai_docs/core/, ai_docs/tasks/ ni ai_docs/refs/.
 
 Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).
 --skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing, pr); solo aplica al backend claude.
 --reset-protected sobrescribe archivos protegidos con ediciones locales (hooks/config.json, .claude/settings.json, CLAUDE.md, GEMINI.md, AGENTS.md, .gitignore) y refresca el sidecar de hashes al final.
---dry-run muestra que ficheros se copiarian/saltarian sin escribir nada en disco.`);
+--dry-run muestra que ficheros se copiarian/saltarian sin escribir nada en disco.
+--force si hay archivos no protegidos que se sobrescribirian, salta la confirmacion (util en CI/pipe). No afecta a los archivos protegidos con ediciones locales: para esos sigue haciendo falta --reset-protected.`);
 }
 
 function obtenerVersion() {
@@ -206,6 +208,70 @@ function saveInstalledHashes(dest, hashes) {
 /** Archivos protegidos que caen dentro de `ruta` (ella misma, o anidados si es un directorio). */
 function protegidasEn(ruta) {
   return ARCHIVOS_PROTEGIDOS.filter(protegida => protegida === ruta || protegida.startsWith(`${ruta}/`));
+}
+
+/** Rutas (relativas a `dirAbsoluto`) de todos los archivos bajo un directorio, recursivo. */
+function listarArchivos(dirAbsoluto) {
+  const resultado = [];
+  for (const entrada of fs.readdirSync(dirAbsoluto, { withFileTypes: true })) {
+    const absoluta = path.join(dirAbsoluto, entrada.name);
+    if (entrada.isDirectory()) {
+      resultado.push(...listarArchivos(absoluta).map(relativa => `${entrada.name}/${relativa}`));
+    } else {
+      resultado.push(entrada.name);
+    }
+  }
+  return resultado;
+}
+
+/**
+ * Rutas del manifiesto que ya existen en DEST y se sobrescribirian si se
+ * copiara ahora, excluyendo las cubiertas por ARCHIVOS_PROTEGIDOS (su propia
+ * proteccion por hash-sidecar ya es suficiente). Si una ruta del manifiesto
+ * es un directorio, se expande a sus archivos individuales: el directorio
+ * puede existir en destino sin que ningun archivo de dentro colisione.
+ */
+function detectarColisiones(rutas) {
+  const colisiones = [];
+  for (const ruta of rutas) {
+    const origen = path.join(PACKAGE_ROOT, ruta);
+    if (!fs.existsSync(origen)) continue;
+    if (!fs.statSync(origen).isDirectory()) {
+      if (!ARCHIVOS_PROTEGIDOS.includes(ruta) && fs.existsSync(path.join(DEST, ruta))) colisiones.push(ruta);
+      continue;
+    }
+    for (const relativa of listarArchivos(origen)) {
+      const completa = `${ruta}/${relativa}`;
+      if (ARCHIVOS_PROTEGIDOS.includes(completa)) continue;
+      if (fs.existsSync(path.join(DEST, completa))) colisiones.push(completa);
+    }
+  }
+  return colisiones;
+}
+
+/**
+ * Preflight de colision: si hay archivos no protegidos que se sobrescribirian,
+ * pide confirmacion interactiva (TTY, default N => cancela) o aborta con
+ * exit 1 en modo no interactivo (pipe/CI). Mismo patron TTY/no-TTY que
+ * `preguntarBackend`. Sin colisiones, no hace nada.
+ */
+async function confirmarColisiones(colisiones) {
+  if (!colisiones.length) return;
+  if (!process.stdin.isTTY) {
+    process.stderr.write(`Hay ${colisiones.length} archivos que se sobrescribirian:\n`);
+    colisiones.forEach(ruta => process.stderr.write(`  - ${ruta}\n`));
+    process.stderr.write('Usa --force para continuar sin confirmacion.\n');
+    process.exit(1);
+  }
+  console.log(`Archivos que se sobrescribirian: ${colisiones.length}`);
+  colisiones.forEach(ruta => console.log(`  - ${ruta}`));
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const respuesta = (await rl.question('Continuar? Estos archivos se sobrescribiran. (y/N): ')).trim().toLowerCase();
+  rl.close();
+  if (respuesta !== 'y') {
+    console.log('Instalacion cancelada.');
+    process.exit(0);
+  }
 }
 
 /**
@@ -362,14 +428,30 @@ async function resolverBackend(args) {
   return backend;
 }
 
+function cargarManifest() {
+  const manifestPath = path.join(PACKAGE_ROOT, 'scripts', 'backend-manifest.json');
+  return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+}
+
+/**
+ * Preflight ejecutado antes de copiar: detecta colisiones con el manifiesto
+ * del backend elegido y pide confirmacion (o aborta en no-TTY). `--dry-run`
+ * y `--force` lo saltan por completo (dry-run nunca escribe; force asume la
+ * confirmacion).
+ */
+async function ejecutarPreflight(backend, skip, dryRun, force) {
+  if (dryRun || force) return;
+  const rutas = rutasParaBackend(cargarManifest(), backend, skip);
+  await confirmarColisiones(detectarColisiones(rutas));
+}
+
 /**
  * Copia las rutas del backend elegido segun el manifiesto. Comun a install y
  * update. Con `opciones.dryRun` no escribe nada en disco (ni copias ni
  * directorios de usuario ni sidecar de hashes): solo calcula y reporta.
  */
 function copiarRutasFramework(backend, skip, opciones = {}) {
-  const manifestPath = path.join(PACKAGE_ROOT, 'scripts', 'backend-manifest.json');
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  const manifest = cargarManifest();
   advertirSiSkipNoAplica(backend, skip);
   const rutas = rutasParaBackend(manifest, backend, skip);
 
@@ -477,7 +559,9 @@ async function cmdInstall(args) {
   const backend = await resolverBackend(args);
   const skip = parseSkip(args);
   const dryRun = args.includes('--dry-run');
+  const force = args.includes('--force');
   advertirSiBackendEquivocado(backend);
+  await ejecutarPreflight(backend, skip, dryRun, force);
   const { copiadas, saltadas, creados, saltadasPorEdicion } = copiarRutasFramework(backend, skip, {
     crearDirsUsuario: true,
     dryRun,
@@ -492,7 +576,9 @@ async function cmdUpdate(args) {
   const skip = parseSkip(args);
   const resetProtected = args.includes('--reset-protected');
   const dryRun = args.includes('--dry-run');
+  const force = args.includes('--force');
   advertirSiBackendEquivocado(backend);
+  await ejecutarPreflight(backend, skip, dryRun, force);
   const { copiadas, saltadas, saltadasPorEdicion } = copiarRutasFramework(backend, skip, {
     crearDirsUsuario: false,
     resetProtected,

@@ -294,6 +294,137 @@ test('install --dry-run sin package.json previo reporta creacion sin escribir', 
   assert.ok(!fs.existsSync(path.join(proyecto, 'package.json')));
 });
 
+test('install con colision de archivo no protegido y stdin no-TTY sin --force sale con codigo 1 y no copia', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: [] },
+    { 'hooks/sdd-commit-guard.js': 'hook nuevo' },
+  );
+  const proyecto = dirTemporal();
+  escribirArchivo(proyecto, 'hooks/sdd-commit-guard.js', 'hook del usuario');
+
+  const { codigo, stderr } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+    input: '',
+  });
+
+  assert.strictEqual(codigo, 1);
+  assert.match(stderr, /1 archivos que se sobrescribirian/);
+  assert.match(stderr, /hooks\/sdd-commit-guard\.js/);
+  assert.match(stderr, /--force/);
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'hooks', 'sdd-commit-guard.js'), 'utf8'), 'hook del usuario');
+});
+
+test('install --force sobre el mismo escenario de colision copia sin preguntar', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: [] },
+    { 'hooks/sdd-commit-guard.js': 'hook nuevo' },
+  );
+  const proyecto = dirTemporal();
+  escribirArchivo(proyecto, 'hooks/sdd-commit-guard.js', 'hook del usuario');
+
+  const { codigo, stdout } = ejecutar(['install', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+    input: '',
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /Rutas copiadas/);
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'hooks', 'sdd-commit-guard.js'), 'utf8'), 'hook nuevo');
+});
+
+test('install sobre directorio vacio no dispara el preflight (0 colisiones)', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: ['CLAUDE.md'] },
+    { 'hooks/sdd-commit-guard.js': 'hook', 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+
+  const { codigo, stdout } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+    input: '',
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /Rutas copiadas/);
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'hooks', 'sdd-commit-guard.js'), 'utf8'), 'hook');
+});
+
+test('install --dry-run con colision no dispara el preflight: reporta preview sin pedir confirmacion', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: [] },
+    { 'hooks/sdd-commit-guard.js': 'hook nuevo' },
+  );
+  const proyecto = dirTemporal();
+  escribirArchivo(proyecto, 'hooks/sdd-commit-guard.js', 'hook del usuario');
+
+  const { codigo, stdout, stderr } = ejecutar(['install', '--backend', 'claude', '--dry-run'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /\[DRY-RUN\] copiaria: hooks/);
+  assert.doesNotMatch(stderr, /sobrescribirian/);
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'hooks', 'sdd-commit-guard.js'), 'utf8'), 'hook del usuario');
+});
+
+test('install con colisiones solo en archivos protegidos no dispara el preflight', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: ['CLAUDE.md'] },
+    { 'hooks/config.json': '{"nuevo":true}', 'CLAUDE.md': 'contexto nuevo' },
+  );
+  const proyecto = dirTemporal();
+  fs.mkdirSync(path.join(proyecto, 'hooks'), { recursive: true });
+  fs.writeFileSync(path.join(proyecto, 'hooks', 'config.json'), '{"original":true}');
+  escribirArchivo(proyecto, 'CLAUDE.md', 'contexto viejo');
+
+  const { codigo } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+    input: '',
+  });
+
+  assert.strictEqual(codigo, 0);
+});
+
+test('update --force salta el preflight de colision pero no anula la proteccion de hash-sidecar', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: ['CLAUDE.md'] },
+    { 'hooks/config.json': '{"turn_budget":{"hard_stop_at":40}}', 'CLAUDE.md': 'contexto nuevo' },
+  );
+  const proyecto = dirTemporal();
+  fs.mkdirSync(path.join(proyecto, 'hooks'), { recursive: true });
+  fs.writeFileSync(path.join(proyecto, 'hooks', 'config.json'), '{"turn_budget":{"hard_stop_at":999}}');
+
+  const primera = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+  assert.strictEqual(primera.codigo, 0);
+  // hooks/config.json quedo protegido (edicion local detectada en la primera pasada):
+  // update --force debe seguir sin pisarlo, aunque salte la confirmacion de colision.
+  const { codigo } = ejecutar(['update', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'hooks', 'config.json'), 'utf8'),
+    '{"turn_budget":{"hard_stop_at":999}}',
+  );
+});
+
+test('--force aparece documentado en la ayuda de install y update', () => {
+  const ayudaInstall = ejecutar(['install', '--help'], { cwd: dirTemporal() });
+  const ayudaUpdate = ejecutar(['update', '--help'], { cwd: dirTemporal() });
+  assert.match(ayudaInstall.stdout, /--force/);
+  assert.match(ayudaUpdate.stdout, /--force/);
+});
+
 test('install con package.json del destino malformado reporta error sin crash ni sobrescritura', () => {
   const paquete = crearPaqueteFixture({ common: [], claude: [] });
   const proyecto = dirTemporal();
@@ -371,7 +502,9 @@ test('install --backend claude es idempotente: ejecutarlo dos veces seguidas pro
 
   const primera = ejecutar(['install', '--backend', 'claude'], opts);
   assert.strictEqual(primera.codigo, 0);
-  const segunda = ejecutar(['install', '--backend', 'claude'], opts);
+  // La segunda pasada colisiona con los archivos que la primera ya copio;
+  // --force refleja el re-install intencional en este escenario de prueba.
+  const segunda = ejecutar(['install', '--backend', 'claude', '--force'], opts);
   assert.strictEqual(segunda.codigo, 0);
 
   assert.strictEqual(fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'), 'contexto');
@@ -579,7 +712,9 @@ test('update --backend all anade las rutas de los backends nuevos sobre una inst
   fs.writeFileSync(path.join(proyecto, '.claude', 'agents', 'planificador.md'), 'agente viejo');
   fs.writeFileSync(path.join(proyecto, 'CLAUDE.md'), 'contexto viejo');
 
-  const { codigo } = ejecutar(['update', '--backend', 'all'], {
+  // .claude/agents/planificador.md preexiste sin haber pasado por install/update
+  // (no protegido): el preflight lo trata como colision, --force la asume.
+  const { codigo } = ejecutar(['update', '--backend', 'all', '--force'], {
     cwd: proyecto,
     env: { SDD_FRAMEWORK_ROOT: paquete },
   });
