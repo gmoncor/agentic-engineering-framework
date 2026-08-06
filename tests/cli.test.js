@@ -1839,6 +1839,17 @@ test('install sin fallos se comporta igual que antes: todas las rutas copiadas, 
   );
 });
 
+// IMPORTANTE: este test (y `npm pack --dry-run`) solo valida el flujo de
+// publicacion a registry. NO valida el flujo real que usan los usuarios
+// (`npx github:...`): ese flujo pasa por una extraccion intermedia de
+// pacote que renombra cualquier archivo literalmente llamado `.gitignore`
+// a `.npmignore` (ver comentario junto a ORIGEN_RENOMBRADO en bin/cli.js),
+// asi que un `.npmignore` correcto aqui NO garantiza que `.gitignore`
+// sobreviva a `npx github:`. La unica verificacion real de ese flujo es
+// manual: `rm -rf ~/.npm/_npx && cd $(mktemp -d) && npx -y
+// github:gmoncor/agentic-engineering-framework install --backend claude` y
+// confirmar `.gitignore` en "Rutas copiadas". El mecanismo que SI protege
+// ese flujo se cubre en los tests de ORIGEN_RENOMBRADO mas abajo.
 test('.npmignore existe, fuerza la inclusion de .gitignore y no excluye rutas criticas del manifiesto', () => {
   const rutaNpmignore = path.join(RAIZ, '.npmignore');
   assert.ok(fs.existsSync(rutaNpmignore), '.npmignore debe existir en la raiz del repo');
@@ -1886,4 +1897,53 @@ test('.npmignore existe, fuerza la inclusion de .gitignore y no excluye rutas cr
     });
     assert.ok(!excluida, `.npmignore no debe excluir la ruta del manifiesto: ${ruta}`);
   }
+});
+
+test('templates/.gitignore.template existe y es identico byte a byte a .gitignore', () => {
+  const rutaTemplate = path.join(RAIZ, 'templates', '.gitignore.template');
+  const rutaGitignore = path.join(RAIZ, '.gitignore');
+  assert.ok(fs.existsSync(rutaTemplate), 'templates/.gitignore.template debe existir en la raiz del repo');
+
+  const contenidoTemplate = fs.readFileSync(rutaTemplate, 'utf8');
+  const contenidoGitignore = fs.readFileSync(rutaGitignore, 'utf8');
+  assert.strictEqual(
+    contenidoTemplate,
+    contenidoGitignore,
+    'templates/.gitignore.template debe mantenerse identico a .gitignore (evita drift entre ambos)',
+  );
+});
+
+// Reproduce el estado exacto de filesystem que deja el bug de pacote tras
+// `npx github:` (ver ORIGEN_RENOMBRADO en bin/cli.js): un paquete SIN ningun
+// archivo llamado `.gitignore`, pero con `templates/.gitignore.template`
+// presente. Es la aproximacion mas cercana al mecanismo real que se puede
+// automatizar sin red; la verificacion definitiva sigue siendo el comando
+// manual de `npx github:` documentado arriba.
+test('install copia .gitignore desde templates/.gitignore.template aunque el paquete de origen no tenga un .gitignore literal', () => {
+  const contenidoTemplate = fs.readFileSync(path.join(RAIZ, 'templates', '.gitignore.template'), 'utf8');
+  const paquete = crearPaqueteFixture(
+    { common: ['.gitignore'], claude: [] },
+    { 'templates/.gitignore.template': contenidoTemplate },
+  );
+  assert.ok(
+    !fs.existsSync(path.join(paquete, '.gitignore')),
+    'fixture invalido: no debe existir un .gitignore literal en el paquete (asi es como lo deja el bug de pacote)',
+  );
+
+  const proyecto = dirTemporal();
+  const { codigo, stdout } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /Rutas copiadas/);
+  assert.match(stdout, /Rutas copiadas:[\s\S]*- \.gitignore/, '.gitignore debe listarse en "Rutas copiadas"');
+  const seccionSaltadas = stdout.split('Rutas saltadas')[1] || '';
+  assert.doesNotMatch(seccionSaltadas, /- \.gitignore\b/, '.gitignore NO debe aparecer en "Rutas saltadas"');
+  const destino = path.join(proyecto, '.gitignore');
+  assert.ok(fs.existsSync(destino), '.gitignore debe existir en el destino tras install');
+  assert.strictEqual(fs.readFileSync(destino, 'utf8'), contenidoTemplate);
+  const lineas = fs.readFileSync(destino, 'utf8').split('\n').filter((l) => l.length > 0);
+  assert.ok(lineas.length > 10, '.gitignore instalado debe tener contenido real (>10 lineas), no vacio ni truncado');
 });

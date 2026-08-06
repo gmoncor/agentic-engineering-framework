@@ -41,6 +41,23 @@ const ARCHIVO_CONTEXTO_POR_BACKEND = {
 const ARCHIVO_SIDECAR_HASHES = '.sdd-installed-hashes.json';
 const ARCHIVOS_PROTEGIDOS = ['hooks/config.json', '.claude/settings.json', 'CLAUDE.md', 'GEMINI.md', 'AGENTS.md', '.gitignore'];
 
+// npm/pacote renombra en caliente cualquier archivo literalmente llamado
+// `.gitignore` a `.npmignore` al extraer un paquete git (comportamiento
+// heredado de npm-packlist, ver npm/npm#1862): la instalacion via
+// `npx github:` pasa por una extraccion intermedia que NO recibe la opcion
+// `allowGitIgnore` que si protege el primer clonado, asi que un `.gitignore`
+// real nunca sobrevive ese flujo aunque `.npmignore` lo fuerce a incluirse en
+// el paquete (por eso `npm pack --dry-run` lo muestra pero `npx github:` no).
+// El unico origen inmune a ese renombrado es un archivo con otro nombre: el
+// CLI copia `.gitignore` desde esta plantilla en vez de depender de que el
+// empaquetado preserve el archivo real.
+const ORIGEN_RENOMBRADO = { '.gitignore': 'templates/.gitignore.template' };
+
+/** Ruta absoluta de origen para `ruta`, sustituyendo por su alias si esta en ORIGEN_RENOMBRADO. */
+function origenDe(ruta) {
+  return path.join(PACKAGE_ROOT, ORIGEN_RENOMBRADO[ruta] || ruta);
+}
+
 // Lockfile de instalacion en curso: se crea al empezar a copiar y se borra al
 // terminar con exito. Si el proceso muere a mitad (kill, Ctrl-C, OOM), queda
 // en disco como senal de que la instalacion anterior no completo.
@@ -366,7 +383,7 @@ function listarArchivos(dirAbsoluto) {
  * ARCHIVOS_PROTEGIDOS.
  */
 function archivosDe(ruta) {
-  const origen = path.join(PACKAGE_ROOT, ruta);
+  const origen = origenDe(ruta);
   if (!fs.existsSync(origen)) return [];
   if (!fs.statSync(origen).isDirectory()) return [ruta];
   return listarArchivos(origen).map(relativa => `${ruta}/${relativa}`);
@@ -382,7 +399,7 @@ function archivosDe(ruta) {
 function detectarColisiones(rutas) {
   const colisiones = [];
   for (const ruta of rutas) {
-    const origen = path.join(PACKAGE_ROOT, ruta);
+    const origen = origenDe(ruta);
     if (!fs.existsSync(origen)) continue;
     if (!fs.statSync(origen).isDirectory()) {
       if (!ARCHIVOS_PROTEGIDOS.includes(ruta) && fs.existsSync(path.join(DEST, ruta))) colisiones.push(ruta);
@@ -433,7 +450,7 @@ function editadaLocalmente(rutaRelativa, hashesInstalados) {
   const hashActual = hashFile(path.join(DEST, rutaRelativa));
   if (hashActual === null) return false;
   if (hashesInstalados[rutaRelativa] === undefined) {
-    const hashOrigen = hashFile(path.join(PACKAGE_ROOT, rutaRelativa));
+    const hashOrigen = hashFile(origenDe(rutaRelativa));
     if (hashOrigen === null || hashOrigen !== hashActual) return true;
     hashesInstalados[rutaRelativa] = hashActual;
     return false;
@@ -453,7 +470,7 @@ function editadaLocalmente(rutaRelativa, hashesInstalados) {
  * que produciria el run real.
  */
 function copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, resetProtected, dryRun, generalizado) {
-  const origen = path.join(PACKAGE_ROOT, ruta);
+  const origen = origenDe(ruta);
   if (!fs.existsSync(origen)) {
     return { ruta, copiada: false };
   }
