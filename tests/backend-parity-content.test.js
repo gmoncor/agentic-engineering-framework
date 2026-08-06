@@ -61,7 +61,8 @@ const CONTEXT_FILES = [
   'agents/planificador.md',
   '.codex/agents/planificador.toml',
   '.agents/plugins/sdd/agents/planificador.md',
-  '.agents/skills/tareas/SKILL.md'
+  '.agents/skills/tareas/SKILL.md',
+  '.agents/skills/planificar/SKILL.md'
 ];
 
 for (const archivo of CONTEXT_FILES) {
