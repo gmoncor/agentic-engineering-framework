@@ -10,11 +10,18 @@
 // la lista de rutas absolutas leidas. Igual que la senal de revision, se aisla
 // por sesion para que dos sesiones concurrentes no se pisen.
 //
+// Al escribir el rastreador de la sesion actual se purgan (best-effort) los
+// ficheros de otras sesiones con mas de 24h sin actividad, para que no se
+// acumulen indefinidamente en maquinas de larga duracion.
+//
 // SDD_READS_DIR redirige el directorio (tests, entornos con tmp efimero).
 
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { purgeExpired } = require('./sdd-hook-utils');
+
+const TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
 function readsDir() {
   return process.env.SDD_READS_DIR || os.tmpdir();
@@ -48,12 +55,15 @@ function trackRead(sessionId, filePath) {
   const set = loadReads(sessionId) || new Set();
   if (set.has(resolved)) return;
   set.add(resolved);
+  const file = readsPath(sessionId);
   try {
-    fs.writeFileSync(readsPath(sessionId), JSON.stringify([...set]));
+    fs.writeFileSync(file, JSON.stringify([...set]));
   } catch {
     // Disco lento o de solo lectura: perder un registro solo relaja el aviso,
     // nunca lo convierte en falso positivo. No se propaga.
+    return;
   }
+  purgeExpired(readsDir(), 'sdd-reads-', file, TTL_MS);
 }
 
 function hasRead(sessionId, filePath) {

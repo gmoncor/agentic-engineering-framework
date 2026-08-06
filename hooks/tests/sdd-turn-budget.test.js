@@ -243,6 +243,25 @@ test('subagente sin session_id -> silencio, no rompe la deteccion de subagente',
   assert.strictEqual(r.decision, null);
 });
 
+test('purga: al guardar el contador actual, elimina ficheros sdd-turns-* de otras sesiones con mas de 24h de antiguedad', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  const viejo = path.join(e.dir, 'sdd-turns-sesion-vieja.json');
+  writeFile(viejo, JSON.stringify({ count: 5 }));
+  const t = (Date.now() - 25 * 60 * 60 * 1000) / 1000; // 25h atras
+  fs.utimesSync(viejo, t, t);
+
+  repetir(1, e.env);
+
+  assert.strictEqual(fs.existsSync(viejo), false, 'el fichero de la sesion vieja debe purgarse');
+});
+
+test('purga: no elimina el fichero de la sesion actual que se acaba de escribir', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  repetir(1, e.env);
+  const actual = path.join(e.dir, 'sdd-turns-' + SESSION + '.json');
+  assert.strictEqual(fs.existsSync(actual), true);
+});
+
 test('sesiones concurrentes: cada una lleva su propio contador', () => {
   const e = entorno(CONFIG_ADVISORY);
   const a = repetir(2, e.env, 'sesion-A');

@@ -6,6 +6,7 @@
 // (JSON por stdout, sin codigo de salida en su contrato).
 
 const fs = require('fs');
+const path = require('path');
 
 const SKIP_ENV = 'SDD_GUARD_SKIP';
 const STDIN_TIMEOUT_MS = 5000;
@@ -161,4 +162,38 @@ function deny(reason, call, code) {
   emit(payload, reason, exitCode);
 }
 
-module.exports = { readPayload, readToolCall, skipRequested, loadConfig, warn, deny, SKIP_ENV };
+/**
+ * Purga ficheros de estado por sesion expirados de un directorio compartido
+ * (`os.tmpdir()` normalmente). Se invoca de forma oportunista al escribir el
+ * estado de la sesion actual: no hay proceso en segundo plano que limpie, asi
+ * que cada escritura aprovecha para retirar el rastro de sesiones antiguas.
+ *
+ * `currentFile` nunca se purga (es el fichero que se acaba de escribir).
+ * `prefix` filtra por el nombre del hook (`sdd-turns-`, `sdd-reads-`, ...)
+ * para no tocar ficheros de otro origen que compartan el mismo directorio.
+ *
+ * Degradacion segura: directorio no listable o fichero no eliminable
+ * (permisos, disco de solo lectura) -> silencio. La purga es mantenimiento,
+ * nunca debe convertirse en un fallo del hook que la invoca.
+ */
+function purgeExpired(dir, prefix, currentFile, ttlMs) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return;
+  }
+  const now = Date.now();
+  for (const name of entries) {
+    if (!name.startsWith(prefix)) continue;
+    const file = path.join(dir, name);
+    if (file === currentFile) continue;
+    try {
+      if (now - fs.statSync(file).mtimeMs > ttlMs) fs.unlinkSync(file);
+    } catch {
+      // Fichero ya desaparecido o sin permisos: no interrumpe la purga del resto.
+    }
+  }
+}
+
+module.exports = { readPayload, readToolCall, skipRequested, loadConfig, warn, deny, purgeExpired, SKIP_ENV };
