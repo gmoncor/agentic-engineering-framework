@@ -305,6 +305,10 @@ Retorna tu veredicto estructurado con problemas y ajustes concretos.
       + contratosRotos.join('\n- ') + '\n'
     : ''
 
+  // Las lineas "Si hay ... el veredicto es NECESITA_AJUSTES/NECESITA_REPLANTEAMIENTO"
+  // de abajo repiten en guion_bajo lo que ya exige ai_docs/dev_templates/auditar_spec.md.
+  // Es redundante ahora que la plantilla usa guion_bajo: mantener como red de seguridad
+  // frente a variaciones del modelo al generar el veredicto en texto libre.
   const auditResult = await agent(`
 Lee ai_docs/dev_templates/auditar_spec.md y sigue TODOS sus pasos sin saltar ninguno.
 Lee la spec en: ${specPath}

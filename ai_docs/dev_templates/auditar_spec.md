@@ -81,7 +81,7 @@ Buscar partes de la spec que no estan cubiertas por ninguna task:
 1. **Funcionalidades mencionadas en "Incluye" sin task correspondiente**
 2. **Restricciones de la spec sin verificacion en ninguna task**
 3. **Integraciones entre modulos** que ninguna task aborda (ej: Task A crea la API, Task B crea la UI, pero nadie conecta la UI a la API)
-4. **Testing (hueco BLOQUEANTE):** cualquier task que toca codigo ejecutable sin tests planificados es un hueco BLOQUEANTE. Reportalo y emite como minimo el veredicto NECESITA AJUSTES. Excepcion: tasks que solo tocan docs o config estan exentas.
+4. **Testing (hueco BLOQUEANTE):** cualquier task que toca codigo ejecutable sin tests planificados es un hueco BLOQUEANTE. Reportalo y emite como minimo el veredicto NECESITA_AJUSTES. Excepcion: tasks que solo tocan docs o config estan exentas.
 5. **Migraciones o cambios de datos** mencionados en la spec sin task que los ejecute
 
 ---
@@ -98,7 +98,7 @@ Escanear las secciones Objetivo, Alcance (Incluye + No incluye), Criterios de ac
 |---------|-------------------|------------------------------|----------------------------------|
 | [Objetivo / Alcance / Criterios de aceptacion / Restricciones] | [Frase o termino literal] | [ambiguo / placeholder] | [Version cuantificada o accion concreta] |
 
-**Si la tabla tiene al menos una fila:** el hallazgo produce como minimo el veredicto NECESITA AJUSTES (nunca APROBADO).
+**Si la tabla tiene al menos una fila:** el hallazgo produce como minimo el veredicto NECESITA_AJUSTES (nunca APROBADO).
 
 **Alcance del idioma:** la lista fija cubre el idioma principal del framework (espanol). La deteccion de equivalentes en otros idiomas (ej: "fast" en vez de "rapido") es responsabilidad del auditor humano.
 
@@ -162,20 +162,20 @@ Para cada task con dependencias declaradas:
 
 ### Veredicto
 
-[APROBADO / NECESITA AJUSTES / NECESITA REPLANTEAMIENTO]
+[APROBADO / NECESITA_AJUSTES / NECESITA_REPLANTEAMIENTO]
 
-**Si NECESITA AJUSTES:**
+**Si NECESITA_AJUSTES:**
 - [Ajuste 1: que corregir y en que task]
 - [Ajuste 2: que corregir y en que task]
 
-**Si NECESITA REPLANTEAMIENTO:**
+**Si NECESITA_REPLANTEAMIENTO:**
 - [Razon por la que las tasks no son viables en su forma actual]
 - [Recomendacion: rehacer spec / reestructurar tasks / dividir spec]
 ```
 
 **PUNTO DE ESPERA (uso manual):**
 - DETENTE y espera la respuesta del usuario
-- Si el veredicto es NECESITA REPLANTEAMIENTO, NO continues hasta que el usuario decida como proceder
+- Si el veredicto es NECESITA_REPLANTEAMIENTO, NO continues hasta que el usuario decida como proceder
 - Si el usuario aplica correcciones, vuelve a ejecutar las verificaciones afectadas (no toda la auditoria)
 - Si el veredicto es APROBADO, proceder a implementacion con `implementar.md`
 
@@ -190,4 +190,4 @@ Para cada task con dependencias declaradas:
 5. **El rol del auditor es encontrar problemas** — asumir que hay huecos hasta demostrar lo contrario
 6. **Si la spec no esta aprobada**, DETENTE. No audites tasks de una spec en borrador
 7. **Dependencias no declaradas son tan graves como huecos** — documentarlas como hallazgo
-8. **NUNCA emitas APROBADO si el Paso 4.5 encontro adjetivos ambiguos o placeholders sin resolver** — como minimo NECESITA AJUSTES
+8. **NUNCA emitas APROBADO si el Paso 4.5 encontro adjetivos ambiguos o placeholders sin resolver** — como minimo NECESITA_AJUSTES
