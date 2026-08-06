@@ -4,7 +4,7 @@ prompt = """
 Lee ai_docs/core/ para contexto del proyecto.
 
 PASO 0 — INTAKE:
-Actua como el asesor (agents/asesor.md, seccion "Reglas de intake") y analiza la solicitud ANTES
+Actua como el asesor (.gemini/agents/asesor.md, seccion "Reglas de intake") y analiza la solicitud ANTES
 de escribir ninguna spec. Este es el unico paso donde se puede preguntar: lo que no se cierre
 aqui, se adivina despues.
 1. Reformula la solicitud en 1-3 frases. Copia LITERALMENTE cifras, entidades y criterios de

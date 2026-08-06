@@ -46,7 +46,7 @@ test('la nota de worktree referencia la plantilla de revision de PR para la limp
 });
 
 test('implementar-spec.toml (backend Gemini) no incluye la nota de worktree', () => {
-  const contenido = leer('commands/implementar-spec.toml');
+  const contenido = leer('.gemini/commands/implementar-spec.toml');
 
   assert.doesNotMatch(contenido, /worktree/i);
 });

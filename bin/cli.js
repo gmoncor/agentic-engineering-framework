@@ -179,6 +179,36 @@ function advertirSiBackendEquivocado(backend) {
   }
 }
 
+// Nombres del layout de Gemini previo al namespacing bajo `.gemini/`: carpetas
+// sueltas en la raiz que colisionaban con convenciones propias de otros
+// proyectos (Discord.js, oclif, Rails...). Esta version las mueve a
+// `.gemini/agents`, `.gemini/commands` y `.gemini/skills`.
+const RUTAS_GEMINI_LAYOUT_ANTIGUO = ['agents', 'commands', 'skills'];
+
+/**
+ * Avisa (no bloquea) si el proyecto tiene una instalacion previa del backend
+ * Gemini con el layout antiguo (carpetas sueltas, sin namespace). Desde esta
+ * version install/update solo gestionan las rutas bajo `.gemini/`: las
+ * carpetas antiguas no se tocan ni se actualizan, y quedarian obsoletas en
+ * silencio si no se avisa del breaking change.
+ */
+function advertirSiGeminiLayoutAntiguo(backend) {
+  if (backend !== 'gemini' && backend !== 'all') return;
+  const contextoGemini = path.join(DEST, ARCHIVO_CONTEXTO_POR_BACKEND.gemini);
+  if (!fs.existsSync(contextoGemini)) return;
+  if (!fs.readFileSync(contextoGemini, 'utf8').includes('<!-- sdd-framework:')) return;
+
+  const layoutAntiguo = RUTAS_GEMINI_LAYOUT_ANTIGUO.filter(ruta => fs.existsSync(path.join(DEST, ruta)));
+  if (!layoutAntiguo.length) return;
+
+  process.stderr.write(
+    `Aviso: layout antiguo de Gemini detectado (${layoutAntiguo.join(', ')} sueltos en la raiz). `
+      + 'Desde esta version las rutas de Gemini viven bajo .gemini/ para evitar colisiones con carpetas '
+      + `propias del proyecto; install/update ya no tocan ${layoutAntiguo.join(', ')} y puedes borrarlas `
+      + 'a mano si su contenido pertenece al framework.\n',
+  );
+}
+
 /** SHA-256 hexadecimal del contenido de un archivo, o null si no existe. */
 function hashFile(rutaAbsoluta) {
   if (!fs.existsSync(rutaAbsoluta)) return null;
@@ -564,6 +594,7 @@ async function cmdInstall(args) {
   const dryRun = args.includes('--dry-run');
   const force = args.includes('--force');
   advertirSiBackendEquivocado(backend);
+  advertirSiGeminiLayoutAntiguo(backend);
   await ejecutarPreflight(backend, skip, dryRun, force);
   const { copiadas, saltadas, creados, saltadasPorEdicion } = copiarRutasFramework(backend, skip, {
     crearDirsUsuario: true,
@@ -581,6 +612,7 @@ async function cmdUpdate(args) {
   const dryRun = args.includes('--dry-run');
   const force = args.includes('--force');
   advertirSiBackendEquivocado(backend);
+  advertirSiGeminiLayoutAntiguo(backend);
   await ejecutarPreflight(backend, skip, dryRun, force);
   const { copiadas, saltadas, saltadasPorEdicion } = copiarRutasFramework(backend, skip, {
     crearDirsUsuario: false,

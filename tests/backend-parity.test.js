@@ -52,8 +52,8 @@ const BACKENDS = {
     cableado: '.claude/settings.json'
   },
   gemini: {
-    agentes: [{ dir: 'agents', ext: '.md' }],
-    capacidades: [{ dir: 'commands', ext: '.toml' }, { dir: 'skills' }],
+    agentes: [{ dir: '.gemini/agents', ext: '.md' }],
+    capacidades: [{ dir: '.gemini/commands', ext: '.toml' }, { dir: '.gemini/skills' }],
     cableado: 'hooks/hooks.json'
   },
   codex: {

@@ -55,9 +55,10 @@
 
 ```
 proyecto/
-├── agents/             # planificador, revisor, implementador, asesor
-├── commands/           # 13 comandos SDD (.toml)
-├── skills/             # 8 skills (auto-activacion)
+├── .gemini/
+│   ├── agents/          # planificador, revisor, implementador, asesor
+│   ├── commands/        # 13 comandos SDD (.toml)
+│   └── skills/          # 8 skills (auto-activacion)
 ├── hooks/              # 4 hooks (pipeline-guard + commit-guard + read-before-edit + turn-budget)
 ├── ai_docs/
 │   ├── core/           # vision, planificacion, roadmap
@@ -95,7 +96,7 @@ Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
 
 ## Modelo por defecto
 
-Los 4 agentes (`asesor`, `implementador`, `planificador`, `revisor`) fijan `model: gemini-2.5-pro` en su frontmatter — a diferencia de Claude, aqui no se diferencia por rol, los 4 comparten el mismo modelo. Para cambiarlo, edita el campo `model:` en el archivo del agente correspondiente (`agents/<nombre>.md`).
+Los 4 agentes (`asesor`, `implementador`, `planificador`, `revisor`) fijan `model: gemini-2.5-pro` en su frontmatter — a diferencia de Claude, aqui no se diferencia por rol, los 4 comparten el mismo modelo. Para cambiarlo, edita el campo `model:` en el archivo del agente correspondiente (`.gemini/agents/<nombre>.md`).
 
 ## Hooks (enforcement mecanico)
 
