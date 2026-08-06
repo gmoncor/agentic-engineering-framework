@@ -1,0 +1,83 @@
+# ===========================================
+# Documentos de TU proyecto (no subir al repo)
+# ===========================================
+# Estas carpetas contienen documentacion especifica
+# de tu proyecto, no las plantillas del framework.
+# Las plantillas (dev_templates/) SI se versionan.
+
+# ai_docs/core/ incluye documentos de ejemplo en este repo.
+# En TU proyecto, descomenta las siguientes lineas para proteger tus documentos:
+# ai_docs/core/*
+# !ai_docs/core/.gitkeep
+
+ai_docs/tasks/*
+!ai_docs/tasks/.gitkeep
+
+ai_docs/refs/*
+!ai_docs/refs/.gitkeep
+
+# ===========================================
+# Arboles de trabajo temporales
+# ===========================================
+# /implementar-spec crea un arbol de trabajo aparte para las tasks con efectos
+# secundarios en el sistema de ficheros (migraciones, dependencias, contenedores).
+# Son temporales: se eliminan al fusionar.
+.worktrees/
+
+# ===========================================
+# Framework CLI (generados por install/update)
+# ===========================================
+.sdd-installed-hashes.json
+.sdd-install-in-progress
+
+# ===========================================
+# Archivos sensibles
+# ===========================================
+.env
+.env.*
+!.env.example
+
+# ===========================================
+# Dependencias
+# ===========================================
+node_modules/
+vendor/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ===========================================
+# Claude Code (local configs, no versionar)
+# ===========================================
+.claude/settings.local.json
+.claude/projects/
+.claude/todos/
+.claude/credits.json
+
+# ===========================================
+# IDEs y herramientas
+# ===========================================
+# .cursor/rules/ se versiona en este repo (43 reglas del framework).
+# El .gitignore previene que TU proyecto suba configs propias de Cursor.
+# Si clonas este repo, las reglas ya estan incluidas (tracked antes del .gitignore).
+.cursor/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ===========================================
+# Build y cache
+# ===========================================
+dist/
+build/
+.next/
+.nuxt/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
