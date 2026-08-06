@@ -86,20 +86,31 @@ function specIdentifiers(specPath) {
     .filter(s => s.length >= 4);
 }
 
+/** Escapa caracteres especiales de regex para usar `s` como texto literal dentro de un patron. */
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
  * Tasks que pertenecen a alguna spec APROBADA, es decir, que la citan.
  *
  * Acotar a la spec activa es lo que mantiene util al guard: la union de TODAS las tasks del
  * directorio crece con el historial del proyecto, y con ella el permiso de escritura. Al cabo de
  * unos meses el guard autorizaria cualquier archivo que alguna task vieja declarase alguna vez.
+ *
+ * La cita debe respetar limites de palabra: sin ellos, una task que solo MENCIONA el descriptor
+ * de la spec en texto libre (p.ej. "auth" dentro de "authentication") quedaria vinculada a esa
+ * spec y sus archivos declarados pasarian a autorizarse como si fueran de la spec activa.
  */
 function findActiveTaskFiles(tasksDir) {
   const identificadores = findApprovedSpecs(tasksDir).flatMap(specIdentifiers);
   if (identificadores.length === 0) return [];
 
+  const patrones = identificadores.map(id => new RegExp('\\b' + escapeRegex(id) + '\\b'));
+
   return findTaskFiles(tasksDir).filter(taskPath => {
     const texto = readText(taskPath).toLowerCase();
-    return identificadores.some(id => texto.includes(id));
+    return patrones.some(patron => patron.test(texto));
   });
 }
 

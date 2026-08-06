@@ -142,6 +142,86 @@ test('los archivos de una task de otra spec, ya cerrada, no autorizan la escritu
   assert.strictEqual(runHook(HOOK, escritura(root, 'src/auth/login.js')).code, 0);
 });
 
+// --- Vinculacion task -> spec: limite de palabra, no subcadena libre --------------------------
+// La spec se cita por su descriptor ("auth", derivado de spec_auth.md). Una task que solo
+// menciona ese texto como parte de otra palabra (p.ej. "authentication") no debe quedar
+// vinculada a la spec: si lo hiciera, sus archivos declarados se autorizarian como si
+// perteneciesen a la spec activa, sin que la task los citase realmente.
+
+const SPEC_AUTH = [
+  '# Spec: Auth',
+  '',
+  '**Estado:** APROBADA',
+  '',
+  '## Criterios de aceptacion',
+  '- El usuario puede autenticarse',
+  '',
+].join('\n');
+
+const TASK_MENCION_CASUAL = [
+  '# Task 002: Procesar pagos',
+  '',
+  'Este modulo se integra con un proveedor de authentication externo.',
+  '',
+  '## Archivos afectados',
+  '',
+  '| Archivo | Accion | Descripcion del cambio |',
+  '|---------|--------|----------------------|',
+  '| `src/pagos/checkout.js` | CREAR | Servicio de pagos |',
+  '',
+].join('\n');
+
+const TASK_REFERENCIA_EXPLICITA = [
+  '# Task 001: Crear el servicio de login',
+  '',
+  'Spec madre: ai_docs/tasks/spec_auth.md',
+  '',
+  '## Archivos afectados',
+  '',
+  '| Archivo | Accion | Descripcion del cambio |',
+  '|---------|--------|----------------------|',
+  '| `src/auth/login.js` | CREAR | Servicio de login |',
+  '',
+].join('\n');
+
+test('mencion casual del descriptor de la spec dentro de otra palabra no vincula la task (falso positivo)', () => {
+  const root = proyecto({ 'spec_auth.md': SPEC_AUTH }, { '002_pagos.md': TASK_MENCION_CASUAL });
+  const r = runHook(HOOK, escritura(root, 'src/pagos/checkout.js'));
+
+  // "authentication" contiene "auth" como subcadena, pero no lo cita como palabra completa: la
+  // task no queda vinculada a la spec y, al ser la unica task del proyecto, no hay ninguna
+  // task derivada de la spec activa.
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.match(r.decision.reason, /task derivada/);
+});
+
+test('referencia explicita "Spec madre:" vincula la task y autoriza sus archivos declarados', () => {
+  const root = proyecto({ 'spec_auth.md': SPEC_AUTH }, { '001_login.md': TASK_REFERENCIA_EXPLICITA });
+  const r = runHook(HOOK, escritura(root, 'src/auth/login.js'));
+
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null);
+});
+
+test('una task vinculada no presta autorizacion a otra task que solo menciona la spec como subcadena de otra palabra', () => {
+  // Reproduce el escenario original: spec_auth aprobada, una task realmente vinculada
+  // (001_login.md) y una task no relacionada que solo menciona "auth" dentro de
+  // "authentication" (002_pagos.md). Antes del fix, el match por subcadena vinculaba tambien
+  // a 002_pagos.md y autorizaba src/pagos/checkout.js sin que la task lo citase de verdad.
+  const root = proyecto(
+    { 'spec_auth.md': SPEC_AUTH },
+    { '001_login.md': TASK_REFERENCIA_EXPLICITA, '002_pagos.md': TASK_MENCION_CASUAL }
+  );
+
+  const vinculada = runHook(HOOK, escritura(root, 'src/auth/login.js'));
+  assert.strictEqual(vinculada.code, 0);
+
+  const noVinculada = runHook(HOOK, escritura(root, 'src/pagos/checkout.js'));
+  assert.strictEqual(noVinculada.decision.decision, 'deny');
+  assert.strictEqual(noVinculada.code, 2);
+  assert.match(noVinculada.decision.reason, /no esta declarado en ninguna task de la spec activa/);
+});
+
 test('SDD_GUARD_SKIP=1: warn en vez de deny', () => {
   const root = proyecto({ 'spec_autenticacion.md': SPEC_APROBADA }, { '001_login.md': TASK_CON_ARCHIVOS });
   const r = runHook(HOOK, escritura(root, 'src/pagos/checkout.js'), { SDD_GUARD_SKIP: '1' });
