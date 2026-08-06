@@ -203,8 +203,13 @@ test('el emisor del flujo revisa por task y usa el mismo contrato de senal que e
   assert.doesNotMatch(workflow, /SDD-POST-IMPL/, 'el canal de la marca en el mensaje de commit se elimino');
 });
 
-test('la limitacion frente a falsificacion deliberada esta documentada en README y en el modulo de la senal', () => {
-  const readme = fs.readFileSync(path.resolve(HOOKS_DIR, '..', 'README.md'), 'utf8');
+test('la limitacion frente a falsificacion deliberada esta documentada en README y en el modulo de la senal', (t) => {
+  const readmePath = path.resolve(HOOKS_DIR, '..', 'README.md');
+  if (!fs.existsSync(readmePath)) {
+    t.skip('README.md no disponible en instalacion destino');
+    return;
+  }
+  const readme = fs.readFileSync(readmePath, 'utf8');
   const signalSource = fs.readFileSync(path.join(HOOKS_DIR, 'sdd-review-signal.js'), 'utf8');
 
   // README: la limitacion vive junto al escape hatch de SDD_GUARD_SKIP, no en
