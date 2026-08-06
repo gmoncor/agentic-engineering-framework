@@ -142,7 +142,7 @@ test('install sin --backend y stdin no-TTY sale con codigo 1 sin colgarse', () =
 test('install --backend claude copia rutas comunes y de backend, y crea directorios del proyecto', () => {
   const paquete = crearPaqueteFixture(
     {
-      common: ['package.json', 'hooks'],
+      common: ['hooks'],
       claude: ['.claude', 'CLAUDE.md'],
       gemini: ['GEMINI.md'],
     },
@@ -173,6 +173,140 @@ test('install --backend claude copia rutas comunes y de backend, y crea director
   for (const dir of ['ai_docs/core', 'ai_docs/tasks', 'ai_docs/refs']) {
     assert.ok(fs.statSync(path.join(proyecto, dir)).isDirectory());
   }
+});
+
+test('install --backend claude nunca copia package.json literal del framework', () => {
+  const paquete = crearPaqueteFixture({ common: [], claude: [] });
+  const proyecto = dirTemporal();
+
+  const { codigo } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  const pkg = JSON.parse(fs.readFileSync(path.join(proyecto, 'package.json'), 'utf8'));
+  assert.strictEqual(pkg.name, undefined, 'no debe traer el name del framework');
+  assert.strictEqual(pkg.version, undefined, 'no debe traer la version del framework');
+  assert.strictEqual(pkg.private, undefined, 'no debe traer metadatos del framework');
+});
+
+test('install --backend claude con package.json preexistente preserva claves del usuario y anade scripts.test', () => {
+  const paquete = crearPaqueteFixture({ common: [], claude: [] });
+  const proyecto = dirTemporal();
+  escribirArchivo(proyecto, 'package.json', JSON.stringify({
+    name: 'mi-app',
+    version: '1.0.0',
+    dependencies: { react: '^18.0.0' },
+    scripts: { build: 'vite build' },
+  }));
+
+  const { codigo, stdout } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  const pkg = JSON.parse(fs.readFileSync(path.join(proyecto, 'package.json'), 'utf8'));
+  assert.strictEqual(pkg.name, 'mi-app');
+  assert.strictEqual(pkg.version, '1.0.0');
+  assert.deepStrictEqual(pkg.dependencies, { react: '^18.0.0' });
+  assert.strictEqual(pkg.scripts.build, 'vite build');
+  assert.match(pkg.scripts.test, /node --test/);
+  assert.match(stdout, /Anadido scripts\.test a package\.json/);
+});
+
+test('install --backend claude con package.json sin clave scripts crea scripts con solo test', () => {
+  const paquete = crearPaqueteFixture({ common: [], claude: [] });
+  const proyecto = dirTemporal();
+  escribirArchivo(proyecto, 'package.json', JSON.stringify({ name: 'mi-app' }));
+
+  const { codigo } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  const pkg = JSON.parse(fs.readFileSync(path.join(proyecto, 'package.json'), 'utf8'));
+  assert.strictEqual(pkg.name, 'mi-app');
+  assert.deepStrictEqual(Object.keys(pkg.scripts), ['test']);
+});
+
+test('install --backend claude sin package.json previo crea uno minimo con solo scripts.test', () => {
+  const paquete = crearPaqueteFixture({ common: [], claude: [] });
+  const proyecto = dirTemporal();
+
+  const { codigo, stdout } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  const pkg = JSON.parse(fs.readFileSync(path.join(proyecto, 'package.json'), 'utf8'));
+  assert.deepStrictEqual(Object.keys(pkg), ['scripts']);
+  assert.deepStrictEqual(Object.keys(pkg.scripts), ['test']);
+  assert.match(stdout, /Anadido scripts\.test a package\.json/);
+});
+
+test('install --backend claude con scripts.test propio no lo sobrescribe', () => {
+  const paquete = crearPaqueteFixture({ common: [], claude: [] });
+  const proyecto = dirTemporal();
+  escribirArchivo(proyecto, 'package.json', JSON.stringify({ name: 'mi-app', scripts: { test: 'jest' } }));
+
+  const { codigo, stdout } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  const pkg = JSON.parse(fs.readFileSync(path.join(proyecto, 'package.json'), 'utf8'));
+  assert.strictEqual(pkg.scripts.test, 'jest');
+  assert.doesNotMatch(stdout, /Anadido scripts\.test/);
+});
+
+test('install --dry-run con package.json preexistente reporta sin escribir', () => {
+  const paquete = crearPaqueteFixture({ common: [], claude: [] });
+  const proyecto = dirTemporal();
+  const contenidoOriginal = JSON.stringify({ name: 'mi-app', scripts: { build: 'vite build' } });
+  escribirArchivo(proyecto, 'package.json', contenidoOriginal);
+
+  const { codigo, stdout } = ejecutar(['install', '--backend', 'claude', '--dry-run'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /\[DRY-RUN\] anaderia scripts\.test a package\.json/);
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'package.json'), 'utf8'), contenidoOriginal);
+});
+
+test('install --dry-run sin package.json previo reporta creacion sin escribir', () => {
+  const paquete = crearPaqueteFixture({ common: [], claude: [] });
+  const proyecto = dirTemporal();
+
+  const { codigo, stdout } = ejecutar(['install', '--backend', 'claude', '--dry-run'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /\[DRY-RUN\] crearia package\.json con scripts\.test/);
+  assert.ok(!fs.existsSync(path.join(proyecto, 'package.json')));
+});
+
+test('install con package.json del destino malformado reporta error sin crash ni sobrescritura', () => {
+  const paquete = crearPaqueteFixture({ common: [], claude: [] });
+  const proyecto = dirTemporal();
+  escribirArchivo(proyecto, 'package.json', '{ esto no es json valido');
+
+  const { codigo, stderr } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stderr, /package\.json/);
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'package.json'), 'utf8'), '{ esto no es json valido');
 });
 
 test('install --backend gemini sobre proyecto con marcador de claude avisa del backend preexistente', () => {
