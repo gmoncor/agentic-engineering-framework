@@ -604,10 +604,22 @@ async function ejecutarPreflight(backend, skip, dryRun, force) {
   await confirmarColisiones(detectarColisiones(rutas));
 }
 
+/** Imprime a stderr cada ruta que fallo al copiar junto con su error. */
+function reportarRutasFallidas(fallidas) {
+  process.stderr.write('Rutas que fallaron al copiar:\n');
+  fallidas.forEach(({ ruta, error }) => process.stderr.write(`  - ${ruta}: ${error}\n`));
+}
+
 /**
  * Copia las rutas del backend elegido segun el manifiesto. Comun a install y
  * update. Con `opciones.dryRun` no escribe nada en disco (ni copias ni
  * directorios de usuario ni sidecar de hashes): solo calcula y reporta.
+ *
+ * Cada ruta se copia dentro de su propio try/catch: un fallo aislado (p.ej.
+ * EACCES en un subdirectorio anidado) no aborta la copia de las demas rutas.
+ * Al final se reportan por stderr las rutas fallidas y solo las exitosas se
+ * registran en el sidecar de hashes, para que el estado persistido en disco
+ * nunca mienta sobre lo que realmente se copio.
  */
 function copiarRutasFramework(backend, skip, opciones = {}) {
   const manifest = cargarManifest();
@@ -617,14 +629,20 @@ function copiarRutasFramework(backend, skip, opciones = {}) {
   const hashesInstalados = loadInstalledHashes(DEST);
   const saltadasPorEdicion = [];
 
-  // El lockfile se crea antes de copiar y se borra solo tras completar. Si
-  // `copiarRuta` lanza a mitad, la excepcion se propaga sin pasar por la
-  // linea de borrado: el lockfile queda en disco como senal de instalacion
-  // interrumpida, y `main().catch` reporta el fallo con codigo distinto de 0.
   if (!opciones.dryRun) crearLockfileInstalacion(backend);
-  const resultados = rutas.map(ruta =>
-    copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, opciones.resetProtected, opciones.dryRun, opciones.generalizado),
-  );
+
+  const resultados = [];
+  const fallidas = [];
+  for (const ruta of rutas) {
+    try {
+      resultados.push(
+        copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, opciones.resetProtected, opciones.dryRun, opciones.generalizado),
+      );
+    } catch (err) {
+      fallidas.push({ ruta, error: err.message });
+    }
+  }
+
   const copiadas = resultados.filter(r => r.copiada).map(r => r.ruta);
   const saltadas = resultados
     .filter(r => !r.copiada && !saltadasPorEdicion.includes(r.ruta))
@@ -632,11 +650,17 @@ function copiarRutasFramework(backend, skip, opciones = {}) {
   const creados = opciones.crearDirsUsuario && !opciones.dryRun ? crearDirectoriosDelProyecto() : [];
 
   if (!opciones.dryRun) {
-    actualizarHashesInstalados(hashesInstalados, rutas, saltadasPorEdicion);
-    eliminarLockfileInstalacion();
+    // Solo las rutas copiadas con exito entran al sidecar: una ruta fallida
+    // no debe registrar un hash de un archivo que nunca llego a escribirse.
+    actualizarHashesInstalados(hashesInstalados, copiadas, saltadasPorEdicion);
+    // El lockfile solo se borra si TODO se copio sin fallos. Con fallidas,
+    // queda en disco como senal de estado parcial para la proxima ejecucion.
+    if (fallidas.length === 0) eliminarLockfileInstalacion();
   }
 
-  return { copiadas, saltadas, creados, saltadasPorEdicion };
+  if (fallidas.length) reportarRutasFallidas(fallidas);
+
+  return { copiadas, saltadas, creados, saltadasPorEdicion, fallidas };
 }
 
 /** Sustituye el marcador de version en `archivo` por `version`. Retorna true si hubo cambio. */
@@ -733,13 +757,14 @@ async function cmdInstall(args) {
   advertirSiGeminiLayoutAntiguo(backend);
   advertirSiInstalacionInterrumpida(backend);
   await ejecutarPreflight(backend, skip, dryRun, force);
-  const { copiadas, saltadas, creados, saltadasPorEdicion } = copiarRutasFramework(backend, skip, {
+  const { copiadas, saltadas, creados, saltadasPorEdicion, fallidas } = copiarRutasFramework(backend, skip, {
     crearDirsUsuario: true,
     dryRun,
   });
   const scriptsTestMergeado = mergeScriptsTest(dryRun);
   if (!dryRun) sincronizarMarcadores(backend, copiadas, obtenerVersion());
   reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, scriptsTestMergeado, backend);
+  if (fallidas.length) process.exit(1);
 }
 
 async function cmdUpdate(args) {
@@ -753,7 +778,7 @@ async function cmdUpdate(args) {
   advertirSiGeminiLayoutAntiguo(backend);
   advertirSiInstalacionInterrumpida(backend);
   await ejecutarPreflight(backend, skip, dryRun, force);
-  const { copiadas, saltadas, saltadasPorEdicion } = copiarRutasFramework(backend, skip, {
+  const { copiadas, saltadas, saltadasPorEdicion, fallidas } = copiarRutasFramework(backend, skip, {
     crearDirsUsuario: false,
     resetProtected,
     dryRun,
@@ -763,6 +788,7 @@ async function cmdUpdate(args) {
   const version = obtenerVersion();
   if (!dryRun) sincronizarMarcadores(backend, copiadas, version);
   reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version, scriptsTestMergeado);
+  if (fallidas.length) process.exit(1);
 }
 
 async function main() {
