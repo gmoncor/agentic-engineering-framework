@@ -495,6 +495,92 @@ test('install --backend codex sobre proyecto con AGENTS.md de antigravity no avi
   assert.doesNotMatch(stderr, /Aviso/);
 });
 
+test('install --backend claude seguido de install --backend gemini conserva los archivos de claude, anade los de gemini y refresca los comunes', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks', 'CHANGELOG.md'], claude: ['.claude', 'CLAUDE.md'], gemini: ['GEMINI.md'] },
+    {
+      'hooks/config.json': '{}',
+      'hooks/utils.js': 'contenido comun',
+      'CHANGELOG.md': 'historial',
+      '.claude/agents/planificador.md': 'agente',
+      'CLAUDE.md': 'contexto claude\n<!-- sdd-framework: 1.0.0 -->\n',
+      'GEMINI.md': 'contexto gemini',
+    },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+
+  assert.strictEqual(ejecutar(['install', '--backend', 'claude'], opts).codigo, 0);
+  const gemini = ejecutar(['install', '--backend', 'gemini', '--force'], opts);
+
+  assert.strictEqual(gemini.codigo, 0);
+  assert.match(gemini.stderr, /Aviso/);
+  assert.match(gemini.stderr, /claude/);
+  assert.match(gemini.stderr, /CLAUDE\.md/);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, '.claude', 'agents', 'planificador.md'), 'utf8'),
+    'agente',
+  );
+  assert.match(fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'), /contexto claude/);
+  assert.ok(fs.existsSync(path.join(proyecto, 'GEMINI.md')));
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'hooks', 'utils.js'), 'utf8'), 'contenido comun');
+});
+
+test('install --backend claude seguido de install --backend codex conserva los archivos de claude y anade AGENTS.md', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['.claude', 'CLAUDE.md'], codex: ['AGENTS.md'] },
+    {
+      '.claude/agents/planificador.md': 'agente',
+      'CLAUDE.md': 'contexto claude\n<!-- sdd-framework: 1.0.0 -->\n',
+      'AGENTS.md': 'contexto codex',
+    },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+
+  assert.strictEqual(ejecutar(['install', '--backend', 'claude'], opts).codigo, 0);
+  const codex = ejecutar(['install', '--backend', 'codex'], opts);
+
+  assert.strictEqual(codex.codigo, 0);
+  assert.match(codex.stderr, /Aviso/);
+  assert.match(codex.stderr, /claude/);
+  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'agents', 'planificador.md')));
+  assert.match(fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'), /contexto claude/);
+  assert.ok(fs.existsSync(path.join(proyecto, 'AGENTS.md')));
+});
+
+test('los archivos comunes tras install claude + install gemini son identicos a los de un install claude solo', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: ['CLAUDE.md'], gemini: ['GEMINI.md'] },
+    {
+      'hooks/config.json': '{}',
+      'hooks/utils.js': 'contenido comun',
+      'CLAUDE.md': 'contexto claude\n<!-- sdd-framework: 1.0.0 -->\n',
+      'GEMINI.md': 'contexto gemini',
+    },
+  );
+
+  const soloClaude = dirTemporal();
+  assert.strictEqual(
+    ejecutar(['install', '--backend', 'claude'], { cwd: soloClaude, env: { SDD_FRAMEWORK_ROOT: paquete } }).codigo,
+    0,
+  );
+
+  const multiBackend = dirTemporal();
+  const optsMulti = { cwd: multiBackend, env: { SDD_FRAMEWORK_ROOT: paquete } };
+  assert.strictEqual(ejecutar(['install', '--backend', 'claude'], optsMulti).codigo, 0);
+  assert.strictEqual(ejecutar(['install', '--backend', 'gemini', '--force'], optsMulti).codigo, 0);
+
+  assert.deepStrictEqual(
+    fs.readdirSync(path.join(multiBackend, 'hooks')).sort(),
+    fs.readdirSync(path.join(soloClaude, 'hooks')).sort(),
+  );
+  assert.strictEqual(
+    fs.readFileSync(path.join(multiBackend, 'hooks', 'utils.js'), 'utf8'),
+    fs.readFileSync(path.join(soloClaude, 'hooks', 'utils.js'), 'utf8'),
+  );
+});
+
 test('install --backend claude es idempotente: ejecutarlo dos veces seguidas produce el mismo resultado', () => {
   const paquete = crearPaqueteFixture(
     { common: ['CLAUDE.md'], claude: ['.claude'] },
