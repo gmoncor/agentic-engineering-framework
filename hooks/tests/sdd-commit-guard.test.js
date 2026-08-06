@@ -10,7 +10,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const path = require('path');
 const { runHook, tempDir, writeFile } = require('./helpers');
-const { commitWarnings } = require('../sdd-commit-rules');
+const { commitWarnings, usesNoVerify } = require('../sdd-commit-rules');
 
 const HOOK = 'sdd-commit-guard.js';
 
@@ -32,6 +32,18 @@ test('git commit -n (alias corto): deny', () => {
 
   assert.strictEqual(r.decision.decision, 'deny');
   assert.strictEqual(r.code, 2);
+});
+
+test('usesNoVerify: -n combinado con otro flag corto (-na) se detecta', () => {
+  assert.strictEqual(usesNoVerify('git commit -na -m "x"'), true);
+});
+
+test('usesNoVerify: -n combinado al final del grupo (-an) se detecta', () => {
+  assert.strictEqual(usesNoVerify('git commit -an -m "x"'), true);
+});
+
+test('usesNoVerify: grupo de flags sin -n (-am) no se detecta (falso positivo)', () => {
+  assert.strictEqual(usesNoVerify('git commit -am -m "x"'), false);
 });
 
 test('git push --no-verify: deny', () => {

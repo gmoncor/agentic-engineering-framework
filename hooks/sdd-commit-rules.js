@@ -24,9 +24,11 @@ const SCAFFOLDING_DIRS = ['.cursor'];
 const FORBIDDEN_COAUTHOR_RE = /co-authored-by:\s*.*(?:claude|anthropic|gemini|google\s+ai|openai|codex)/i;
 
 // git commit y git push con --no-verify saltan los ganchos de calidad del repositorio.
-// En commit, -n es el alias corto de --no-verify (en push, -n es --dry-run: inofensivo).
+// En commit, -n es el alias corto de --no-verify. Git tambien acepta flags cortos combinados en
+// un solo grupo (-na, -an, -nam...), asi que -n cuenta igual si aparece en cualquier posicion
+// dentro del grupo. En push, -n es --dry-run: inofensivo, sin variante corta que vigilar.
 const NO_VERIFY_RE = /\bgit\s+(?:commit|push)\b[^\n]*\s--no-verify\b/;
-const COMMIT_SHORT_NO_VERIFY_RE = /\bgit\s+commit\b[^\n]*\s-n(?:\s|$)/;
+const COMMIT_SHORT_NO_VERIFY_RE = /\bgit\s+commit\b[^\n]*\s-[a-zA-Z]*n[a-zA-Z]*(?:\s|$)/;
 
 // Sin anclar al inicio: el comando puede venir envuelto ("cd x && git commit ...") o como argv.
 const GIT_COMMIT_RE = /\bgit\s+commit\b/;
