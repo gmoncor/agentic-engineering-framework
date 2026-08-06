@@ -198,9 +198,11 @@ No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` par
 | Templates | `ai_docs/dev_templates/` (13) | `ai_docs/dev_templates/` (13) | `ai_docs/dev_templates/` (13) | `ai_docs/dev_templates/` (13) |
 | Core templates | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) |
 
-Las rutas coinciden con `scripts/backend-manifest.json`, que ademas marca `scripts/`, `package.json`
-y `CHANGELOG.md` como comunes a todos los backends: son infraestructura del CLI y metadatos, no
-componentes del flujo SDD, por eso la tabla no los lista.
+Las rutas coinciden con `scripts/backend-manifest.json`, que ademas marca `scripts/` y `CHANGELOG.md`
+como comunes a todos los backends: son infraestructura del CLI y metadatos, no componentes del flujo
+SDD, por eso la tabla no los lista. `package.json` nunca se copia: el CLI anade solo `scripts.test` al
+`package.json` del proyecto destino (creando uno minimo si no existe), sin tocar nombre, dependencias
+ni el resto de scripts del usuario.
 
 \* `auditar-sesion` es exclusiva de Claude Code: analiza las transcripciones nativas JSONL que este
 backend escribe en `~/.claude/projects/`, un formato que ningun otro backend produce.

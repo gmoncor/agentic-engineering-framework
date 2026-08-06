@@ -4,7 +4,6 @@
     "ai_docs/dev_templates",
     "hooks",
     "scripts",
-    "package.json",
     "CHANGELOG.md",
     ".gitignore"
   ],

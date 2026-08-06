@@ -37,6 +37,12 @@ const ARCHIVO_CONTEXTO_POR_BACKEND = {
 const ARCHIVO_SIDECAR_HASHES = '.sdd-installed-hashes.json';
 const ARCHIVOS_PROTEGIDOS = ['hooks/config.json', '.claude/settings.json', 'CLAUDE.md', 'GEMINI.md', 'AGENTS.md', '.gitignore'];
 
+// Comando para correr los tests de los hooks instalados. Se ofrece via
+// `scripts.test` del package.json del destino en lugar de copiar el
+// package.json del framework (que pisaria nombre, dependencias y scripts
+// del proyecto del usuario).
+const SCRIPTS_TEST = 'node --test "hooks/tests/*.test.js" "tests/*.test.js"';
+
 function mostrarAyuda() {
   console.log(`Uso: agentic-engineering-framework <subcomando> [opciones]
 
@@ -282,6 +288,41 @@ function actualizarHashesInstalados(hashesInstalados, rutas, saltadasPorEdicion)
   saveInstalledHashes(DEST, hashesActualizados);
 }
 
+/**
+ * Anade `scripts.test` al package.json del destino sin tocar ninguna otra
+ * clave (nombre, dependencias, otros scripts). Si el destino no tiene
+ * package.json, crea uno minimo con solo `scripts.test`. Si el destino ya
+ * tiene su propio `scripts.test`, no se toca: el usuario controla su test
+ * runner. Retorna true si escribio el archivo (fuera de dry-run).
+ */
+function mergeScriptsTest(dryRun) {
+  const destino = path.join(DEST, 'package.json');
+  const existe = fs.existsSync(destino);
+
+  let pkg = {};
+  if (existe) {
+    try {
+      pkg = JSON.parse(fs.readFileSync(destino, 'utf8'));
+    } catch (err) {
+      process.stderr.write(`No se pudo leer package.json (JSON invalido), se omite: ${err.message}\n`);
+      return false;
+    }
+  }
+
+  if (pkg.scripts && pkg.scripts.test) return false;
+
+  if (dryRun) {
+    console.log(existe
+      ? '[DRY-RUN] anaderia scripts.test a package.json'
+      : '[DRY-RUN] crearia package.json con scripts.test');
+    return false;
+  }
+
+  pkg.scripts = { ...pkg.scripts, test: SCRIPTS_TEST };
+  fs.writeFileSync(destino, JSON.stringify(pkg, null, 2));
+  return true;
+}
+
 function crearDirectoriosDelProyecto() {
   const creados = [];
   for (const dir of DIRS_DEL_PROYECTO) {
@@ -396,7 +437,7 @@ function reportarArchivosProtegidos(saltadasPorEdicion) {
   saltadasPorEdicion.forEach(ruta => console.log(`  - ${ruta}`));
 }
 
-function reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion) {
+function reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, scriptsTestMergeado) {
   if (copiadas.length) {
     console.log('Rutas copiadas:');
     copiadas.forEach(ruta => console.log(`  - ${ruta}`));
@@ -410,10 +451,13 @@ function reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion) {
     console.log('Directorios creados:');
     creados.forEach(dir => console.log(`  - ${dir}`));
   }
+  if (scriptsTestMergeado) {
+    console.log('Anadido scripts.test a package.json para correr los tests de los hooks.');
+  }
   console.log("Framework instalado. Configura ai_docs/core/ con las plantillas de ai_docs/core_templates/. Ejecuta 'npm test' para verificar los hooks.");
 }
 
-function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version) {
+function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version, scriptsTestMergeado) {
   if (copiadas.length) {
     console.log('Rutas actualizadas:');
     copiadas.forEach(ruta => console.log(`  - ${ruta}`));
@@ -423,6 +467,9 @@ function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version) 
     saltadas.forEach(ruta => console.log(`  - ${ruta}`));
   }
   reportarArchivosProtegidos(saltadasPorEdicion);
+  if (scriptsTestMergeado) {
+    console.log('Anadido scripts.test a package.json para correr los tests de los hooks.');
+  }
   console.log(`Framework actualizado a la version ${version}. Rutas del proyecto (ai_docs/core/, ai_docs/tasks/, ai_docs/refs/) no se han tocado. Ejecuta 'npm test' para verificar los hooks.`);
 }
 
@@ -435,8 +482,9 @@ async function cmdInstall(args) {
     crearDirsUsuario: true,
     dryRun,
   });
+  const scriptsTestMergeado = mergeScriptsTest(dryRun);
   if (!dryRun) sincronizarMarcadores(backend, copiadas, obtenerVersion());
-  reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion);
+  reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, scriptsTestMergeado);
 }
 
 async function cmdUpdate(args) {
@@ -450,9 +498,10 @@ async function cmdUpdate(args) {
     resetProtected,
     dryRun,
   });
+  const scriptsTestMergeado = mergeScriptsTest(dryRun);
   const version = obtenerVersion();
   if (!dryRun) sincronizarMarcadores(backend, copiadas, version);
-  reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version);
+  reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version, scriptsTestMergeado);
 }
 
 async function main() {
