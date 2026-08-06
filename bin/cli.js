@@ -82,7 +82,7 @@ Si se omite --backend, se muestra un menu interactivo para elegir (requiere term
 function mostrarAyudaUpdate() {
   console.log(`Uso: agentic-engineering-framework update --backend <claude|gemini|codex|antigravity|all> [--skip <nombre,nombre>] [--reset-protected] [--dry-run] [--force]
 
-Actualiza el framework instalado en el directorio actual: copia las rutas del backend elegido sin tocar ai_docs/core/, ai_docs/tasks/ ni ai_docs/refs/.
+Actualiza el framework instalado en el directorio actual: copia las rutas del backend elegido sin tocar ai_docs/core/, ai_docs/tasks/ ni ai_docs/refs/. Requiere una instalacion previa (ejecuta 'install' primero si el directorio nunca se instalo).
 
 Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).
 --skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing, pr); solo aplica al backend claude.
@@ -311,6 +311,32 @@ function advertirSiInstalacionInterrumpida(backend) {
   process.stderr.write(
     `Instalacion previa interrumpida detectada (${timestampPrevio}, ${avisoBackend}). Continuando.\n`,
   );
+}
+
+/**
+ * true si DEST tiene alguna senal de instalacion previa: el sidecar de
+ * hashes (cualquier version lo crea desde su introduccion) o el marcador
+ * `<!-- sdd-framework: -->` en alguno de los docs de contexto (instalaciones
+ * anteriores al sidecar). Ausencia de ambas senales => nunca se instalo.
+ */
+function hayInstalacionPrevia() {
+  if (fs.existsSync(path.join(DEST, ARCHIVO_SIDECAR_HASHES))) return true;
+  return Object.values(ARCHIVO_CONTEXTO_POR_BACKEND).some(archivo => {
+    const rutaAbsoluta = path.join(DEST, archivo);
+    return fs.existsSync(rutaAbsoluta) && fs.readFileSync(rutaAbsoluta, 'utf8').includes('<!-- sdd-framework:');
+  });
+}
+
+/**
+ * Aborta `update` si DEST no tiene ninguna instalacion previa. Sin esta
+ * verificacion, `update` sobre un directorio nunca instalado se comporta
+ * como un install parcial: copia el framework y reporta exito sin crear
+ * ai_docs/core, ai_docs/tasks ni ai_docs/refs (eso solo lo hace `install`).
+ */
+function abortarSiSinInstalacionPrevia() {
+  if (hayInstalacionPrevia()) return;
+  process.stderr.write('No se detecto una instalacion previa. Ejecuta "install" en vez de "update".\n');
+  process.exit(1);
 }
 
 /** Archivos protegidos que caen dentro de `ruta` (ella misma, o anidados si es un directorio). */
@@ -718,6 +744,7 @@ async function cmdInstall(args) {
 
 async function cmdUpdate(args) {
   const backend = await resolverBackend(args);
+  abortarSiSinInstalacionPrevia();
   const skip = parseSkip(args);
   const resetProtected = args.includes('--reset-protected');
   const dryRun = args.includes('--dry-run');
