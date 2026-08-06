@@ -495,6 +495,8 @@ Tres palancas para reducir el coste de las sesiones:
 
 El directorio `.cursor/rules/` contiene 43 reglas que replican el comportamiento del framework dentro de Cursor. Son opcionales — el framework funciona sin ellas. Si usas Cursor, copia `.cursor/` a tu proyecto.
 
+> **Solo al clonar el repo completo.** `.cursor/` (el del framework, no el tuyo si ya tienes uno) no se incluye en la instalacion via `npx ... install` — el CLI no copia esta carpeta. Para obtenerla, clona el repositorio completo (`git clone`) y copia `.cursor/` desde ahi.
+>
 > **Asumen un stack concreto.** La mayoria de esas reglas (38 de 43) estan escritas para **Next.js 15 + React + Drizzle + PostgreSQL + Python**: dan por hecho ese runtime, esas convenciones y ese ORM. Si tu proyecto usa otro stack, revisalas y adaptalas antes de copiar `.cursor/` — o copia solo las que sean agnosticas. Las reglas del flujo SDD (las que no son de stack) valen para cualquier proyecto.
 
 ---
