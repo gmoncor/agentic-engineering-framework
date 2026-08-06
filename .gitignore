@@ -28,6 +28,7 @@ ai_docs/refs/*
 # Framework CLI (generados por install/update)
 # ===========================================
 .sdd-installed-hashes.json
+.sdd-install-in-progress
 
 # ===========================================
 # Archivos sensibles
