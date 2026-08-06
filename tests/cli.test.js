@@ -1587,6 +1587,121 @@ test('update --dry-run reporta un archivo protegido editado localmente sin sobre
   );
 });
 
+test('install exitoso no deja .sdd-install-in-progress en disco', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  const { codigo } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+  assert.strictEqual(codigo, 0);
+  assert.ok(
+    !fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
+    'el lockfile no debe sobrevivir a una instalacion exitosa',
+  );
+});
+
+test('install con lockfile preexistente de una instalacion interrumpida avisa por stderr y continua', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  escribirArchivo(
+    proyecto,
+    '.sdd-install-in-progress',
+    JSON.stringify({ timestamp: '2026-01-01T00:00:00.000Z', backend: 'claude' }),
+  );
+  const { codigo, stderr } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+  assert.strictEqual(codigo, 0);
+  assert.match(stderr, /interrumpida/i);
+  assert.match(stderr, /2026-01-01/);
+  assert.ok(
+    !fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
+    'el lockfile debe desaparecer tras completar la instalacion que lo encontro',
+  );
+});
+
+test('install con lockfile de un backend distinto avisa mencionando el backend anterior', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  escribirArchivo(
+    proyecto,
+    '.sdd-install-in-progress',
+    JSON.stringify({ timestamp: '2026-01-01T00:00:00.000Z', backend: 'gemini' }),
+  );
+  const { codigo, stderr } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+  assert.strictEqual(codigo, 0);
+  assert.match(stderr, /gemini/);
+  assert.match(stderr, /claude/);
+});
+
+test('install con lockfile de JSON invalido avisa de forma generica sin crash', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  escribirArchivo(proyecto, '.sdd-install-in-progress', '{ json invalido');
+  const { codigo, stderr } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+  assert.strictEqual(codigo, 0);
+  assert.match(stderr, /posiblemente interrumpida/i);
+});
+
+test('install --dry-run no crea .sdd-install-in-progress', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  const { codigo } = ejecutar(['install', '--backend', 'claude', '--dry-run'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+  assert.strictEqual(codigo, 0);
+  assert.ok(
+    !fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
+    '--dry-run no debe escribir el lockfile',
+  );
+});
+
+test('install con fallo durante la copia deja .sdd-install-in-progress en disco', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['archivo.md'], claude: [] },
+    { 'archivo.md': 'contenido' },
+  );
+  const proyecto = dirTemporal();
+  // Fuerza un fallo en fs.copyFileSync (EISDIR): el destino ya existe como directorio.
+  // --force salta el preflight de colision para que la copia real se intente
+  // y sea copiarRuta quien falle con EISDIR.
+  fs.mkdirSync(path.join(proyecto, 'archivo.md'));
+  const { codigo, stderr } = ejecutar(['install', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+  assert.strictEqual(codigo, 1);
+  assert.match(stderr, /Error inesperado/);
+  assert.ok(
+    fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
+    'el lockfile debe permanecer tras un fallo de copia',
+  );
+});
+
 test('.npmignore existe, fuerza la inclusion de .gitignore y no excluye rutas criticas del manifiesto', () => {
   const rutaNpmignore = path.join(RAIZ, '.npmignore');
   assert.ok(fs.existsSync(rutaNpmignore), '.npmignore debe existir en la raiz del repo');

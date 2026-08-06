@@ -41,6 +41,11 @@ const ARCHIVO_CONTEXTO_POR_BACKEND = {
 const ARCHIVO_SIDECAR_HASHES = '.sdd-installed-hashes.json';
 const ARCHIVOS_PROTEGIDOS = ['hooks/config.json', '.claude/settings.json', 'CLAUDE.md', 'GEMINI.md', 'AGENTS.md', '.gitignore'];
 
+// Lockfile de instalacion en curso: se crea al empezar a copiar y se borra al
+// terminar con exito. Si el proceso muere a mitad (kill, Ctrl-C, OOM), queda
+// en disco como senal de que la instalacion anterior no completo.
+const LOCKFILE_INSTALACION = '.sdd-install-in-progress';
+
 // Comando para correr los tests de los hooks instalados. Se ofrece via
 // `scripts.test` del package.json del destino en lugar de copiar el
 // package.json del framework (que pisaria nombre, dependencias y scripts
@@ -254,6 +259,58 @@ function saveInstalledHashes(dest, hashes) {
   } catch (err) {
     process.stderr.write(`No se pudo guardar ${ARCHIVO_SIDECAR_HASHES}: ${err.message}\n`);
   }
+}
+
+/**
+ * Crea el lockfile de instalacion en curso antes de copiar. Si no se puede
+ * escribir (p.ej. disco lleno), aborta con un mensaje claro en lugar de
+ * continuar la copia sin marca de progreso.
+ */
+function crearLockfileInstalacion(backend) {
+  const contenido = JSON.stringify({ timestamp: new Date().toISOString(), backend });
+  try {
+    fs.writeFileSync(path.join(DEST, LOCKFILE_INSTALACION), contenido);
+  } catch (err) {
+    process.stderr.write(`No se pudo crear ${LOCKFILE_INSTALACION}, instalacion abortada: ${err.message}\n`);
+    process.exit(1);
+  }
+}
+
+/** Elimina el lockfile tras completar la copia con exito. Ausente => no-op. */
+function eliminarLockfileInstalacion() {
+  const lockfilePath = path.join(DEST, LOCKFILE_INSTALACION);
+  if (fs.existsSync(lockfilePath)) fs.unlinkSync(lockfilePath);
+}
+
+/**
+ * Avisa por stderr si detecta el lockfile de una instalacion anterior que no
+ * completo. No bloquea: el usuario ya eligio instalar/actualizar ahora, asi
+ * que la ejecucion continua y el lockfile se sobrescribe al empezar a copiar.
+ * JSON invalido (corrupcion a mitad de escritura) => aviso generico sin
+ * crash.
+ */
+function advertirSiInstalacionInterrumpida(backend) {
+  const lockfilePath = path.join(DEST, LOCKFILE_INSTALACION);
+  if (!fs.existsSync(lockfilePath)) return;
+
+  let previo;
+  try {
+    previo = JSON.parse(fs.readFileSync(lockfilePath, 'utf8'));
+  } catch {
+    process.stderr.write(
+      `Instalacion previa posiblemente interrumpida (${LOCKFILE_INSTALACION} con formato invalido). Continuando.\n`,
+    );
+    return;
+  }
+
+  const backendPrevio = previo && previo.backend ? previo.backend : 'desconocido';
+  const timestampPrevio = previo && previo.timestamp ? previo.timestamp : 'desconocido';
+  const avisoBackend = backendPrevio !== backend
+    ? `backend anterior: ${backendPrevio}, ahora: ${backend}`
+    : `backend: ${backendPrevio}`;
+  process.stderr.write(
+    `Instalacion previa interrumpida detectada (${timestampPrevio}, ${avisoBackend}). Continuando.\n`,
+  );
 }
 
 /** Archivos protegidos que caen dentro de `ruta` (ella misma, o anidados si es un directorio). */
@@ -533,6 +590,12 @@ function copiarRutasFramework(backend, skip, opciones = {}) {
 
   const hashesInstalados = loadInstalledHashes(DEST);
   const saltadasPorEdicion = [];
+
+  // El lockfile se crea antes de copiar y se borra solo tras completar. Si
+  // `copiarRuta` lanza a mitad, la excepcion se propaga sin pasar por la
+  // linea de borrado: el lockfile queda en disco como senal de instalacion
+  // interrumpida, y `main().catch` reporta el fallo con codigo distinto de 0.
+  if (!opciones.dryRun) crearLockfileInstalacion(backend);
   const resultados = rutas.map(ruta =>
     copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, opciones.resetProtected, opciones.dryRun, opciones.generalizado),
   );
@@ -544,6 +607,7 @@ function copiarRutasFramework(backend, skip, opciones = {}) {
 
   if (!opciones.dryRun) {
     actualizarHashesInstalados(hashesInstalados, rutas, saltadasPorEdicion);
+    eliminarLockfileInstalacion();
   }
 
   return { copiadas, saltadas, creados, saltadasPorEdicion };
@@ -641,6 +705,7 @@ async function cmdInstall(args) {
   const force = args.includes('--force');
   advertirSiBackendEquivocado(backend);
   advertirSiGeminiLayoutAntiguo(backend);
+  advertirSiInstalacionInterrumpida(backend);
   await ejecutarPreflight(backend, skip, dryRun, force);
   const { copiadas, saltadas, creados, saltadasPorEdicion } = copiarRutasFramework(backend, skip, {
     crearDirsUsuario: true,
@@ -659,6 +724,7 @@ async function cmdUpdate(args) {
   const force = args.includes('--force');
   advertirSiBackendEquivocado(backend);
   advertirSiGeminiLayoutAntiguo(backend);
+  advertirSiInstalacionInterrumpida(backend);
   await ejecutarPreflight(backend, skip, dryRun, force);
   const { copiadas, saltadas, saltadasPorEdicion } = copiarRutasFramework(backend, skip, {
     crearDirsUsuario: false,
