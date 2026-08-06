@@ -16,7 +16,7 @@ Abre un issue con la plantilla **Bug report**. Un buen reporte incluye:
 
 - Que esperabas que pasara y que paso en su lugar
 - Pasos exactos de reproduccion
-- Version del framework (`.claude-plugin/plugin.json`), CLI usada (Claude Code, Gemini CLI, Codex, Antigravity, copy-paste) y version de Node
+- Version del framework (`node bin/cli.js --version`, o el marcador `<!-- sdd-framework: X.Y.Z -->` al final de tu `CLAUDE.md`/`GEMINI.md`/`AGENTS.md` si instalaste sin el CLI), CLI usada (Claude Code, Gemini CLI, Codex, Antigravity, copy-paste) y version de Node
 - Salida literal del error, si la hay
 
 Si el problema afecta a la seguridad, **no abras un issue publico**: sigue el proceso de `SECURITY.md`.
