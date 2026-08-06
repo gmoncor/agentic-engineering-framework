@@ -101,7 +101,7 @@ Los 4 agentes (`asesor`, `implementador`, `planificador`, `revisor`) fijan `mode
 | Hook | Evento | Que enforcea | Modo |
 |------|--------|-------------|------|
 | `sdd-pipeline-guard.js` | write_file/edit_file | **Bloquea** escribir un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de la spec APROBADA activa | Bloqueante |
-| `sdd-commit-guard.js` | run_command (git commit) | Warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Advisory |
+| `sdd-commit-guard.js` | run_command (git commit/push) | **Bloquea** `--no-verify`; warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Bloqueante en `--no-verify`, advisory en el resto |
 | `sdd-read-before-edit.js` | write_file/edit_file | Warn al escribir un archivo existente sin haberlo leido antes en la sesion. Se autolimita a silencio en backends que no exponen el evento de lectura | Advisory |
 | `sdd-turn-budget.js` | Todas las tool calls | Cuenta las acciones sin commit y avisa al superar cada umbral (warn/block/hard_stop). `git commit` resetea el contador | Advisory (default) |
 
