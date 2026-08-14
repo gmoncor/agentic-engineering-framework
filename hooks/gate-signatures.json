@@ -1,0 +1,69 @@
+{
+  "_readme": "Registro de firmas de gate: mapea cada codigo estable emitido por stderr a su hook, severidad, evento y significado. Un escaner externo clasifica un veredicto por este codigo, no por el texto del mensaje. hooks/tests/gate-signatures.test.js acredita que el registro es bidireccional: toda firma emitida por un hook esta declarada aqui, y ninguna entrada de aqui queda huerfana (su campo hook debe existir en disco y su firma debe aparecer realmente en el codigo).",
+  "SDD_INTERNAL_ERROR": {
+    "hook": "sdd-hook-utils.js",
+    "severity": "advisory",
+    "event": "*",
+    "description": "El hook fallo por dentro y se aparta: exit 0 y esta firma con la causa. No es un veredicto, es la ausencia de uno. La emite runWithFailOpen en sdd-hook-utils.js, el punto de entrada comun de los hooks, asi que puede aparecer en cualquier evento. Un escaner que la lea como bloqueo contaria un fallo de infraestructura como una decision del gate."
+  },
+  "SDD_EXTENSION_ADVISORY": {
+    "hook": "sdd-plan-state.js",
+    "severity": "advisory",
+    "event": "*",
+    "description": "El proyecto declara un sdd.config.json que no se puede leer como configuracion (JSON invalido, o una raiz que no es un objeto). No es un veredicto: el framework sigue con sus valores por defecto y la sesion continua. La emite loadExtensionConfig en sdd-plan-state.js, que cualquier hook puede invocar, asi que puede aparecer en cualquier evento. La ausencia del fichero es el caso normal y no emite nada."
+  },
+  "SDD_PIPELINE_BLOCK": {
+    "hook": "sdd-pipeline-guard.js",
+    "severity": "block",
+    "event": "PreToolUse",
+    "description": "Deniega escribir un archivo que ninguna task de la spec aprobada declara. La emiten sdd-pipeline-guard.js (Write/Edit) y sdd-pipeline-guard-codex.js (apply_patch) sobre el mismo criterio."
+  },
+  "SDD_PIPELINE_ADVISORY": {
+    "hook": "sdd-pipeline-guard.js",
+    "severity": "advisory",
+    "event": "PreToolUse",
+    "description": "Aviso del guard de escritura: la herramienta no expone una ruta legible en su payload, o el bloqueo quedo degradado a aviso por SDD_GUARD_SKIP=1."
+  },
+  "SDD_COMMIT_BLOCK": {
+    "hook": "sdd-commit-rules.js",
+    "severity": "block",
+    "event": "PreToolUse",
+    "description": "Deniega git commit/push con --no-verify. La regla vive en sdd-commit-rules.js y la emiten sdd-commit-guard.js y sdd-commit-guard-codex.js, que la comparten."
+  },
+  "SDD_COMMIT_ADVISORY": {
+    "hook": "sdd-commit-rules.js",
+    "severity": "advisory",
+    "event": "PreToolUse",
+    "description": "Avisos de formato de commit o PR: asunto largo, tipo invalido, cuerpo ausente, coautoria de IA, andamiaje de IDE staged o tasks de convergencia pendientes."
+  },
+  "SDD_READ_EDIT_ADVISORY": {
+    "hook": "sdd-read-before-edit.js",
+    "severity": "advisory",
+    "event": "PreToolUse",
+    "description": "Avisa al escribir un archivo existente sin constar leido antes en la sesion. Hook advisory-only: nunca deniega, por eso no existe una firma _BLOCK para el."
+  },
+  "SDD_TURN_BLOCK": {
+    "hook": "sdd-turn-budget.js",
+    "severity": "block",
+    "event": "PreToolUse",
+    "description": "Deniega la tool call del hilo principal al superar block_at o hard_stop_at con sdd_turn_budget.mode=enforce."
+  },
+  "SDD_TURN_ADVISORY": {
+    "hook": "sdd-turn-budget.js",
+    "severity": "advisory",
+    "event": "PreToolUse",
+    "description": "Avisa sin bloquear al superar warn_at, en modo advisory, o cuando la tool call proviene de un subagente (a un subagente nunca se le deniega)."
+  },
+  "SDD_REVIEW_BLOCK": {
+    "hook": "sdd-review-gate.js",
+    "severity": "block",
+    "event": "PreToolUse",
+    "description": "Deniega git commit/merge cuyo diff cacheado no consta revisado, o cuyo hash no ata con la senal de revision registrada."
+  },
+  "SDD_REVIEW_ADVISORY": {
+    "hook": "sdd-review-gate.js",
+    "severity": "advisory",
+    "event": "PreToolUse",
+    "description": "Avisa sin bloquear cuando no hay diff cacheado computable, o cuando SDD_GUARD_SKIP=1 degrada el bloqueo a aviso."
+  }
+}

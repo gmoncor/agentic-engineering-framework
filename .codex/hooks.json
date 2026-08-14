@@ -3,6 +3,17 @@
   "_trust": "Codex pide confirmar (trust) los hooks del proyecto la primera vez que los ejecuta y cada vez que cambia su contenido. Revisa el codigo de hooks/ antes de confiar en el.",
   "_sin_review_gate": "sdd-review-gate.js NO se cablea aqui: la senal de revision que lo silencia la emite el motor de workflows, que solo existe en el backend de Claude Code. En este backend el aviso no podria satisfacerse por ninguna via legitima.",
   "hooks": {
+    "SessionStart": [
+      {
+        "_comment": "Advisory: escribe 1 linea de provenance por sesion. Nunca bloquea el arranque.",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./hooks/sdd-session-start.js"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "_comment": "Bloqueante: deniega aplicar un parche sobre un archivo que ninguna task de una spec APROBADA declara.",

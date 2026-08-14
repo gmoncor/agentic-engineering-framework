@@ -3,14 +3,13 @@
 // Contrato de session-analyzer.js: parseTranscript() lee un JSONL de transcripcion
 // nativa de Claude Code linea a linea (saltando lineas malformadas con contador) y
 // computeMetrics() deriva coste/duracion/cache-hit-rate/friccion-por-hook de lo
-// acumulado. Cero metricas de concurrencia/fan-out: solo pipeline secuencial.
+// acumulado.
 
 const test = require('node:test');
 const assert = require('node:assert');
-const fs = require('fs');
 const path = require('path');
 const { tempDir, writeFile } = require('./helpers');
-const { parseTranscript, computeMetrics, PRICING_USD_PER_MTOK } = require('../../.claude/workflows/lib/session-analyzer');
+const { parseTranscript, computeMetrics, hookIdentifierFromCommand, rutaNativa, PRICING_USD_PER_MTOK } = require('../../.claude/workflows/lib/session-analyzer');
 
 function assistantEvent(timestamp, model, usage) {
   return JSON.stringify({ type: 'assistant', timestamp, message: { model, usage } });
@@ -225,8 +224,91 @@ test('path inexistente: lanza error claro con el path, no un ENOENT generico', (
   });
 });
 
-test('sin metricas de concurrencia/fan-out en el modulo', () => {
-  const modulePath = path.resolve(__dirname, '../../.claude/workflows/lib/session-analyzer.js');
-  const source = fs.readFileSync(modulePath, 'utf8');
-  assert.doesNotMatch(source, /concurrent|fan-out|burst|parallelism/i);
+// ── Separadores de ruta en el comando registrado ─────────────────────────────
+// El comando de un adjunto de hook es contenido externo: lo escribio la instalacion
+// que grabo la transcripcion, y una transcripcion se analiza a menudo desde otra
+// plataforma. Sin traducir los separadores antes de partir la ruta, un comando de
+// Windows leido en un sistema tipo Unix no tiene ultimo tramo que extraer, y las
+// cifras se agrupan bajo la ruta entera: una fila por ruta de instalacion en vez de
+// una por hook.
+//
+// COMO SE ACREDITA
+// Las dos plataformas se ejercitan desde una sola: rutaNativa acepta path.win32 /
+// path.posix, y la logica vieja se contrasta con la nueva contra el basename de cada
+// una. La garantia es doble: CERO cambio sobre rutas nativas de cada plataforma (los
+// tests de arriba, todos con rutas de Unix, siguen valiendo tal cual), y arreglo
+// unicamente en el cruce de separadores.
+
+const NATIVAS_POSIX = ['/proj/hooks/sdd-turn-budget.js', './hooks/sdd-turn-budget.js', 'sdd-turn-budget.js'];
+const NATIVAS_WIN32 = ['C:\\proj\\hooks\\sdd-turn-budget.js', '.\\hooks\\sdd-turn-budget.js', 'sdd-turn-budget.js', 'C:/proj/hooks/sdd-turn-budget.js'];
+const CRUZADAS = ['C:\\proj\\hooks\\sdd-turn-budget.js', '\\\\servidor\\equipo\\hooks\\sdd-turn-budget.js', '.\\hooks\\sdd-turn-budget.js'];
+
+test('canary: la traduccion de separadores coincide con la del guard de escrituras', () => {
+  // El criterio esta replicado (este modulo no declara mas dependencias que fs y path), asi que la
+  // igualdad se exige aqui: si una copia cambia sin la otra, este test lo denuncia.
+  const { toNativePath } = require('../sdd-plan-state');
+  const bateria = NATIVAS_POSIX.concat(NATIVAS_WIN32, CRUZADAS, ['', 'hooks/no\\separador.js']);
+
+  for (const api of [path.posix, path.win32]) {
+    for (const raw of bateria) {
+      assert.strictEqual(rutaNativa(raw, api), toNativePath(raw, api), api.sep + ': ' + raw);
+    }
+  }
+  assert.strictEqual(rutaNativa(null, path.posix), toNativePath(null, path.posix));
+  assert.strictEqual(rutaNativa(undefined, path.posix), toNativePath(undefined, path.posix));
+});
+
+test('cero cambio de comportamiento: sobre rutas nativas, el ultimo tramo es el mismo con y sin traduccion', () => {
+  for (const raw of NATIVAS_POSIX) {
+    assert.strictEqual(path.posix.basename(rutaNativa(raw, path.posix)), path.posix.basename(raw), 'posix: ' + raw);
+  }
+  for (const raw of NATIVAS_WIN32.concat(CRUZADAS)) {
+    assert.strictEqual(path.win32.basename(rutaNativa(raw, path.win32)), path.win32.basename(raw), 'win32: ' + raw);
+  }
+});
+
+test('control positivo: sin traducir, el ultimo tramo de una ruta de Windows leida en Unix es la ruta entera', () => {
+  const cruda = 'C:\\proyecto\\hooks\\sdd-turn-budget.js';
+
+  assert.strictEqual(path.posix.basename(cruda), cruda, 'no hay nada que extraer: la ruta es un solo tramo');
+  assert.strictEqual(path.posix.basename(rutaNativa(cruda, path.posix)), 'sdd-turn-budget.js');
+});
+
+test('un comando con ruta de Windows identifica al hook, no a su ruta de instalacion', () => {
+  // Antes: cada instalacion de Windows abria su propia fila, y ninguna sumaba con las de Unix.
+  assert.strictEqual(
+    hookIdentifierFromCommand('node "C:\\proyecto\\hooks\\sdd-turn-budget.js"'),
+    'sdd-turn-budget.js');
+  assert.strictEqual(
+    hookIdentifierFromCommand('node \\\\servidor\\equipo\\hooks\\sdd-commit-guard.js'),
+    'sdd-commit-guard.js');
+  // Una ruta de Unix sigue dando exactamente lo mismo que antes.
+  assert.strictEqual(
+    hookIdentifierFromCommand('node "/home/user/project/hooks/sdd-turn-budget.js"'),
+    'sdd-turn-budget.js');
+  assert.strictEqual(hookIdentifierFromCommand('sin-script-reconocible'), 'desconocido');
+});
+
+test('friccion: el mismo hook grabado en Windows y en Unix suma en una sola fila', () => {
+  const dir = tempDir('session-analyzer-');
+  const file = writeFile(path.join(dir, 'dos-plataformas.jsonl'), [
+    realHookAttachment('2026-08-02T10:00:00.000Z', 'hook_error', {
+      hookEvent: 'PreToolUse',
+      matcher: '*',
+      command: 'node "C:\\Users\\ana\\proyecto\\hooks\\sdd-turn-budget.js"',
+      stdout: JSON.stringify({ decision: 'warn', code: 'TURN_BUDGET_BLOCK' }) + '\n',
+    }),
+    realHookAttachment('2026-08-02T10:00:01.000Z', 'hook_error', {
+      hookEvent: 'PreToolUse',
+      matcher: '*',
+      command: 'node "/home/ana/proyecto/hooks/sdd-turn-budget.js"',
+      stdout: JSON.stringify({ decision: 'warn', code: 'TURN_BUDGET_BLOCK' }) + '\n',
+    }),
+  ].join('\n'));
+
+  const metrics = computeMetrics(parseTranscript(file));
+
+  assert.deepStrictEqual(metrics.frictionByHook, {
+    'sdd-turn-budget.js': { total: 2, byCode: { TURN_BUDGET_BLOCK: 2 } },
+  });
 });

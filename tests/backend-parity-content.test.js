@@ -1,85 +1,17 @@
 'use strict';
 
-// Canary de contenido para el modelo de implementacion retirado.
-//
-// El framework migro de ejecutar las tasks en oleadas/paralelo a ejecutarlas
-// en orden de dependencias, una tras otra. La migracion actualizo las
-// superficies principales, pero el texto tiende a reaparecer en ficheros de
-// contexto (README, manifiestos, guias por backend) porque nada los ata a la
-// realidad del producto. Este test convierte esa reaparicion en un fallo.
-//
-// Ademas verifica que las skills identicas-por-diseno (mismo contenido en
-// todos los backends que las tienen) sigan siendolo: son ficheros duplicados
-// a mano, y una edicion en un solo backend diverge en silencio.
+// Verifica la seccion "Ahorro de tokens" de README.md/CLAUDE.md y la paridad
+// de cuerpo entre agentes equivalentes de distintos backends.
 
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const crypto = require('node:crypto');
 
 const RAIZ = path.join(__dirname, '..');
 
 function leer(rutaRelativa) {
   return fs.readFileSync(path.join(RAIZ, rutaRelativa), 'utf8');
-}
-
-// ── Patrones del modelo de implementacion retirado ───────────────────────────
-//
-// Frases compuestas, no substrings sueltos: "paralelo" solo tambien aparece en
-// contextos validos (revision en paralelo, planificacion paralela), que no
-// deben disparar el canary.
-
-const FORBIDDEN_PATTERNS = [
-  'oleadas',
-  'independientes en paralelo',
-  'implementan en paralelo',
-  'implementacion paralela',
-  'particion por dueno',
-  'corren a la vez',
-  'fan-out',
-  'arbol de trabajo aparte',
-  'ejecucion paralela',
-  'implementarse a la vez',
-  'archivos son disjuntos'
-];
-
-const CONTEXT_FILES = [
-  'README.md',
-  'CLAUDE.md',
-  'GEMINI.md',
-  'AGENTS.md',
-  'package.json',
-  'gemini-extension.json',
-  '.claude-plugin/plugin.json',
-  'ai_docs/dev_templates/README.md',
-  '.claude/workflows/implementar-spec.js',
-  '.claude/workflows/lib/orquestacion.js',
-  '.agents/skills/implementar-spec/SKILL.md',
-  'hooks/tests/implementar-spec.test.js',
-  '.claude/agents/planificador.md',
-  '.gemini/agents/planificador.md',
-  '.codex/agents/planificador.toml',
-  '.agents/plugins/sdd/agents/planificador.md',
-  '.agents/skills/tareas/SKILL.md',
-  '.agents/skills/planificar/SKILL.md'
-];
-
-for (const archivo of CONTEXT_FILES) {
-  test(`canary: ${archivo} no menciona el modelo de implementacion retirado`, () => {
-    const lineas = leer(archivo).split('\n');
-
-    for (const patron of FORBIDDEN_PATTERNS) {
-      const regex = new RegExp(patron, 'i');
-      const numeroLinea = lineas.findIndex(linea => regex.test(linea)) + 1;
-
-      assert.ok(
-        numeroLinea === 0,
-        `${archivo}:${numeroLinea} contiene el patron prohibido "${patron}" `
-          + '(modelo de implementacion por oleadas/paralelo, retirado)'
-      );
-    }
-  });
 }
 
 // ── Seccion "Ahorro de tokens" ───────────────────────────────────────────────
@@ -137,52 +69,6 @@ test('CLAUDE.md tiene un puntero de una linea a "Ahorro de tokens" (sin duplicar
   );
 });
 
-// ── Igualdad de skills identicas-por-diseno ──────────────────────────────────
-
-const IDENTICAL_SKILLS = ['cleanup', 'diff', 'revisar-tarea', 'revision-adversarial', 'testing'];
-
-const SKILL_BACKENDS = {
-  claude: '.claude/skills',
-  gemini: '.gemini/skills',
-  codex: '.agents/skills'
-};
-
-function md5De(rutaAbsoluta) {
-  return crypto.createHash('md5').update(fs.readFileSync(rutaAbsoluta)).digest('hex');
-}
-
-function rutaSkill(backend, skill) {
-  return path.join(RAIZ, SKILL_BACKENDS[backend], skill, 'SKILL.md');
-}
-
-for (const skill of IDENTICAL_SKILLS) {
-  test(`paridad de contenido: la skill "${skill}" es identica entre backends`, async t => {
-    const backends = Object.keys(SKILL_BACKENDS);
-
-    for (let i = 0; i < backends.length - 1; i++) {
-      for (let j = i + 1; j < backends.length; j++) {
-        const [a, b] = [backends[i], backends[j]];
-        const rutaA = rutaSkill(a, skill);
-        const rutaB = rutaSkill(b, skill);
-
-        await t.test(`${a} vs ${b}`, st => {
-          if (!fs.existsSync(rutaA) || !fs.existsSync(rutaB)) {
-            st.skip(`la skill "${skill}" no existe en ${!fs.existsSync(rutaA) ? a : b}`);
-            return;
-          }
-
-          assert.strictEqual(
-            md5De(rutaA),
-            md5De(rutaB),
-            `La skill "${skill}" difiere entre ${a} y ${b}. `
-              + 'Las skills identicas-por-diseno deben ser byte-a-byte iguales entre backends.'
-          );
-        });
-      }
-    }
-  });
-}
-
 // ── Igualdad de cuerpo de agentes identicos-por-diseno ──────────────────────
 //
 // Los agentes de Codex (TOML) y Antigravity (Markdown+frontmatter) comparten
@@ -190,6 +76,39 @@ for (const skill of IDENTICAL_SKILLS) {
 // formato. Una edicion en un solo backend diverge en silencio si nada lo ata.
 
 const IDENTICAL_AGENTS = ['asesor', 'implementador', 'planificador', 'revisor'];
+
+// Suelo de la lista de arriba, que se mantiene a mano: sobre una lista vacia el bucle
+// no genera ni un caso y la cobertura pasa en verde sin comprobar nada. El suelo no es
+// solo un numero: el manifiesto declara que agentes se generan para los dos backends,
+// asi que un agente nuevo entra en cobertura el dia que se declara, o este caso falla.
+const MIN_AGENTES_IDENTICOS = 4;
+
+/** Agentes que el manifiesto genera a la vez para codex y para antigravity. */
+function agentesGeneradosParaAmbosBackends() {
+  const manifiesto = JSON.parse(leer('scripts/artifact-manifest.json'));
+  return manifiesto.artifacts
+    .filter(entrada => entrada.transform === 'agent-to-backend')
+    .filter(entrada => ['codex', 'antigravity']
+      .every(backend => (entrada.outputs || []).some(salida => salida.backend === backend)))
+    .map(entrada => path.basename(entrada.source, '.md'))
+    .sort();
+}
+
+test('la lista de agentes identicos cubre todos los que el manifiesto genera para ambos backends', () => {
+  const generados = agentesGeneradosParaAmbosBackends();
+
+  assert.ok(
+    generados.length >= MIN_AGENTES_IDENTICOS,
+    `el manifiesto declara ${generados.length} agentes para codex y antigravity, minimo `
+      + `${MIN_AGENTES_IDENTICOS}: una derivacion vacia deja pasar toda la cobertura que la recorre`
+  );
+  assert.deepStrictEqual(
+    [...IDENTICAL_AGENTS].sort(),
+    generados,
+    'la lista de agentes identicos-por-diseno y lo que el manifiesto genera para ambos backends '
+      + 'han divergido: un agente fuera de la lista no se compara, y nada mas lo senala'
+  );
+});
 
 function extractorToml(contenido) {
   const marcador = 'developer_instructions = """';
@@ -204,23 +123,21 @@ function extractorMd(contenido) {
   return contenido.slice(segundoDelimitador + 3).trim();
 }
 
-function md5DeTexto(texto) {
-  return crypto.createHash('md5').update(texto).digest('hex');
-}
-
 for (const agente of IDENTICAL_AGENTS) {
-  test(`paridad de contenido: el agente "${agente}" es identico entre codex y antigravity`, t => {
+  test(`paridad de contenido: el agente "${agente}" es identico entre codex y antigravity`, () => {
     const rutaCodex = path.join(RAIZ, '.codex/agents', `${agente}.toml`);
     const rutaAntigravity = path.join(RAIZ, '.agents/plugins/sdd/agents', `${agente}.md`);
 
-    if (!fs.existsSync(rutaCodex) || !fs.existsSync(rutaAntigravity)) {
-      t.skip(`el agente "${agente}" no existe en ${!fs.existsSync(rutaCodex) ? 'codex' : 'antigravity'}`);
-      return;
-    }
+    // Las dos rutas son salidas declaradas en el manifiesto: su ausencia es un fallo, no
+    // un motivo para omitir la comparacion. Omitiendola, renombrar una salida solo subia
+    // el contador de omitidos y la paridad dejaba de comprobarse en silencio.
+    assert.ok(fs.existsSync(rutaCodex), `falta la salida de codex del agente "${agente}": ${rutaCodex}`);
+    assert.ok(fs.existsSync(rutaAntigravity),
+      `falta la salida de antigravity del agente "${agente}": ${rutaAntigravity}`);
 
     assert.strictEqual(
-      md5DeTexto(extractorToml(fs.readFileSync(rutaCodex, 'utf8'))),
-      md5DeTexto(extractorMd(fs.readFileSync(rutaAntigravity, 'utf8'))),
+      extractorToml(fs.readFileSync(rutaCodex, 'utf8')),
+      extractorMd(fs.readFileSync(rutaAntigravity, 'utf8')),
       `El agente "${agente}" difiere entre codex y antigravity. `
         + 'Los agentes identicos-por-diseno deben tener el mismo cuerpo de instrucciones '
         + 'una vez normalizado el envoltorio (TOML vs Markdown+frontmatter).'

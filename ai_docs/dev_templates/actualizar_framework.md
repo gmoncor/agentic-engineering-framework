@@ -43,7 +43,7 @@ Antes de tocar nada, presenta esta tabla y espera confirmacion:
 | Comandos, agentes, skills y hooks del backend instalado (`.claude/`, `.agents/`, `.codex/`, `hooks/`) | `ai_docs/core/` (vision, planificacion, roadmap) |
 | `ai_docs/dev_templates/` y `ai_docs/core_templates/` (plantillas del framework) | `ai_docs/tasks/` (tus specs y tasks) |
 | Secciones del framework dentro de los archivos de contexto (`CLAUDE.md`, `GEMINI.md`, `AGENTS.md`) | `ai_docs/refs/` (tus referencias externas) |
-| Reglas de stack de `.cursor/rules/` si nunca las personalizaste | Secciones personalizadas dentro de los archivos de contexto (ver Paso 4) |
+| | Secciones personalizadas dentro de los archivos de contexto (ver Paso 4) |
 | | Codigo de tu proyecto |
 
 **PUNTO DE ESPERA:** no continues al Paso 4 sin que el usuario confirme esta tabla.

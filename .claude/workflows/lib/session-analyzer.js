@@ -15,10 +15,6 @@
 //     corto que un guard emite via warn()/deny() (ver sdd-hook-utils.js) no llega como
 //     campo top-level: viaja embebido como JSON dentro de `attachment.stdout`.
 //
-// Deliberadamente NO calcula nada relativo a solapamiento entre subagentes,
-// rafagas de llamadas ni metricas de ejecucion simultanea: esta libreria asume
-// un pipeline secuencial de principio a fin.
-//
 // Sin dependencias npm: solo `fs` y `path`, para poder copiarse a cualquier proyecto
 // que tenga Node sin arrastrar nada mas.
 
@@ -39,6 +35,35 @@ const PRICING_USD_PER_MTOK = {
 const HOOK_ATTACHMENT_RE = /hook_(error|success)/;
 const HOOK_SCRIPT_RE = /\.(js|mjs|cjs|py|sh)$/i;
 
+// Comienzo de una ruta absoluta de Windows: unidad (C:\ o C:/) o recurso de red (\\servidor).
+const PREFIJO_WINDOWS_RE = /^(?:[A-Za-z]:[\\/]|\\\\)/;
+
+/**
+ * Traduce a los separadores del sistema en curso una ruta de procedencia externa: aqui, el comando
+ * con el que la transcripcion registro la invocacion de un hook.
+ *
+ * SIEMPRE ANTES de partir la ruta. Una transcripcion se analiza a menudo desde una plataforma
+ * distinta de aquella en la que se grabo, y la barra invertida es separador en Windows pero un
+ * caracter valido de nombre de archivo en los sistemas tipo Unix. Sin traducir,
+ * "C:\proyecto\hooks\guard.js" no tiene ultimo tramo que extraer: es UN nombre de archivo entero,
+ * y las cifras se agrupan bajo esa cadena en vez de bajo el hook, una fila por ruta de instalacion.
+ *
+ * Solo actua en el cruce entre sistemas: sobre una ruta nativa de cada plataforma es la identidad.
+ * El criterio es el mismo que aplica el guard de escrituras (hooks/sdd-plan-state.js
+ * `toNativePath`), y un canary de la suite exige que ambas copias coincidan sobre la misma bateria
+ * de formas. Se replica en vez de importarse para no romper la unica dependencia que este modulo
+ * declara — solo `fs` y `path` — de la que depende poder copiarlo a cualquier proyecto con Node.
+ *
+ * `api` (path.win32 / path.posix) solo existe para ejercitar las dos plataformas desde una sola.
+ */
+function rutaNativa(cruda, api) {
+  const ruta = String(cruda == null ? '' : cruda);
+  const impl = api || path;
+  if (impl.sep === '\\' || !ruta.includes('\\')) return ruta;
+  if (ruta.includes('/') && !PREFIJO_WINDOWS_RE.test(ruta)) return ruta;
+  return ruta.replace(/\\/g, '/');
+}
+
 /**
  * Deriva el identificador de un hook a partir del comando que lo invoco
  * (`attachment.command`, p.ej. `node "/ruta/hooks/sdd-turn-budget.js"`). `hookName`
@@ -48,6 +73,10 @@ const HOOK_SCRIPT_RE = /\.(js|mjs|cjs|py|sh)$/i;
  * Toma el ultimo token del comando que parece un script (extension conocida) y
  * devuelve su basename; sin match reconocible devuelve 'desconocido' en vez de
  * lanzar, porque un comando con forma inesperada no debe abortar el parseo.
+ *
+ * El token se traduce ANTES de extraerle el ultimo tramo: una transcripcion grabada en Windows y
+ * analizada en un sistema tipo Unix trae rutas con barra invertida, que sin traducir no se parten
+ * y agrupan la friccion bajo la ruta entera en lugar de bajo el hook.
  */
 function hookIdentifierFromCommand(command) {
   if (typeof command !== 'string' || !command.trim()) return 'desconocido';
@@ -56,7 +85,7 @@ function hookIdentifierFromCommand(command) {
   for (let i = tokens.length - 1; i >= 0; i -= 1) {
     const token = tokens[i].replace(/^["']|["']$/g, '');
     if (HOOK_SCRIPT_RE.test(token)) {
-      return path.basename(token);
+      return path.basename(rutaNativa(token));
     }
   }
   return 'desconocido';
@@ -201,4 +230,4 @@ function computeMetrics(parsed) {
   return { cost, duration, cacheHitRate, frictionByHook, unpricedModels };
 }
 
-module.exports = { parseTranscript, computeMetrics, PRICING_USD_PER_MTOK };
+module.exports = { parseTranscript, computeMetrics, hookIdentifierFromCommand, rutaNativa, PRICING_USD_PER_MTOK };

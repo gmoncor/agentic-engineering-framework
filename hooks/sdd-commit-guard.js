@@ -14,7 +14,7 @@
 //
 // Escape de emergencia: SDD_GUARD_SKIP=1 degrada el bloqueo de --no-verify a aviso.
 
-const { readPayload, readToolCall, skipRequested, warn, deny } = require('./sdd-hook-utils');
+const { readPayload, readToolCall, skipRequested, warn, deny, runWithFailOpen } = require('./sdd-hook-utils');
 const { isGitCommit, isGhPr, commitWarnings, usesNoVerify, NO_VERIFY_REASON } = require('./sdd-commit-rules');
 
 const SHELL_TOOLS = new Set(['Bash', 'run_command']);
@@ -41,4 +41,7 @@ async function main() {
   warn('SDD Commit Guard:\n' + warnings.map(w => '  - ' + w).join('\n'), call);
 }
 
-main().catch(() => process.exit(0));
+// El fallo interno sale por runWithFailOpen (exit 0 + aviso firmado), nunca como veredicto.
+if (require.main === module) {
+  runWithFailOpen('sdd-commit-guard', main);
+}

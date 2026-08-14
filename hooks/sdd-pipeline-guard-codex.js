@@ -22,18 +22,30 @@
  * Escape de emergencia: SDD_GUARD_SKIP=1 degrada el bloqueo a aviso.
  */
 
-const path = require('path');
-const { readPayload, skipRequested, warn, deny } = require('./sdd-hook-utils');
-const { isInsideAiDocs, findTasksDir, denialReason } = require('./sdd-plan-state');
+const { readPayload, skipRequested, warn, deny, runWithFailOpen } = require('./sdd-hook-utils');
+const { isInsideAiDocs, findTasksDir, denialReason, resolveRepoPath } = require('./sdd-plan-state');
 
 const PATCH_TOOLS = new Set(['apply_patch', 'ApplyPatch']);
 
 // Cabeceras del formato de parche: "*** Add File: ruta", Update, Delete, Move to.
 const PATCH_HEADER_RE = /^\*\*\*\s+(?:Add|Update|Delete|Move to)\s+File:\s*(.+)$/gim;
 
-const NO_PATHS_REASON = 'SDD: apply_patch no expone ninguna ruta legible en su payload, '
-  + 'asi que no se puede comprobar contra el plan. Verifica a mano que los archivos del parche '
-  + 'estan declarados en la tabla "Archivos afectados" de una task de la spec aprobada.';
+// Misma firma que sdd-pipeline-guard.js (ver hooks/gate-signatures.json): ambos hooks aplican
+// el mismo criterio de bloqueo, solo cambia el formato del payload que lo dispara.
+const BLOCK_FIRMA = '[SDD_PIPELINE_BLOCK] ';
+const ADVISORY_FIRMA = '[SDD_PIPELINE_ADVISORY] ';
+
+const NO_PATHS_REASON = ADVISORY_FIRMA + 'SDD: apply_patch no expone ninguna ruta legible en su '
+  + 'payload, asi que no se puede comprobar contra el plan. Verifica a mano que los archivos del '
+  + 'parche estan declarados en la tabla "Archivos afectados" de una task de la spec aprobada.';
+
+// Misma degradacion que ante un parche sin rutas legibles: una ruta que asciende por encima de la
+// raiz del proyecto no se puede situar dentro de el, y sin situarla no hay nada que contrastar.
+function fueraDeRepo(filePath) {
+  return ADVISORY_FIRMA + 'SDD: la ruta ' + filePath + ' del parche asciende por encima de la raiz '
+    + 'del proyecto, asi que no se puede situar dentro de el ni comprobar contra el plan. '
+    + 'Declara las rutas del parche desde la raiz del proyecto.';
+}
 
 async function main() {
   const data = await readPayload();
@@ -43,8 +55,14 @@ async function main() {
   const files = extractPaths(data.tool_input || {});
   if (files.length === 0) warn(NO_PATHS_REASON);
 
-  const targets = files
-    .map(f => path.resolve(f))
+  // Cada ruta se ancla a la raiz del proyecto, no al directorio desde el que corre este proceso:
+  // ver resolveRepoPath en sdd-plan-state.js.
+  const situadas = files.map(f => ({ raw: f, abs: resolveRepoPath(f, data.cwd) }));
+  const sinSituar = situadas.find(f => f.abs === null);
+  if (sinSituar) warn(fueraDeRepo(sinSituar.raw));
+
+  const targets = situadas
+    .map(f => f.abs)
     .filter(resolved => !isInsideAiDocs(resolved));
   if (targets.length === 0) process.exit(0);
 
@@ -55,8 +73,8 @@ async function main() {
   const reason = firstDenial(tasksDir, targets);
   if (!reason) process.exit(0);
 
-  if (skipRequested()) warn(reason + ' [SDD_GUARD_SKIP=1: se permite la escritura]');
-  deny(reason);
+  if (skipRequested()) warn(ADVISORY_FIRMA + reason + ' [SDD_GUARD_SKIP=1: se permite la escritura]');
+  deny(BLOCK_FIRMA + reason);
 }
 
 /** Un solo archivo no declarado invalida el parche entero: no se aplican parches a medias. */
@@ -94,4 +112,7 @@ function extractPaths(toolInput) {
   return files;
 }
 
-main().catch(() => process.exit(0));
+// El fallo interno sale por runWithFailOpen (exit 0 + aviso firmado), nunca como veredicto.
+if (require.main === module) {
+  runWithFailOpen('sdd-pipeline-guard-codex', main);
+}

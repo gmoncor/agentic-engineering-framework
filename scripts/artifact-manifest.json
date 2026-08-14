@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "description": "Mapa fuente-a-salida de cada artefacto del framework: quien es el dueno canonico, que transformacion produce cada copia por backend y si el compilador puede regenerarla o debe dejarla intacta.",
+  "transforms_registry": {
+    "none": "Sin transformacion; el artefacto se mantiene y edita manualmente en su propia ruta.",
+    "agent-to-backend": "Genera la definicion de un agente para cada backend. Gemini recibe el agente de Claude con el modelo y las herramientas que fija la politica de modelos. Codex (TOML con developer_instructions) y Antigravity (Markdown con frontmatter) reciben ambos la variante condensada del fragmento, de modo que sus instrucciones no pueden divergir entre si.",
+    "command-to-backend": "Convierte un comando en Markdown al TOML de Gemini: la descripcion pasa a description, el cuerpo a prompt y el marcador de argumentos se traduce. Un comando cuya version para Gemini es deliberadamente distinta declara un fragmento con su descripcion y su prompt propios.",
+    "skill-to-backend": "Adapta una skill de Claude Code al formato de cada backend: copia literal para Gemini; para Antigravity, sin el campo argument-hint y con la seccion de uso explicito del fragmento anadida al final cuando la entrada declara uno.",
+    "doc-fragment-assembly": "Ensambla el documento de instrucciones raiz de un backend a partir del nucleo compartido (docs-src/core.md) y su fragmento (docs-src/fragments/<backend>.md): el fragmento marca el orden y aporta las secciones propias; el nucleo aporta las comunes."
+  },
+  "artifacts": [
+    { "id": "agent-asesor", "source": ".claude/agents/asesor.md", "fragment": "docs-src/agents/asesor.md", "transform": "agent-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/agents/asesor.md" }, { "backend": "codex", "path": ".codex/agents/asesor.toml" }, { "backend": "antigravity", "path": ".agents/plugins/sdd/agents/asesor.md" } ] },
+    { "id": "agent-implementador", "source": ".claude/agents/implementador.md", "fragment": "docs-src/agents/implementador.md", "transform": "agent-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/agents/implementador.md" }, { "backend": "codex", "path": ".codex/agents/implementador.toml" }, { "backend": "antigravity", "path": ".agents/plugins/sdd/agents/implementador.md" } ] },
+    { "id": "agent-planificador", "source": ".claude/agents/planificador.md", "fragment": "docs-src/agents/planificador.md", "transform": "agent-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/agents/planificador.md" }, { "backend": "codex", "path": ".codex/agents/planificador.toml" }, { "backend": "antigravity", "path": ".agents/plugins/sdd/agents/planificador.md" } ] },
+    { "id": "agent-revisor", "source": ".claude/agents/revisor.md", "fragment": "docs-src/agents/revisor.md", "transform": "agent-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/agents/revisor.md" }, { "backend": "codex", "path": ".codex/agents/revisor.toml" }, { "backend": "antigravity", "path": ".agents/plugins/sdd/agents/revisor.md" } ] },
+
+    { "id": "command-asesor", "source": ".claude/commands/asesor.md", "transform": "command-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/commands/asesor.toml" } ] },
+    { "id": "command-auditar", "source": ".claude/commands/auditar.md", "transform": "command-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/commands/auditar.toml" } ] },
+    { "id": "command-bugfix", "source": ".claude/commands/bugfix.md", "transform": "command-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/commands/bugfix.toml" } ] },
+    { "id": "command-commit", "source": ".claude/commands/commit.md", "transform": "command-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/commands/commit.toml" } ] },
+    { "id": "command-estado", "source": ".claude/commands/estado.md", "transform": "command-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/commands/estado.toml" } ] },
+    { "id": "command-implementar-spec", "source": ".claude/commands/implementar-spec.md", "fragment": "docs-src/commands/implementar-spec.md", "transform": "command-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/commands/implementar-spec.toml" } ] },
+    { "id": "command-implementar", "source": ".claude/commands/implementar.md", "transform": "command-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/commands/implementar.toml" } ] },
+    { "id": "command-inicio", "source": ".claude/commands/inicio.md", "transform": "command-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/commands/inicio.toml" } ] },
+    { "id": "command-planificar", "source": ".claude/commands/planificar.md", "fragment": "docs-src/commands/planificar.md", "transform": "command-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/commands/planificar.toml" } ] },
+    { "id": "command-pr", "source": ".claude/commands/pr.md", "transform": "command-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/commands/pr.toml" } ] },
+    { "id": "command-revision", "source": ".claude/commands/revision.md", "transform": "command-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/commands/revision.toml" } ] },
+    { "id": "command-spec", "source": ".claude/commands/spec.md", "transform": "command-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/commands/spec.toml" } ] },
+    { "id": "command-tareas", "source": ".claude/commands/tareas.md", "transform": "command-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/commands/tareas.toml" } ] },
+
+    { "id": "skill-antigravity-asesor", "source": ".agents/skills/asesor/SKILL.md", "transform": "none", "mode": "preserve", "outputs": [ { "backend": "antigravity", "path": ".agents/skills/asesor/SKILL.md" } ] },
+    { "id": "skill-antigravity-auditar", "source": ".agents/skills/auditar/SKILL.md", "transform": "none", "mode": "preserve", "outputs": [ { "backend": "antigravity", "path": ".agents/skills/auditar/SKILL.md" } ] },
+    { "id": "skill-antigravity-estado", "source": ".agents/skills/estado/SKILL.md", "transform": "none", "mode": "preserve", "outputs": [ { "backend": "antigravity", "path": ".agents/skills/estado/SKILL.md" } ] },
+    { "id": "skill-antigravity-implementar-spec", "source": ".agents/skills/implementar-spec/SKILL.md", "transform": "none", "mode": "preserve", "outputs": [ { "backend": "antigravity", "path": ".agents/skills/implementar-spec/SKILL.md" } ] },
+    { "id": "skill-antigravity-implementar", "source": ".agents/skills/implementar/SKILL.md", "transform": "none", "mode": "preserve", "outputs": [ { "backend": "antigravity", "path": ".agents/skills/implementar/SKILL.md" } ] },
+    { "id": "skill-antigravity-inicio", "source": ".agents/skills/inicio/SKILL.md", "transform": "none", "mode": "preserve", "outputs": [ { "backend": "antigravity", "path": ".agents/skills/inicio/SKILL.md" } ] },
+    { "id": "skill-antigravity-planificar", "source": ".agents/skills/planificar/SKILL.md", "transform": "none", "mode": "preserve", "outputs": [ { "backend": "antigravity", "path": ".agents/skills/planificar/SKILL.md" } ] },
+    { "id": "skill-antigravity-revision", "source": ".agents/skills/revision/SKILL.md", "transform": "none", "mode": "preserve", "outputs": [ { "backend": "antigravity", "path": ".agents/skills/revision/SKILL.md" } ] },
+    { "id": "skill-antigravity-spec", "source": ".agents/skills/spec/SKILL.md", "transform": "none", "mode": "preserve", "outputs": [ { "backend": "antigravity", "path": ".agents/skills/spec/SKILL.md" } ] },
+    { "id": "skill-antigravity-tareas", "source": ".agents/skills/tareas/SKILL.md", "transform": "none", "mode": "preserve", "outputs": [ { "backend": "antigravity", "path": ".agents/skills/tareas/SKILL.md" } ] },
+
+    { "id": "skill-bugfix", "source": ".claude/skills/bugfix/SKILL.md", "fragment": "docs-src/skills/bugfix.md", "transform": "skill-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/skills/bugfix/SKILL.md" }, { "backend": "antigravity", "path": ".agents/skills/bugfix/SKILL.md" } ] },
+    { "id": "skill-cleanup", "source": ".claude/skills/cleanup/SKILL.md", "transform": "skill-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/skills/cleanup/SKILL.md" }, { "backend": "antigravity", "path": ".agents/skills/cleanup/SKILL.md" } ] },
+    { "id": "skill-commit", "source": ".claude/skills/commit/SKILL.md", "fragment": "docs-src/skills/commit.md", "transform": "skill-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/skills/commit/SKILL.md" }, { "backend": "antigravity", "path": ".agents/skills/commit/SKILL.md" } ] },
+    { "id": "skill-diff", "source": ".claude/skills/diff/SKILL.md", "transform": "skill-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/skills/diff/SKILL.md" }, { "backend": "antigravity", "path": ".agents/skills/diff/SKILL.md" } ] },
+    { "id": "skill-pr", "source": ".claude/skills/pr/SKILL.md", "fragment": "docs-src/skills/pr.md", "transform": "skill-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/skills/pr/SKILL.md" }, { "backend": "antigravity", "path": ".agents/skills/pr/SKILL.md" } ] },
+    { "id": "skill-revisar-tarea", "source": ".claude/skills/revisar-tarea/SKILL.md", "transform": "skill-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/skills/revisar-tarea/SKILL.md" }, { "backend": "antigravity", "path": ".agents/skills/revisar-tarea/SKILL.md" } ] },
+    { "id": "skill-revision-adversarial", "source": ".claude/skills/revision-adversarial/SKILL.md", "transform": "skill-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/skills/revision-adversarial/SKILL.md" }, { "backend": "antigravity", "path": ".agents/skills/revision-adversarial/SKILL.md" } ] },
+    { "id": "skill-testing", "source": ".claude/skills/testing/SKILL.md", "transform": "skill-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/skills/testing/SKILL.md" }, { "backend": "antigravity", "path": ".agents/skills/testing/SKILL.md" } ] },
+
+    { "id": "skill-auditar-sesion", "source": ".claude/skills/auditar-sesion/SKILL.md", "transform": "none", "mode": "preserve", "outputs": [] },
+    { "id": "workflows-claude", "source": ".claude/workflows", "transform": "none", "mode": "preserve", "outputs": [] },
+
+    { "id": "codex-config", "source": ".codex/config.toml", "transform": "none", "mode": "preserve", "outputs": [ { "backend": "codex", "path": ".codex/config.toml" } ] },
+    { "id": "codex-hooks", "source": ".codex/hooks.json", "transform": "none", "mode": "preserve", "outputs": [ { "backend": "codex", "path": ".codex/hooks.json" } ] },
+    { "id": "codex-rules-sdd-enforcement", "source": ".codex/rules/sdd-enforcement.rules", "transform": "none", "mode": "preserve", "outputs": [ { "backend": "codex", "path": ".codex/rules/sdd-enforcement.rules" } ] },
+
+    { "id": "antigravity-hooks", "source": ".agents/hooks.json", "transform": "none", "mode": "preserve", "outputs": [ { "backend": "antigravity", "path": ".agents/hooks.json" } ] },
+    { "id": "antigravity-plugin-manifest", "source": ".agents/plugins/sdd/plugin.json", "transform": "none", "mode": "preserve", "outputs": [ { "backend": "antigravity", "path": ".agents/plugins/sdd/plugin.json" } ] },
+
+    { "id": "instructions-claude", "source": "docs-src/core.md", "fragment": "docs-src/fragments/claude.md", "transform": "doc-fragment-assembly", "mode": "managed", "outputs": [ { "backend": "claude", "path": "CLAUDE.md" } ] },
+    { "id": "instructions-gemini", "source": "docs-src/core.md", "fragment": "docs-src/fragments/gemini.md", "transform": "doc-fragment-assembly", "mode": "managed", "outputs": [ { "backend": "gemini", "path": "GEMINI.md" } ] },
+    { "id": "instructions-agents", "source": "docs-src/core.md", "fragment": "docs-src/fragments/agents.md", "transform": "doc-fragment-assembly", "mode": "managed", "outputs": [ { "backend": "agents", "path": "AGENTS.md" } ] }
+  ]
+}

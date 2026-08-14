@@ -48,10 +48,17 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { readPayload, readToolCall, warn, deny, skipRequested, loadConfig, purgeExpired } = require('./sdd-hook-utils');
+const {
+  readPayload, readToolCall, warn, deny, skipRequested, loadConfig, purgeExpired, runWithFailOpen,
+} = require('./sdd-hook-utils');
 
 const SHELL_TOOLS = new Set(['Bash', 'run_command', 'shell']);
 const COMMIT_RE = /\bgit\s+commit\b/;
+
+// Firmas estables (ver hooks/gate-signatures.json): distinguen el mensaje que deniega (hilo
+// principal en modo enforce) del que solo avisa (warn_at, modo advisory, o subagente).
+const BLOCK_FIRMA = '[SDD_TURN_BLOCK] ';
+const ADVISORY_FIRMA = '[SDD_TURN_ADVISORY] ';
 
 const DEFAULTS = { warn_at: 30, block_at: 60, hard_stop_at: 90 };
 const TTL_MS = 24 * 60 * 60 * 1000; // 24h: ficheros de sesiones sin actividad reciente se purgan
@@ -133,9 +140,9 @@ function avisoHardStopSubagente(count) {
 // siempre. Un subagente nunca se deniega: se avisa con un mensaje que puede
 // accionar el mismo. En advisory ambos avisan con el mensaje normal.
 function decidir(count, enforce, subagent, mensajeNormal, mensajeSubagente, call, code) {
-  if (!enforce) return warn(mensajeNormal(count), call, code);
-  if (subagent) return warn(mensajeSubagente(count), call, code);
-  return deny(mensajeNormal(count), call, code);
+  if (!enforce) return warn(ADVISORY_FIRMA + mensajeNormal(count), call, code);
+  if (subagent) return warn(ADVISORY_FIRMA + mensajeSubagente(count), call, code);
+  return deny(BLOCK_FIRMA + mensajeNormal(count), call, code);
 }
 
 async function main() {
@@ -177,10 +184,13 @@ async function main() {
     );
   }
   if (count >= threshold(cfg, 'warn_at')) {
-    return warn(avisoWarn(count), call, 'TURN_BUDGET_WARN');
+    return warn(ADVISORY_FIRMA + avisoWarn(count), call, 'TURN_BUDGET_WARN');
   }
 
   process.exit(0);
 }
 
-main().catch(() => process.exit(0));
+// El fallo interno sale por runWithFailOpen (exit 0 + aviso firmado), nunca como veredicto.
+if (require.main === module) {
+  runWithFailOpen('sdd-turn-budget', main);
+}

@@ -89,12 +89,59 @@ const AUDIT_SCHEMA = {
   required: ['veredicto', 'cobertura', 'overlaps', 'huecos', 'incoherencias', 'dependencias_problematicas', 'resumen']
 }
 
-// Carga un modulo del repo por ruta relativa a la raiz del proyecto: el workflow
-// se evalua sin una URL de modulo propia, asi que un import relativo no resolveria.
-async function cargarModulo(rutaRelativa) {
+// ── Modulos del repo ──────────────────────────────────────────────────────────
+// Se cargan por ruta absoluta desde la raiz del proyecto: el workflow se evalua sin una URL de
+// modulo propia, asi que un import relativo no resolveria.
+//
+// La ruta se ancla al directorio del PROYECTO, no al directorio en curso del proceso. No son el
+// mismo sitio en cuanto la sesion arranca en un subdirectorio o en un arbol de trabajo enlazado, y
+// resolver contra el segundo dejaba el modulo sin encontrar. Los dos desenlaces eran malos: el
+// intake abortaba la planificacion entera con un error de import, y la verificacion de contratos
+// —que si atrapa la excepcion— degradaba a "se continua sin esa comprobacion" y dejaba pasar a la
+// auditoria un plan con contratos rotos sin el hallazgo mecanico que los delata.
+//
+// Se asciende desde el directorio en curso hasta dar con el que contiene la ruta pedida. El
+// directorio en curso se prueba PRIMERO: donde la carga ya funcionaba, resuelve exactamente igual
+// que antes. Mismo criterio que .claude/workflows/implementar-spec.js.
+const MAX_ASCENSO = 10
+
+// Comienzo de una ruta absoluta de Windows: unidad (C:\ o C:/) o recurso de red (\\servidor).
+const PREFIJO_WINDOWS_RE = /^(?:[A-Za-z]:[\\/]|\\\\)/
+
+// Traduce a los separadores del sistema en curso una ruta que puede venir de otro. SIEMPRE ANTES
+// de resolverla: la barra invertida es separador en Windows y un caracter valido de nombre de
+// archivo en los sistemas tipo Unix, asi que sin traducir ".claude\workflows\lib\intake.js" no
+// denota cuatro tramos sino UN nombre de archivo, y no se encuentra. Sobre una ruta nativa de cada
+// plataforma es la identidad. Mismo criterio que hooks/sdd-plan-state.js `toNativePath`.
+function rutaNativa(cruda, path) {
+  const ruta = String(cruda == null ? '' : cruda)
+  if (path.sep === '\\' || !ruta.includes('\\')) return ruta
+  if (ruta.includes('/') && !PREFIJO_WINDOWS_RE.test(ruta)) return ruta
+  return ruta.replace(/\\/g, '/')
+}
+
+async function resolverEnProyecto(rutaRelativa) {
   const path = await import('node:path')
+  const fs = await import('node:fs')
+  const rel = rutaNativa(rutaRelativa, path)
+  if (path.isAbsolute(rel)) return rel
+
+  var dir = process.cwd()
+  for (var i = 0; i < MAX_ASCENSO; i++) {
+    const candidato = path.resolve(dir, rel)
+    if (fs.existsSync(candidato)) return candidato
+    const padre = path.dirname(dir)
+    if (padre === dir) break
+    dir = padre
+  }
+  // Sin encontrarlo en ningun nivel: la ruta de siempre, para que el error nombre el sitio
+  // donde el modulo se esperaba.
+  return path.resolve(process.cwd(), rel)
+}
+
+async function cargarModulo(rutaRelativa) {
   const url = await import('node:url')
-  const mod = await import(url.pathToFileURL(path.resolve(rutaRelativa)).href)
+  const mod = await import(url.pathToFileURL(await resolverEnProyecto(rutaRelativa)).href)
   return mod.default || mod
 }
 
@@ -106,10 +153,7 @@ async function cargarModulo(rutaRelativa) {
 // la solicitud abarca varias specs, el workflow para y devuelve el turno al
 // usuario. A partir de aqui los agentes ya no preguntan: trabajan con lo que el
 // intake dejo cerrado. El segundo punto de espera es la aprobacion final.
-const intakeUrl = await import('node:url')
-const intakePath = await import('node:path')
-const intakeMod = await import(intakeUrl.pathToFileURL(intakePath.resolve('.claude/workflows/lib/intake.js')).href)
-const { INTAKE_SCHEMA, evaluarIntake } = intakeMod.default || intakeMod
+const { INTAKE_SCHEMA, evaluarIntake } = await cargarModulo('.claude/workflows/lib/intake.js')
 
 phase('Intake')
 const intakeResult = await agent(`

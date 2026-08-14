@@ -4,6 +4,7 @@
     "ai_docs/dev_templates",
     "hooks",
     "scripts",
+    "docs/extension-config-schema.md",
     "CHANGELOG.md",
     ".gitignore"
   ],

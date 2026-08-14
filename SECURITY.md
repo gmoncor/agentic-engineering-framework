@@ -24,7 +24,7 @@ Entra en alcance el codigo y la configuracion que este repositorio ejecuta o ins
 
 - **Hooks** (`hooks/*.js`) — se ejecutan como procesos Node dentro de tu CLI
 - **Workflows** (`.claude/workflows/*.js`) — orquestan agentes y comandos
-- **Manifiestos de instalacion** (`.claude-plugin/plugin.json`, `gemini-extension.json`, `hooks/hooks.json`)
+- **Manifiestos de instalacion** (`gemini-extension.json`, `hooks/hooks.json`)
 - **Plantillas y reglas** — si una plantilla induce al asistente a ejecutar acciones destructivas o a filtrar secretos
 
 Queda fuera de alcance:

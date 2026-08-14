@@ -18,7 +18,7 @@
  * Escape de emergencia: SDD_GUARD_SKIP=1 degrada el bloqueo a aviso.
  */
 
-const { readPayload, skipRequested, warn, deny } = require('./sdd-hook-utils');
+const { readPayload, skipRequested, warn, deny, runWithFailOpen } = require('./sdd-hook-utils');
 const { usesNoVerify, isGitCommit, isGhPr, commitWarnings, NO_VERIFY_REASON } = require('./sdd-commit-rules');
 
 const SHELL_TOOLS = new Set(['shell', 'local_shell', 'Bash']);
@@ -52,4 +52,7 @@ function readCommand(toolInput) {
   return '';
 }
 
-main().catch(() => process.exit(0));
+// El fallo interno sale por runWithFailOpen (exit 0 + aviso firmado), nunca como veredicto.
+if (require.main === module) {
+  runWithFailOpen('sdd-commit-guard-codex', main);
+}

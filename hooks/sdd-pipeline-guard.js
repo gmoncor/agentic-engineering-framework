@@ -22,9 +22,8 @@
  *   - Codex:           ver sdd-pipeline-guard-codex.js (el payload de apply_patch es distinto)
  */
 
-const path = require('path');
-const { readPayload, readToolCall, skipRequested, warn, deny } = require('./sdd-hook-utils');
-const { isInsideAiDocs, findTasksDir, denialReason } = require('./sdd-plan-state');
+const { readPayload, readToolCall, skipRequested, warn, deny, runWithFailOpen } = require('./sdd-hook-utils');
+const { isInsideAiDocs, findTasksDir, denialReason, resolveRepoPath } = require('./sdd-plan-state');
 
 const WRITE_TOOLS = new Set([
   'Write', 'Edit',              // Claude Code
@@ -35,9 +34,23 @@ const WRITE_TOOLS = new Set([
   'create_file',                // Antigravity CLI: crea un archivo
 ]);
 
-const NO_PATH_REASON = 'SDD: la herramienta de escritura no expone ninguna ruta legible en su '
-  + 'payload, asi que no se puede comprobar contra el plan. Verifica a mano que el archivo esta '
-  + 'declarado en la tabla "Archivos afectados" de una task de la spec aprobada.';
+// Firmas estables (ver hooks/gate-signatures.json): un escaner de auditoria clasifica el
+// veredicto por este codigo, no por el texto libre que lo sigue.
+const BLOCK_FIRMA = '[SDD_PIPELINE_BLOCK] ';
+const ADVISORY_FIRMA = '[SDD_PIPELINE_ADVISORY] ';
+
+const NO_PATH_REASON = ADVISORY_FIRMA + 'SDD: la herramienta de escritura no expone ninguna ruta '
+  + 'legible en su payload, asi que no se puede comprobar contra el plan. Verifica a mano que el '
+  + 'archivo esta declarado en la tabla "Archivos afectados" de una task de la spec aprobada.';
+
+// Una relativa que asciende por encima de la raiz del proyecto no se puede situar dentro de el, y
+// lo que no se puede situar no se puede contrastar con el plan. Se avisa en vez de denegar, igual
+// que con una escritura sin ruta legible: el guard declara el hueco, no inventa un veredicto.
+function fueraDeRepo(filePath) {
+  return ADVISORY_FIRMA + 'SDD: la ruta ' + filePath + ' asciende por encima de la raiz del '
+    + 'proyecto, asi que no se puede situar dentro de el ni comprobar contra el plan. '
+    + 'Declara la ruta desde la raiz del proyecto.';
+}
 
 async function main() {
   const data = await readPayload();
@@ -51,7 +64,10 @@ async function main() {
   // de dejarla pasar en silencio, que es lo que convertiria el guardarrail en un adorno.
   if (!filePath) warn(NO_PATH_REASON, call);
 
-  const resolved = path.resolve(filePath);
+  // La ruta se ancla a la raiz del proyecto, no al directorio desde el que corre este proceso:
+  // ver resolveRepoPath en sdd-plan-state.js.
+  const resolved = resolveRepoPath(filePath, data.cwd);
+  if (!resolved) warn(fueraDeRepo(filePath), call);
   if (isInsideAiDocs(resolved)) process.exit(0);
 
   // Proyecto sin pipeline SDD: nada que enforcar.
@@ -61,8 +77,11 @@ async function main() {
   const reason = denialReason(tasksDir, resolved);
   if (!reason) process.exit(0);
 
-  if (skipRequested()) warn(reason + ' [SDD_GUARD_SKIP=1: se permite la escritura]', call);
-  deny(reason, call);
+  if (skipRequested()) warn(ADVISORY_FIRMA + reason + ' [SDD_GUARD_SKIP=1: se permite la escritura]', call);
+  deny(BLOCK_FIRMA + reason, call);
 }
 
-main().catch(() => process.exit(0));
+// El fallo interno sale por runWithFailOpen (exit 0 + aviso firmado), nunca como veredicto.
+if (require.main === module) {
+  runWithFailOpen('sdd-pipeline-guard', main);
+}

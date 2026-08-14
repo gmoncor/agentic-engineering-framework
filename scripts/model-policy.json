@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "description": "Politica unica de modelo y capacidades de los backends generados. El compilador la carga al arrancar y la entrega a los transforms, que la aplican al generar cada artefacto: el modelo del artefacto de salida sale de aqui, nunca del fichero fuente. Cambiar un modelo para todo un backend es cambiar una linea de este fichero y ejecutar `node scripts/compile.js --write`. El arbol de Claude no aparece aqui: es la fuente canonica, no un backend generado, y su modelo se declara en el propio fichero del agente.",
+  "conventions": {
+    "model_field": "false si el formato del backend no admite campo de modelo; el transform omite el campo en vez de escribir un valor vacio.",
+    "roles": "Excepcion por nombre de agente. Sin entrada propia, el agente hereda `default`.",
+    "tools": "`map` traduce el vocabulario de herramientas; `always` anade las que el backend da por concedidas; `unsupported` declara las que ese backend no tiene. Una herramienta de la fuente ausente de las tres detiene la generacion (`TOOL_NOT_MAPPED`).",
+    "backends_declarados": "Todo backend que el manifiesto genere con un transform sujeto a esta politica debe tener seccion propia. Si falta, la compilacion falla; no se degrada a un artefacto sin modelo ni sin herramientas."
+  },
+  "backends": {
+    "gemini": {
+      "model_field": true,
+      "model": { "default": "gemini-2.5-pro", "roles": {} },
+      "tools": {
+        "map": { "Read": "read_file", "Write": "write_file", "Edit": "edit_file", "Bash": "run_command" },
+        "always": ["glob", "grep_search"],
+        "unsupported": ["Agent"]
+      }
+    },
+    "codex": {
+      "model_field": false,
+      "sandbox_mode": { "default": "workspace-write", "roles": { "asesor": "read-only", "revisor": "read-only" } }
+    },
+    "antigravity": {
+      "model_field": false
+    }
+  }
+}

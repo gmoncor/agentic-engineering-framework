@@ -1899,6 +1899,44 @@ test('.npmignore existe, fuerza la inclusion de .gitignore y no excluye rutas cr
   }
 });
 
+// Al empaquetar, npm usa .npmignore EN LUGAR de .gitignore: una exclusión no se
+// hereda de uno a otro. El estado local que install/update dejan en el árbol
+// (inventario de hashes, lockfile de instalación en curso) es de la máquina que
+// empaqueta y no tiene nada que hacer en el paquete, así que la lista se lee de
+// .gitignore y se exige en .npmignore. Añadir ahí un artefacto nuevo y olvidarlo
+// aquí hace fallar este test, que es el único sitio donde la asimetría se ve.
+test('los artefactos locales de install/update ignorados en git también se excluyen del paquete', () => {
+  const CABECERA = '# Framework CLI (generados por install/update)';
+
+  const lineasGitignore = fs.readFileSync(path.join(RAIZ, '.gitignore'), 'utf8').split('\n');
+  const inicio = lineasGitignore.findIndex((linea) => linea.trim() === CABECERA);
+  assert.ok(inicio !== -1, `.gitignore debe declarar la sección "${CABECERA}"`);
+
+  // La cabecera va enmarcada entre líneas de `# ===`, así que el separador solo
+  // cierra la sección cuando ya se ha recogido algo: el de la línea siguiente es
+  // el cierre del propio marco.
+  const artefactos = [];
+  for (const linea of lineasGitignore.slice(inicio + 1)) {
+    const limpia = linea.trim();
+    if (limpia.startsWith('# ===') && artefactos.length) break;
+    if (limpia && !limpia.startsWith('#')) artefactos.push(limpia);
+  }
+  assert.ok(artefactos.length >= 1, 'la sección de .gitignore no declara ningún artefacto local');
+
+  const exclusiones = fs
+    .readFileSync(path.join(RAIZ, '.npmignore'), 'utf8')
+    .split('\n')
+    .map((linea) => linea.trim())
+    .filter((linea) => linea && !linea.startsWith('#') && !linea.startsWith('!'));
+
+  for (const artefacto of artefactos) {
+    assert.ok(
+      exclusiones.includes(artefacto),
+      `.npmignore debe excluir "${artefacto}": lo ignora .gitignore, y al empaquetar esa exclusión no se hereda`,
+    );
+  }
+});
+
 test('templates/.gitignore.template existe y es identico byte a byte a .gitignore', () => {
   const rutaTemplate = path.join(RAIZ, 'templates', '.gitignore.template');
   const rutaGitignore = path.join(RAIZ, '.gitignore');
@@ -1946,4 +1984,96 @@ test('install copia .gitignore desde templates/.gitignore.template aunque el paq
   assert.strictEqual(fs.readFileSync(destino, 'utf8'), contenidoTemplate);
   const lineas = fs.readFileSync(destino, 'utf8').split('\n').filter((l) => l.length > 0);
   assert.ok(lineas.length > 10, '.gitignore instalado debe tener contenido real (>10 lineas), no vacio ni truncado');
+});
+
+// Inventario de instalacion (ai_docs/_meta/ecosystem.json): sin el, una sesion
+// posterior no puede resolver que revision del framework quedo instalada.
+test('install --backend claude escribe ai_docs/_meta/ecosystem.json con la revision instalada', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: ['CLAUDE.md'] },
+    { 'hooks/sdd-commit-guard.js': 'hook', 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+
+  const { codigo } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  const inventario = JSON.parse(
+    fs.readFileSync(path.join(proyecto, 'ai_docs', '_meta', 'ecosystem.json'), 'utf8'),
+  );
+  assert.match(inventario.sync.upstream_sha, /^[a-f0-9]{7,64}$/);
+  assert.strictEqual(inventario.sync.backend, 'claude');
+  assert.ok(
+    !Number.isNaN(Date.parse(inventario.sync.installed_at)),
+    'installed_at debe ser una fecha ISO-8601 parseable',
+  );
+});
+
+test('install usa gitHead del paquete de origen como upstream_sha cuando esta presente', () => {
+  const gitHead = 'ab12cd34'.repeat(5);
+  const paquete = crearPaqueteFixture({ common: [], claude: [] });
+  escribirArchivo(paquete, 'package.json', JSON.stringify({ version: '9.9.9', gitHead }));
+  const proyecto = dirTemporal();
+
+  const { codigo } = ejecutar(['install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  const inventario = JSON.parse(
+    fs.readFileSync(path.join(proyecto, 'ai_docs', '_meta', 'ecosystem.json'), 'utf8'),
+  );
+  assert.strictEqual(inventario.sync.upstream_sha, gitHead);
+});
+
+test('update sobrescribe el inventario previo con un installed_at mas reciente', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+  assert.strictEqual(ejecutar(['install', '--backend', 'claude'], opts).codigo, 0);
+
+  // Instalacion antigua con una clave que ya no forma parte del formato: el
+  // inventario se reescribe entero, no se mergea con lo que hubiera antes.
+  const rutaInventario = path.join(proyecto, 'ai_docs', '_meta', 'ecosystem.json');
+  const instaladoAntes = '2020-01-01T00:00:00.000Z';
+  fs.writeFileSync(
+    rutaInventario,
+    JSON.stringify({ sync: { upstream_sha: 'deadbee', installed_at: instaladoAntes, backend: 'gemini' }, obsoleto: true }),
+  );
+
+  const { codigo } = ejecutar(['update', '--backend', 'claude'], opts);
+
+  assert.strictEqual(codigo, 0);
+  const inventario = JSON.parse(fs.readFileSync(rutaInventario, 'utf8'));
+  assert.strictEqual(inventario.obsoleto, undefined, 'update debe sobrescribir el inventario, no mergearlo');
+  assert.strictEqual(inventario.sync.backend, 'claude');
+  assert.match(inventario.sync.upstream_sha, /^[a-f0-9]{7,64}$/);
+  assert.ok(
+    Date.parse(inventario.sync.installed_at) > Date.parse(instaladoAntes),
+    'update debe refrescar installed_at',
+  );
+});
+
+test('install --dry-run reporta el inventario sin escribirlo', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+
+  const { codigo, stdout } = ejecutar(['install', '--backend', 'claude', '--dry-run'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /\[DRY-RUN\] escribiria ai_docs\/_meta\/ecosystem\.json/);
+  assert.ok(!fs.existsSync(path.join(proyecto, 'ai_docs')), 'dry-run no debe crear ai_docs/_meta/');
 });

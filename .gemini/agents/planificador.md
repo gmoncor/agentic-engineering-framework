@@ -34,4 +34,4 @@ Lee la plantilla completa y ejecuta todos sus pasos. No condenses ni saltes paso
 
 ## Implementacion
 
-El usuario ejecuta `/implementar-spec` para implementar todas las tasks de la spec. El comando implementa cada task en orden de dependencias, una tras otra: implementa, ejecuta tests, revision adversarial, y commitea antes de pasar a la siguiente. `/implementar` sigue disponible para control manual de una task individual.
+El usuario ejecuta `/implementar-spec` para implementar todas las tasks de la spec. El workflow implementa cada task en orden de dependencias, una tras otra: implementa, ejecuta tests, revision adversarial, y commitea antes de pasar a la siguiente. `/implementar` sigue disponible para control manual de una task individual.

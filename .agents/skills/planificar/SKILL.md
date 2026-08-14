@@ -32,10 +32,11 @@ su tabla "Archivos afectados" y toca 6 archivos como maximo.
 
 ## 4. Revision de cada task + auditoria cruzada
 
-Revisa cada task con el agente `revisor`, una tras otra: ninguna revision necesita el resultado
-de otra, pero se ejecutan en secuencia, no en paralelo. La **auditoria cruzada**
-(`ai_docs/dev_templates/auditar_spec.md`) si necesita todas las revisiones: es el gate bloqueante
-del paso. Es obligatoria con 3 o mas tasks.
+Revisa cada task con el agente `revisor`. Ninguna revision necesita el resultado de otra, asi que
+el orden en que las lances no cambia ningun veredicto: lanzalas a la vez o una despues de otra,
+segun lo que te permita el entorno. La **auditoria cruzada** (`ai_docs/dev_templates/auditar_spec.md`)
+si necesita todas las revisiones terminadas: es el gate bloqueante del paso. Es obligatoria con 3 o
+mas tasks.
 
 ## 5. Presentacion del resultado
 
