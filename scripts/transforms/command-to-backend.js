@@ -10,6 +10,11 @@
 // copie a mano. La unica traduccion de vocabulario es el marcador de
 // argumentos, que cada backend nombra a su manera.
 //
+// Un bloque del comando marcado con `<!-- solo-claude -->` no llega a la
+// salida: es texto que solo vale en el backend de Claude Code (por ejemplo un
+// aviso sobre un hook que solo ese backend cablea). Sin el marcador, todo el
+// cuerpo viaja.
+//
 // Excepcion declarada: un comando cuya version para el otro backend es
 // deliberadamente distinta (porque depende de una capacidad que ese backend no
 // tiene) declara un `fragment` en el manifiesto con su descripcion y su prompt
@@ -17,6 +22,7 @@
 // edita, en vez de vivir escondida dentro del artefacto generado.
 
 const { parsearFrontmatter, valorObligatorio, aTomlBasico, aTomlMultilinea } = require('./frontmatter');
+const { quitarBloquesSoloClaude } = require('./command-body');
 
 const MARCADOR_ARGUMENTOS = { gemini: { de: '$ARGUMENTS', a: '{{args}}' } };
 
@@ -44,7 +50,7 @@ function transformarComando(contenidoFuente, entrada = {}) {
   );
 
   const descripcion = valorObligatorio(campos, 'description', origen);
-  const prompt = aTomlMultilinea(traducirArgumentos(cuerpo, backend));
+  const prompt = aTomlMultilinea(traducirArgumentos(quitarBloquesSoloClaude(cuerpo), backend));
 
   return `description = ${aTomlBasico(descripcion)}\n\nprompt = ${prompt}\n`;
 }

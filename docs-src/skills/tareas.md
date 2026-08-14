@@ -1,11 +1,10 @@
+<!-- Parte propia de la skill de Codex y Antigravity. El cuerpo de las
+     instrucciones sale del comando homonimo de Claude Code; aqui van el
+     frontmatter y lo que solo tiene sentido en formato de skill. -->
 ---
 name: tareas
 description: "Se activa cuando el usuario pide derivar o partir una spec aprobada en tasks granulares. Genera las tasks con su tabla de archivos afectados y sus dependencias."
 ---
-
-Lee y sigue el proceso completo de `ai_docs/dev_templates/tareas.md`.
-
-Contexto del proyecto: lee `ai_docs/core/` para entender vision, planificacion y roadmap.
 
 Lee ademas la spec madre.
 

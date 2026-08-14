@@ -1,19 +1,13 @@
+<!-- Parte propia de la skill de Codex y Antigravity. El cuerpo de las
+     instrucciones sale del comando homonimo de Claude Code; aqui van el
+     frontmatter y lo que solo tiene sentido en formato de skill.
+     El aviso del gate de revision que lleva el comando no llega aqui: va
+     marcado como exclusivo de Claude Code, el unico backend que cablea ese
+     hook. -->
 ---
 name: implementar
 description: "Se activa cuando el usuario pide implementar UNA task concreta del plan, con control manual. Escribe codigo y tests solo de los archivos que la task declara."
 ---
-
-ANTES de implementar, verifica estos requisitos:
-
-1. Busca specs aprobadas en ai_docs/tasks/spec_*.md con "Estado: APROBADA"
-2. Busca tasks derivadas en ai_docs/tasks/NNN_*.md
-3. Si no existe spec aprobada ni tasks: DETENTE y di al usuario que ejecute la skill `planificar` primero
-
-Ejecuta UNA task a la vez, en orden secuencial. Cuando termine, el usuario decidira cual sigue.
-
-Lee y sigue el proceso completo de `ai_docs/dev_templates/implementar.md`.
-
-Contexto del proyecto: lee `ai_docs/core/` para entender vision, planificacion y roadmap.
 
 Lee ademas la spec madre de la task.
 

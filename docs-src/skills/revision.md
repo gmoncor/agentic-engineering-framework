@@ -1,11 +1,13 @@
+<!-- Parte propia de la skill de Codex y Antigravity. El cuerpo de las
+     instrucciones sale del comando homonimo de Claude Code; aqui van el
+     frontmatter y lo que solo tiene sentido en formato de skill.
+     El aviso del gate de revision que lleva el comando no llega aqui: va
+     marcado como exclusivo de Claude Code, el unico backend que cablea ese
+     hook. -->
 ---
 name: revision
 description: "Se activa cuando el usuario pide revisar la implementacion ya terminada contra la spec, antes de entregar o mergear. Revision adversarial del codigo."
 ---
-
-Lee y sigue el proceso completo de `ai_docs/dev_templates/revision_adversarial.md`.
-
-Contexto del proyecto: lee `ai_docs/core/` para entender vision, planificacion y roadmap.
 
 Lee ademas la spec, todas sus tasks completadas y el codigo real (no el resumen de quien
 lo escribio).

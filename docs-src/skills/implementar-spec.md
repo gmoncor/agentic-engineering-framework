@@ -1,6 +1,17 @@
+<!-- Variante propia de la skill para Codex y Antigravity. El comando de Claude
+     Code delega esta secuencia en su herramienta de workflows, que estos
+     backends no tienen: aqui el procedimiento va escrito paso a paso. Es el
+     unico sitio donde se edita esa version; el SKILL.md se genera desde aqui.
+     Misma excepcion, y por el mismo motivo, que la variante de este comando
+     para el backend de Gemini.
+     La nota de aislamiento por worktree del comando tampoco aparece en la
+     variante de Gemini: las dos variantes describen el procedimiento minimo, y
+     el aislamiento del arbol de trabajo se documenta una sola vez, en el
+     comando y en la plantilla de revision de PR. -->
 ---
 name: implementar-spec
 description: "Se activa cuando el usuario pide implementar una spec completa o ejecutar todas sus tasks. Implementa las tasks respetando dependencias y cierra con revision adversarial."
+source-body: omit
 ---
 
 Implementa TODAS las tasks de una spec APROBADA.
