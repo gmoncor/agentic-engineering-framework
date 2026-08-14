@@ -91,16 +91,28 @@ La version del framework (`<!-- sdd-framework: X.Y.Z -->` en los documentos raiz
 
 ### Que se mantiene a mano, exactamente
 
-El manifiesto tiene hoy **17 entradas `preserve`**. Dos son artefactos exclusivos de Claude Code sin copia en ningun otro backend (`.claude/skills/auditar-sesion/` y `.claude/workflows/`): no plantean problema de paridad. Las **otras 15 declaran una ruta de salida por backend**, y no son todas del mismo tipo:
+El manifiesto tiene hoy **7 entradas `preserve`**, y ninguna es la copia de algo que exista en otra parte del arbol:
 
+- **Dos son artefactos exclusivos de Claude Code**, sin copia en ningun otro backend (`.claude/skills/auditar-sesion/` y `.claude/workflows/`): no plantean problema de paridad y no declaran ruta de salida.
 - **Cinco son formatos nativos sin analogo en `.claude/`**: `.codex/config.toml`, `.codex/hooks.json`, `.codex/rules/sdd-enforcement.rules`, `.agents/hooks.json` y `.agents/plugins/sdd/plugin.json`. No hay nada de lo que generarlas; viven a mano por diseno.
-- **Las otras diez son skills de Codex y Antigravity**: `.agents/skills/{asesor,auditar,estado,implementar,implementar-spec,inicio,planificar,revision,spec,tareas}/SKILL.md`. Cada una es la entrega, para esos dos backends, de una capacidad cuyo comando homonimo en `.claude/commands/` **si** es fuente viva y generada. Son diez de las dieciocho capacidades de `.agents/skills/`; las otras ocho (`bugfix`, `cleanup`, `commit`, `diff`, `pr`, `revisar-tarea`, `revision-adversarial`, `testing`) si se generan desde `.claude/skills/`.
 
-**La trampa esta en el segundo grupo.** Si editas `.claude/commands/planificar.md`, ejecutas `npm run check-drift` y lo ves en verde, **solo dos de los cuatro backends recibieron el cambio**: Claude Code, porque el fichero que editaste es el suyo, y Gemini CLI, porque `.gemini/commands/planificar.toml` se genera. Codex y Antigravity leen `.agents/skills/planificar/SKILL.md`, que es `preserve`: sigue como estaba, y el check no protesta porque no tiene con que compararlo. Igual para los otros nueve comandos de la lista.
+Todo lo demas se genera. **Las dieciocho capacidades de `.agents/skills/`** (el directorio que leen Codex y Antigravity) salen del arbol de Claude Code: ocho de `.claude/skills/` con el transform `skill-to-backend`, y las diez que en Claude Code son comandos, de `.claude/commands/` con el transform `command-to-skill`.
 
-Asi que un cambio en cualquiera de esos diez comandos **se porta a mano** a `.agents/skills/<nombre>/SKILL.md` en la misma PR. Nada lo comprueba por ti: `check-drift` no lo ve, y el canario de paridad tampoco (compara nombres logicos, no contenido). La unica defensa es la revision de la PR.
+Asi que **editar `.claude/commands/planificar.md` alcanza a los cuatro backends**: Claude Code lee el fichero que editaste, y de el salen `.gemini/commands/planificar.toml` y `.agents/skills/planificar/SKILL.md`. `npm run check-drift` en verde significa que las tres superficies estan al dia; en rojo, que falta `node scripts/compile.js --write`.
 
-**Limitacion actual, no plan.** Que diez capacidades tengan una copia manual sin lazo mecanico con su origen es una debilidad conocida del manifiesto, no un diseno buscado. Mientras siga asi, portar a mano es el procedimiento; si te estorba al contribuir, abre un issue antes de cambiar el manifiesto por tu cuenta.
+### Como diverge una skill de su comando
+
+Una skill no es el comando con otro nombre, y el transform lo tiene en cuenta:
+
+| Diferencia | Donde se declara |
+|---|---|
+| El frontmatter (`name` y la `description` que dice CUANDO se activa la skill, no que hace) | `docs-src/skills/<nombre>.md`, obligatorio |
+| Texto propio del formato de skill (alcance, veredictos, postura) | Cuerpo del mismo fragmento; se anade despues del cuerpo del comando |
+| Texto que solo vale en Claude Code (p. ej. el aviso de un hook que solo ese backend cablea) | Bloque `<!-- solo-claude -->` … `<!-- /solo-claude -->` dentro del comando. No llega a ningun otro backend |
+| El bloque final `$ARGUMENTS` y las referencias `/<comando>` | Automatico: una skill no recibe argumentos, y las referencias pasan a nombrar la skill homonima |
+| El procedimiento entero, cuando el comando delega en el motor de workflows que solo tiene Claude Code | `source-body: omit` en el fragmento, que entonces aporta el cuerpo completo. Solo lo usan `planificar` e `implementar-spec`, la misma excepcion que ya tenian esos dos comandos para Gemini |
+
+El modelo de un artefacto generado nunca sale del fichero fuente: lo fija `scripts/model-policy.json`.
 
 ## Paridad entre CLIs
 
@@ -115,19 +127,19 @@ El framework se distribuye para Claude Code, Gemini CLI, Codex y Antigravity. Mu
 
 Las carpetas de Gemini CLI van **bajo `.gemini/`, nunca sueltas en la raiz**: `agents/`, `commands/` o `skills/` en la raiz colisionan con carpetas del proyecto destino y cambian el alcance de la instalacion via extension. `tests/install-native.test.js` falla si alguna reaparece en la raiz, asi que no es una preferencia de estilo. Coloca ahi cualquier artefacto nuevo de Gemini.
 
-Si anades o cambias un agente, un comando o una skill, **portalo a todos los backends** dentro de la misma PR y ejecuta el canary:
+Si CAMBIAS un agente, un comando o una skill, edita la fuente en `.claude/` (o su fragmento en `docs-src/`) y regenera con `node scripts/compile.js --write`: las copias por backend salen de ahi. Si ANADES una capacidad nueva, ademas de crearla hay que declararla en `scripts/artifact-manifest.json` con su salida por backend; sin esa entrada no se genera nada. En los dos casos, ejecuta el canary dentro de la misma PR:
 
 ```bash
 node --test tests/backend-parity.test.js
 ```
 
-El canary compara el conjunto de nombres logicos de agentes y de pasos del flujo de cada backend, y falla nombrando lo que falta y donde. No compara el contenido de los ficheros: que las dos versiones de un mismo paso describan el mismo proceso es cosa de la revision de la PR. Una PR que solo actualiza una de las CLIs deja el framework incoherente.
+El canary compara el conjunto de nombres logicos de agentes y de pasos del flujo de cada backend, y falla nombrando lo que falta y donde. No compara el contenido de los ficheros; de eso se encarga `check-drift` sobre las salidas generadas. Una PR que solo actualiza una de las CLIs deja el framework incoherente.
 
 En Codex los slash commands versionables estan deprecados: cada comando se entrega como skill, y las skills cuyo nombre coincide con un comando (`bugfix`, `commit`, `pr`) son una sola, con el uso a peticion explicita como seccion adicional. La logica de la skill manda sobre la del comando.
 
 Codex y Antigravity no soportan el frontmatter `argument-hint`. Las skills que lo usan (`bugfix`, `commit`, `pr`) compensan con una seccion `## Uso a peticion explicita` en el cuerpo del skill para esos dos backends.
 
-**Para las ocho skills generadas** eso es la unica divergencia de contenido admitida: la transformacion garantiza que el resto sea identico, y `diff` contra la fuente lo confirma. **Para las diez skills `preserve` de `.agents/skills/` no hay ninguna garantia equivalente**: son copias mantenidas a mano, `diff` contra el comando de origen no tiene por que dar vacio, y ningun test ata su contenido. No las trates como salidas verificables (ver "Artefactos generados y deriva").
+Para las skills que salen de `.claude/skills/` eso es la unica divergencia de contenido admitida: la transformacion garantiza que el resto sea identico, y `diff` contra la fuente lo confirma. Las que salen de `.claude/commands/` admiten ademas las divergencias de la tabla "Como diverge una skill de su comando", todas declaradas en `docs-src/skills/<nombre>.md` o marcadas en el propio comando. En los dos casos el contenido esta atado: `check-drift` lo verifica.
 
 El autor usa Claude Code a diario como backend principal. Los otros tres backends (Gemini CLI, Codex y Antigravity) estan implementados, cableados y con tests de paridad en verde, pero no reciben verificacion diaria propia. Esto no implica menor soporte: la paridad completa entre los cuatro es un requisito del proyecto.
 

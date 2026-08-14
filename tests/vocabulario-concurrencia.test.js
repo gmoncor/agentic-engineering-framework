@@ -16,6 +16,9 @@
 // editan a mano en su propia ruta y el compilador no las mira nunca, asi que un
 // cambio de direccion aplicado en las fuentes puede dejarlas atras sin que nada
 // lo note. Las tres afirmaciones que motivaron este canario vivian justo ahi.
+// Y el compilador tampoco basta para las salidas generadas: comprueba que
+// coinciden con su fuente, no lo que dicen. Una redaccion prohibida escrita en
+// la fuente se propaga a todos los backends con el gate de deriva en verde.
 //
 // QUE SE ESCANEA: el conjunto de rutas de `scripts/backend-manifest.json`, que
 // es la SSOT de lo que cada backend copia al proyecto destino. Usarlo (en vez de
@@ -227,7 +230,7 @@ test('el barrido cubre las superficies manuales que el compilador no verifica', 
   // dejarian el barrido vacio y en verde.
   assert.ok(ficheros.length > 40, `el barrido solo encontro ${ficheros.length} ficheros distribuidos`);
 
-  for (const manual of ['.claude/skills/auditar-sesion/SKILL.md', '.agents/skills/planificar/SKILL.md']) {
+  for (const manual of ['.claude/skills/auditar-sesion/SKILL.md', '.codex/rules/sdd-enforcement.rules']) {
     assert.ok(
       ficheros.includes(manual.split('/').join(path.sep)),
       `${manual} es una superficie de edicion manual (mode: "preserve") y debe entrar en el barrido`
@@ -264,7 +267,7 @@ test('ninguna superficie distribuida impone el trabajo secuencial ni descarta la
 
 const REGRESIONES = [
   {
-    de: '.agents/skills/planificar/SKILL.md',
+    de: 'docs-src/skills/planificar.md',
     texto: 'Revisa cada task con el agente `revisor`, una tras otra: ninguna revision necesita el resultado\n'
       + 'de otra, pero se ejecutan en secuencia, no en paralelo.',
   },

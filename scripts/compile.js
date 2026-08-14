@@ -53,6 +53,7 @@ const { ensamblarDocumento } = require('./transforms/doc-fragment-assembly');
 const { transformarAgente } = require('./transforms/agent-to-backend');
 const { transformarComando } = require('./transforms/command-to-backend');
 const { transformarSkill } = require('./transforms/skill-to-backend');
+const { transformarComandoASkill } = require('./transforms/command-to-skill');
 const { declaraBackend } = require('./transforms/policy-lookup');
 
 const POLICY_PATH = path.join(__dirname, 'model-policy.json');
@@ -88,11 +89,12 @@ const TRANSFORMS = {
   'doc-fragment-assembly': (sourceContent, entry) => ensamblarDocumento(sourceContent, entry.fragmentContent, entry),
   'agent-to-backend': transformarAgente,
   'command-to-backend': (sourceContent, entry) => transformarComando(sourceContent, entry),
+  'command-to-skill': transformarComandoASkill,
   'skill-to-backend': transformarSkill,
 };
 
 /** Transforms que aplican la politica de modelos y por tanto exigen que su backend este declarado en ella. */
-const TRANSFORMS_CON_POLITICA = new Set(['agent-to-backend', 'skill-to-backend']);
+const TRANSFORMS_CON_POLITICA = new Set(['agent-to-backend', 'skill-to-backend', 'command-to-skill']);
 
 const MODOS_VALIDOS = ['check', 'write', 'dry-run'];
 

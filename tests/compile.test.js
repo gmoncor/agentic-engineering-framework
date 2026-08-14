@@ -38,6 +38,7 @@ const { ensamblarDocumento } = require('../scripts/transforms/doc-fragment-assem
 const { transformarAgente } = require('../scripts/transforms/agent-to-backend');
 const { transformarComando } = require('../scripts/transforms/command-to-backend');
 const { transformarSkill } = require('../scripts/transforms/skill-to-backend');
+const { transformarComandoASkill } = require('../scripts/transforms/command-to-skill');
 const { cargarManifiesto, RAIZ } = require('../scripts/validate-manifest');
 
 function dirTemporal() {
@@ -1094,8 +1095,15 @@ test('9.10 borrar un backend de la politica sale con 2, tambien en el modo breve
 // propio manifiesto, para que reclasificar una entrada de generada a manual
 // haga fallar la asercion en vez de encogerla consigo. Al anadir o quitar una
 // entrada de verdad, estas tres cifras se actualizan a mano en el mismo cambio.
+//
+// SALIDAS_GENERADAS subio de 44 a 54 al pasar a generadas las diez skills que
+// Codex y Antigravity entregaban a mano (`.agents/skills/<capacidad>/SKILL.md`).
+// El movimiento es intencionado y va en la direccion que este suelo protege:
+// diez salidas mas entran en el gate de deriva, ninguna sale. El total de
+// entradas y de salidas declaradas no se mueve: las diez entradas `preserve` se
+// sustituyeron una a una, sin anadir ni quitar ficheros.
 const ARTEFACTOS_DECLARADOS = 45;
-const SALIDAS_GENERADAS = 44;
+const SALIDAS_GENERADAS = 54;
 const SALIDAS_DECLARADAS = 59;
 
 /** Cada output del manifiesto completo, con el modo de la entrada que lo declara. */
@@ -1136,4 +1144,176 @@ test('10.2 el reporte del compilador publica la cifra de salidas verificadas', (
     new RegExp(`Verificados: ${SALIDAS_GENERADAS}\\b`),
     'la cifra que imprime el gate se compara con la que se espera, no solo consigo misma'
   );
+});
+
+// --- Comandos a skills: la entrega de Codex y Antigravity -------------------
+//
+// En esos dos backends cada comando se entrega como skill, y las dos leen el
+// mismo directorio. La skill se genera desde el comando de Claude Code: sin
+// esto, la misma capacidad tenia dos textos y una instruccion anadida al
+// comando llegaba a dos backends de cuatro.
+
+const COMANDO_CON_AVISO = [
+  '---',
+  'description: "Implementa una task"',
+  '---',
+  '',
+  'Lee la plantilla y sigue sus pasos.',
+  '',
+  '<!-- solo-claude -->',
+  'Aviso: este backend cablea el gate; usa `/implementar-spec` en su lugar.',
+  '<!-- /solo-claude -->',
+  '',
+  'Si no hay spec aprobada, di al usuario que ejecute /planificar primero.',
+  '',
+  'Solicitud del usuario:',
+  '',
+  '$ARGUMENTS',
+  '',
+].join('\n');
+
+const FRAGMENTO_DE_SKILL = [
+  '---',
+  'name: implementar',
+  'description: "Se activa cuando el usuario pide implementar UNA task concreta."',
+  '---',
+  '',
+  '## Alcance',
+  '',
+  'Solo tocas los archivos que la task declara.',
+  '',
+].join('\n');
+
+/** Entrada sintetica de una skill generada desde un comando. */
+function entradaDeSkill(nombre, backend = 'antigravity', extra = {}) {
+  return {
+    id: `skill-${nombre}`,
+    source: `.claude/commands/${nombre}.md`,
+    fragment: `docs-src/skills/${nombre}.md`,
+    output: { backend, path: `.agents/skills/${nombre}/SKILL.md` },
+    fragmentContent: FRAGMENTO_DE_SKILL,
+    ...extra,
+  };
+}
+
+test('11.1 command-to-skill toma el frontmatter del fragmento y el cuerpo del comando', () => {
+  const skill = transformarComandoASkill(COMANDO_CON_AVISO, entradaDeSkill('implementar'), cargarPolitica());
+
+  assert.strictEqual(
+    skill,
+    '---\nname: implementar\n'
+      + 'description: "Se activa cuando el usuario pide implementar UNA task concreta."\n---\n\n'
+      + 'Lee la plantilla y sigue sus pasos.\n\n'
+      + 'Si no hay spec aprobada, di al usuario que ejecute la skill `planificar` primero.\n\n'
+      + '## Alcance\n\nSolo tocas los archivos que la task declara.\n'
+  );
+});
+
+test('11.2 un bloque marcado como exclusivo de Claude Code no llega ni a la skill ni al TOML de Gemini', () => {
+  const skill = transformarComandoASkill(COMANDO_CON_AVISO, entradaDeSkill('implementar'), cargarPolitica());
+  const toml = transformarComando(COMANDO_CON_AVISO, entradaDe('command-implementar', 'gemini'));
+
+  for (const [superficie, salida] of [['la skill', skill], ['el TOML de Gemini', toml]]) {
+    assert.ok(!salida.includes('cablea el gate'), `${superficie} no puede llevar el aviso exclusivo de Claude Code`);
+    assert.ok(!salida.includes('solo-claude'), `${superficie} no puede llevar el marcador`);
+  }
+
+  assert.ok(toml.includes('Lee la plantilla'), 'el resto del cuerpo sigue viajando al backend de Gemini');
+  assert.ok(!/\n\n\n/.test(toml), 'retirar el bloque no puede dejar una linea en blanco de mas');
+});
+
+test('11.3 el marcador de argumentos y su rotulo no llegan a la skill: una skill no recibe argumentos', () => {
+  const skill = transformarComandoASkill(COMANDO_CON_AVISO, entradaDeSkill('implementar'), cargarPolitica());
+
+  assert.ok(!skill.includes('$ARGUMENTS'), 'el marcador de argumentos no tiene sentido en una skill');
+  assert.ok(!skill.includes('Solicitud del usuario'), 'sin argumentos, el rotulo prometeria una entrada que nunca llega');
+});
+
+test('11.4 source-body: omit sustituye el cuerpo del comando por el del fragmento', () => {
+  const variante = FRAGMENTO_DE_SKILL.replace('---\n\n## Alcance', 'source-body: omit\n---\n\n## Alcance');
+
+  const skill = transformarComandoASkill(
+    COMANDO_CON_AVISO,
+    entradaDeSkill('implementar', 'antigravity', { fragmentContent: variante }),
+    cargarPolitica()
+  );
+
+  assert.ok(!skill.includes('Lee la plantilla'), 'el cuerpo del comando no viaja cuando el fragmento declara el suyo');
+  assert.ok(skill.includes('## Alcance'), 'el cuerpo sale del fragmento');
+  assert.ok(!skill.includes('source-body'), 'el campo de construccion no es un campo de la skill');
+});
+
+test('11.5 un fragmento ausente produce FRAGMENT_REQUIRED: la descripcion de activacion no sale del comando', () => {
+  assert.throws(
+    () => transformarComandoASkill(COMANDO_CON_AVISO, entradaDeSkill('implementar', 'antigravity', { fragmentContent: undefined })),
+    /FRAGMENT_REQUIRED/
+  );
+});
+
+test('11.6 un fragmento cuyo name no es el de su directorio produce SKILL_NAME_MISMATCH', () => {
+  const desalineado = FRAGMENTO_DE_SKILL.replace('name: implementar', 'name: otra-cosa');
+
+  assert.throws(
+    () => transformarComandoASkill(
+      COMANDO_CON_AVISO,
+      entradaDeSkill('implementar', 'antigravity', { fragmentContent: desalineado }),
+      cargarPolitica()
+    ),
+    err => /SKILL_NAME_MISMATCH/.test(err.message) && err.message.includes('.agents/skills/implementar/SKILL.md')
+  );
+});
+
+test('11.7 un source-body con un valor desconocido produce INVALID_SOURCE_BODY en vez de adivinar', () => {
+  const invalido = FRAGMENTO_DE_SKILL.replace('---\n\n## Alcance', 'source-body: quizas\n---\n\n## Alcance');
+
+  assert.throws(
+    () => transformarComandoASkill(
+      COMANDO_CON_AVISO,
+      entradaDeSkill('implementar', 'antigravity', { fragmentContent: invalido }),
+      cargarPolitica()
+    ),
+    /INVALID_SOURCE_BODY/
+  );
+});
+
+test('11.8 el modelo sale de la politica: un fragmento que declare uno no lo propaga', () => {
+  const conModelo = FRAGMENTO_DE_SKILL.replace('name: implementar', 'name: implementar\nmodel: modelo-del-fragmento');
+
+  const skill = transformarComandoASkill(
+    COMANDO_CON_AVISO,
+    entradaDeSkill('implementar', 'antigravity', { fragmentContent: conModelo }),
+    cargarPolitica()
+  );
+
+  assert.ok(!skill.includes('modelo-del-fragmento'), 'el modelo del fichero fuente no llega a la salida');
+  assert.ok(!/^model:/m.test(skill), 'Antigravity declara model_field: false, asi que no lleva el campo');
+});
+
+test('11.9 un backend que no lee .agents/skills/ produce BACKEND_NOT_SUPPORTED', () => {
+  assert.throws(
+    () => transformarComandoASkill(COMANDO_CON_AVISO, entradaDeSkill('implementar', 'gemini'), cargarPolitica()),
+    /BACKEND_NOT_SUPPORTED: .*"gemini"/
+  );
+});
+
+test('11.10 toda capacidad que Claude Code entrega como comando tiene su skill generada, no copiada a mano', () => {
+  const manifiesto = cargarManifiesto();
+  const comandos = fs.readdirSync(path.join(RAIZ, '.claude', 'commands'))
+    .filter(nombre => nombre.endsWith('.md'))
+    .map(nombre => path.basename(nombre, '.md'));
+
+  assert.ok(comandos.length > 0, 'el backend de referencia no expone ningun comando');
+
+  for (const nombre of comandos) {
+    const salida = `.agents/skills/${nombre}/SKILL.md`;
+    const entrada = manifiesto.artifacts.find(a => (a.outputs || []).some(o => o.path === salida));
+
+    assert.ok(entrada, `${salida} no aparece como salida de ninguna entrada del manifiesto`);
+    assert.strictEqual(
+      entrada.mode,
+      'managed',
+      `${salida} es la entrega de "${nombre}" para Codex y Antigravity: si vuelve a mantenerse a mano, `
+        + 'una instruccion anadida al comando deja de llegarles y nada lo detecta'
+    );
+  }
 });
