@@ -6,7 +6,7 @@
 
 ## Que es esto?
 
-Un sistema de plantillas que estructura como trabaja tu asistente de IA. En lugar de pedirle "haz esto" y esperar lo mejor, el framework impone un flujo: **planificacion exhaustiva** (spec + tasks + revision paralela + auditoria cruzada) antes de tocar codigo, seguida de **implementacion lineal** (una task tras otra en orden de dependencias, revision adversarial por task antes del commit).
+Un sistema de plantillas que estructura como trabaja tu asistente de IA. En lugar de pedirle "haz esto" y esperar lo mejor, el framework impone un flujo: **planificacion exhaustiva** (spec + tasks + revision paralela + auditoria cruzada) antes de tocar codigo, seguida de **implementacion lineal** por defecto (una task tras otra en orden de dependencias, revision adversarial por task antes del commit).
 
 Compatible con cualquier LLM via copy-paste. Integracion nativa con cuatro CLIs: Claude Code (workflows + comandos + agentes + skills), Gemini CLI (extension instalable), Codex y Antigravity (agentes + skills + hooks). Los cuatro exponen el mismo flujo; un test de paridad lo verifica (`npm test`).
 
@@ -28,7 +28,7 @@ Las plantillas guian al asistente de IA, pero la calidad del resultado depende d
 
 ## El flujo SDD
 
-El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tasks, revision, auditoria cruzada y, solo entonces, implementacion lineal (una task tras otra en orden de dependencias).
+El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tasks, revision, auditoria cruzada y, solo entonces, implementacion: por defecto lineal, una task tras otra en orden de dependencias (ver "Modos de ejecucion").
 
 ```
   [1] Solicitud
@@ -59,11 +59,11 @@ El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tas
 Principios del flujo:
 
 - **Planificacion exhaustiva.** Cada task revisada y auditada ANTES de tocar codigo
-- **Implementacion lineal.** Una task tras otra en orden de dependencias, cada una revisada y con su commit
+- **Implementacion lineal por defecto.** Una task tras otra en orden de dependencias, cada una revisada y con su commit. La ejecucion concurrente existe y se pide de forma explicita (ver "Modos de ejecucion")
 - **Tasks atomicas.** Una task = un cambio acotado = un commit
 - **Revision adversarial obligatoria.** Cada task se revisa antes de commitearla
 - **Roadmap global.** El plan de trabajo vive en `ai_docs/core/` y guia cada `/planificar`
-- **Orden por dependencias.** `/implementar-spec` ordena las tasks por sus dependencias y las implementa una tras otra: cada task espera a las tasks de las que depende
+- **Orden por dependencias.** `/implementar-spec` ordena las tasks por sus dependencias y respeta ese orden en cualquier modo: ninguna task empieza antes que las tasks de las que depende
 
 ### Garantia de convergencia
 
@@ -77,7 +77,7 @@ Al terminar la ultima task de una spec, `/implementar-spec` verifica automaticam
 
 ## Prerequisitos
 
-- **Node.js >= 20** — requerido por los hooks de enforcement (`sdd-pipeline-guard.js`, `sdd-review-gate.js`, `sdd-commit-guard.js`, `sdd-read-before-edit.js`, `sdd-turn-budget.js`). Sin Node.js, los hooks fallan silenciosamente y no hay enforcement del pipeline SDD. Verificar con `node --version`. Si un hook se ejecuta con una version menor, avisa (sin bloquear) por stderr la primera vez que corre en el proceso.
+- **Node.js >= 20** — requerido por los hooks de enforcement (`sdd-pipeline-guard.js`, `sdd-review-gate.js`, `sdd-commit-guard.js`, `sdd-read-before-edit.js`, `sdd-turn-budget.js`) y por el hook de registro de sesiones (`sdd-session-start.js`). Sin Node.js, los hooks fallan silenciosamente y no hay enforcement del pipeline SDD. Verificar con `node --version`. Si un hook se ejecuta con una version menor, avisa (sin bloquear) por stderr la primera vez que corre en el proceso.
 
 ## Instalacion
 
@@ -127,7 +127,7 @@ claude                     # abre Claude Code — los comandos estan listos
 
 **Alternativa manual — proyecto existente:** copia `.claude/`, `hooks/`, `ai_docs/` y `CLAUDE.md` a la raiz de tu proyecto.
 
-> **Plugin nativo de Claude Code (`.claude-plugin/plugin.json`):** el repositorio incluye metadatos basicos de plugin (nombre, version, autor), pero hoy NO es una via de instalacion funcional. La raiz del repo ya usa `.gemini/agents/`, `.gemini/commands/` y `hooks/hooks.json` para el backend de Gemini (formato y nombres de evento distintos a los que espera un plugin de Claude Code), asi que cargarla como plugin no entregaria los agentes, comandos ni hooks correctos. Es experimental/futuro — usa `npx github:gmoncor/agentic-engineering-framework install --backend claude` en su lugar.
+> **Sin plugin nativo de Claude Code.** El framework no distribuye un manifest de plugin (`.claude-plugin/plugin.json`): un plugin nativo se copia al cache de Claude Code (`~/.claude/plugins/cache`), no al proyecto destino, asi que no puede entregar `CLAUDE.md` como contexto de proyecto ni escribir `.claude/agents/`, `.claude/commands/`, `.claude/skills/` ni `hooks/` en tu repo — justo lo que la via de instalacion de arriba si hace. Usa `npx github:gmoncor/agentic-engineering-framework install --backend claude`.
 
 ### Gemini CLI
 
@@ -172,6 +172,8 @@ Codex te pedira confiar (trust) en los hooks del proyecto la primera vez. Revisa
 
 **Alternativa manual:** copia `AGENTS.md`, `.codex/config.toml`, `.codex/agents/`, `.codex/hooks.json`, `.codex/rules/`, `.agents/skills/`, `hooks/` y `ai_docs/` a la raiz de tu proyecto.
 
+> **Sin via nativa de instalacion en Codex CLI.** Codex tiene un gestor de plugins (`codex plugin add`, verificado en la version `0.147.0`), pero instala en el cache del usuario (`~/.codex/plugins/cache`), no en el proyecto: el manifiesto del plugin (`plugin.json`) no tiene campo para entregar `AGENTS.md` como contexto de proyecto, y los componentes que si declara (`skills`, `hooks`, `mcpServers`) quedan fuera del repo, sin versionar y compartidos por todas las sesiones de Codex de la maquina en vez de aislados por proyecto — justo lo que la via de instalacion de arriba si hace. Usa `npx github:gmoncor/agentic-engineering-framework install --backend codex`.
+
 ### Antigravity
 
 Requisito: el CLI de Antigravity (`agy`). Descubre sus personalizaciones en `.agents/`, la misma
@@ -208,15 +210,17 @@ No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` par
 | Comandos | `.claude/commands/` (13) | `.gemini/commands/` (13) | — (entregados como skills) | — (entregados como skills) |
 | Agentes | `.claude/agents/` (4) | `.gemini/agents/` (4) | `.codex/agents/` (4, `.toml`) | `.agents/plugins/sdd/agents/` (4) |
 | Skills | `.claude/skills/` (9)* | `.gemini/skills/` (8) | `.agents/skills/` (18) | `.agents/skills/` (18) |
-| Hooks | `hooks/` (5, wired en settings) | `hooks/` (4, wired en `hooks/hooks.json`) | `hooks/` (2, wired en `.codex/hooks.json`) | `hooks/` (4, wired en `.agents/hooks.json`) |
+| Hooks | `hooks/` (6, wired en settings) | `hooks/` (5, wired en `hooks/hooks.json`) | `hooks/` (3, wired en `.codex/hooks.json`) | `hooks/` (4, wired en `.agents/hooks.json`) |
 | Workflows | `.claude/workflows/` (2) | — (el orquestador implementa en orden) | — (idem) | — (idem) |
 | Contexto | `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` | `AGENTS.md` |
 | Templates | `ai_docs/dev_templates/` (13) | `ai_docs/dev_templates/` (13) | `ai_docs/dev_templates/` (13) | `ai_docs/dev_templates/` (13) |
 | Core templates | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) |
 
-Las rutas coinciden con `scripts/backend-manifest.json`, que ademas marca `scripts/` y `CHANGELOG.md`
-como comunes a todos los backends: son infraestructura del CLI y metadatos, no componentes del flujo
-SDD, por eso la tabla no los lista. `package.json` nunca se copia: el CLI anade solo `scripts.test` al
+Las rutas coinciden con `scripts/backend-manifest.json`, que ademas marca `scripts/`, `CHANGELOG.md` y
+`docs/extension-config-schema.md` como comunes a todos los backends: son infraestructura del CLI,
+metadatos y documentacion de referencia, no componentes del flujo SDD, por eso la tabla no los lista.
+Ese documento se instala porque los hooks lo citan por su ruta: sin el, un aviso te mandaria a un
+fichero que no tienes. `package.json` nunca se copia: el CLI anade solo `scripts.test` al
 `package.json` del proyecto destino (creando uno minimo si no existe), sin tocar nombre, dependencias
 ni el resto de scripts del usuario.
 
@@ -346,7 +350,7 @@ El dia a dia sigue el flujo SDD. Usa `/planificar` como punto de entrada princip
 
 **Aprobacion** — Revisa el plan completo. Si es APROBADO, procede. Si necesita ajustes, aplicalos y re-evalua.
 
-**`/implementar-spec`** — Workflow que implementa TODAS las tasks de la spec en orden de dependencias, una tras otra. Revision adversarial y commit por task. Recomendado para el flujo normal.
+**`/implementar-spec`** — Workflow que implementa TODAS las tasks de la spec en orden de dependencias, una tras otra por defecto. Revision adversarial y commit por task. Recomendado para el flujo normal. Para ejecutar a la vez las tasks que no dependen entre si, ver "Modos de ejecucion".
 
 **`/implementar`** — Implementa UNA task individual. Para cuando necesitas control manual sobre el orden o quieres implementar una task especifica.
 
@@ -354,6 +358,82 @@ El dia a dia sigue el flujo SDD. Usa `/planificar` como punto de entrada princip
 **Si tienes dudas o necesitas decidir:** usa `/asesor`.
 **Si el codigo necesita limpieza:** usa la skill `cleanup`.
 **Para commit y PR:** usa `/commit` y `/pr`.
+
+---
+
+## Modos de ejecucion
+
+Por defecto el framework trabaja **una task a la vez**: se implementa, se revisa y se commitea antes de empezar la siguiente. Ese es el modo secuencial y no necesita ningun flag. La ejecucion concurrente existe, se pide de forma explicita y no es la recomendacion por defecto: la decision es tuya, en el momento de invocar.
+
+`/implementar-spec` agrupa las tasks de la spec en **niveles de dependencia**: el nivel 1 son las tasks sin dependencias, el nivel 2 las que dependen de alguna del nivel 1, y asi sucesivamente. Los niveles se recorren siempre en orden. Lo unico que cambia entre modos es que ocurre DENTRO de un nivel.
+
+Spec de ejemplo para los dos casos — 3 tasks en 2 niveles:
+
+| Task | Archivos | Depende de |
+|---|---|---|
+| 01 Modelo de usuario | `src/models/user.ts` | -- |
+| 02 Cliente HTTP | `src/lib/http.ts` | -- |
+| 03 Endpoint de registro | `src/routes/register.ts` | 01, 02 |
+
+### Modo secuencial (defecto)
+
+```
+/implementar-spec ai_docs/tasks/spec_registro.md
+```
+
+El workflow anuncia el plan y despues implementa 01, luego 02, luego 03 — cada una completa antes de arrancar la siguiente:
+
+```
+3 tasks, 2 nivel(es) de dependencia, modo secuencial
+Nivel 1: Modelo de usuario, Cliente HTTP
+Nivel 2: Endpoint de registro
+Implementando: Modelo de usuario
+Gate de tests (Modelo de usuario): npm test [package.json]
+Task Modelo de usuario: APROBADA y commiteada
+Implementando: Cliente HTTP
+...
+```
+
+### Modo concurrente (a peticion)
+
+La misma spec con el flag `--parallel` en los argumentos:
+
+```
+/implementar-spec ai_docs/tasks/spec_registro.md --parallel
+```
+
+Las dos tasks del nivel 1 arrancan a la vez; el nivel 2 espera a que ambas terminen:
+
+```
+3 tasks, 2 nivel(es) de dependencia, modo concurrente (--parallel)
+Nivel 1: Modelo de usuario, Cliente HTTP
+Nivel 2: Endpoint de registro
+Implementando: Modelo de usuario
+Implementando: Cliente HTTP
+...
+```
+
+El flag se reconoce en cualquier posicion y se retira de los argumentos antes de resolver el path de la spec, asi que `--parallel ai_docs/tasks/spec_registro.md` es equivalente. Tambien puedes pedirlo en lenguaje natural ("implementa la spec en paralelo") para que el asistente lo pase al workflow. Solo el backend de Claude Code tiene motor de workflows; en los demas, el orquestador implementa las tasks en orden y no hay flag que lo cambie.
+
+### Puertas de calidad: las mismas en ambos modos
+
+Son puertas de calidad, no de paralelizacion. Se aplican **por task** en los dos modos, sin excepcion:
+
+- **Gate de tests** — la suite del proyecto se ejecuta de verdad antes de revisar, y cuenta su codigo de salida real, no un recuento auto-declarado. En rojo, la task no se commitea.
+- **Revision adversarial del diff** — un agente con contexto limpio revisa el diff de esa task. Sin veredicto APROBADA no hay commit; hay una sola pasada de correccion antes de darla por fallida.
+- **Convergencia con la spec** — al cerrar la ultima task (ver "Garantia de convergencia").
+
+Una task fallida no cancela a sus hermanas: cada una reporta su propio resultado, y las que dependan de una fallida quedan bloqueadas sin implementar.
+
+### Frontera de responsabilidad en modo concurrente
+
+El framework lanza a la vez las tasks de un nivel y reporta el resultado de cada una. Nada mas. En concreto **no**:
+
+- **No hay un unico escritor por fichero.** Dos tasks del mismo nivel pueden escribir el mismo archivo.
+- **No detecta colisiones** entre tasks que tocan los mismos archivos, ni reparte el trabajo por ellas.
+- **No aisla el arbol de trabajo.** Todas las tasks de un nivel comparten el mismo working tree mientras se implementan. Si una falla su gate de tests o su revision, el descarte de sus cambios (`git reset --hard` + `git clean -fd`) se lleva por delante todo cambio sin commitear en ese instante, incluido el de una task hermana aun en curso.
+
+Evitar que dos tasks hermanas se pisen es **responsabilidad del invocador**, no del framework: pide `--parallel` solo cuando las tasks de cada nivel tocan archivos disjuntos, y si necesitas aislamiento real, separa el trabajo en specs distintas y corre cada una en su propio worktree de git (ver "Aislamiento por worktree" en `/implementar-spec`).
 
 ---
 
@@ -369,7 +449,6 @@ agentic-engineering-framework/
 ├── SECURITY.md                  # Reporte de vulnerabilidades y alcance
 ├── LICENSE                      # CC BY 4.0
 ├── package.json                 # Metadatos + engines (Node >= 20)
-├── .claude-plugin/plugin.json   # Manifest para plugins Claude Code
 ├── .github/                     # Plantillas de issue y de Pull Request
 │
 ├── .claude/                     # Configuracion Claude Code
@@ -389,7 +468,8 @@ agentic-engineering-framework/
 ├── .codex/                      # Config, agentes (.toml), hooks y reglas de Codex
 ├── .agents/                     # Skills (18), subagentes y hooks de Antigravity
 │
-├── hooks/                       # Enforcement SDD (compartido por los 4 backends)
+├── hooks/                       # Enforcement SDD + registro de sesiones (compartido por los 4 backends)
+├── docs/                        # Referencia: esquema de sdd.config.json (configuracion propia del proyecto)
 ├── tests/                       # Canary de paridad entre backends
 │
 ├── ai_docs/
@@ -449,7 +529,7 @@ Documentacion de APIs, guias de estilo, specs de terceros. Lo que el LLM necesit
 
 ## Hooks (enforcement mecanico)
 
-El directorio `hooks/` contiene hooks compartidos entre ambas CLIs que refuerzan reglas del framework:
+El directorio `hooks/` contiene hooks compartidos por los cuatro backends. Los cinco primeros refuerzan reglas del framework; el ultimo no enforcea nada, escribe el registro de sesiones:
 
 | Hook | Evento | Que hace | Modo |
 |------|--------|----------|------|
@@ -458,8 +538,9 @@ El directorio `hooks/` contiene hooks compartidos entre ambas CLIs que refuerzan
 | `sdd-commit-guard.js` | git commit / git push | **Bloquea** `--no-verify` (y el alias corto `-n` en commit); avisa si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Advisory / Bloqueante (`--no-verify`) |
 | `sdd-read-before-edit.js` | Read/Write/Edit | Avisa al escribir un archivo existente sin haberlo leido antes en la sesion. Nunca bloquea; se autolimita a silencio en backends que no exponen el evento de lectura | Advisory |
 | `sdd-turn-budget.js` | Todas las tool calls | Cuenta las acciones sin commit y avisa al superar cada umbral (`git commit` resetea el contador). Umbrales y `mode` configurables; `mode: enforce` convierte los avisos en bloqueo | Advisory |
+| `sdd-session-start.js` | Arranque de sesion | No enforcea nada: **escribe**. Anade una linea al registro de sesiones (`ai_docs/audits/provenance.jsonl`, dentro de tu repositorio) con directorio de trabajo, rama, commit, modelo de la sesion y hashes de los componentes instalados | Registro (activo por defecto) |
 
-Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`). El gate de revision (`sdd-review-gate.js`) se cablea **unicamente en Claude Code**; los demas backends no lo cargan.
+Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`). El gate de revision (`sdd-review-gate.js`) se cablea **unicamente en Claude Code**; los demas backends no lo cargan. El registro de sesiones (`sdd-session-start.js`) se cablea en Claude Code, Gemini CLI y Codex; en Antigravity no, porque no consta que su CLI exponga un evento de arranque de sesion equivalente.
 
 **Codex** usa dos hooks propios, registrados en `.codex/hooks.json`:
 
@@ -468,6 +549,8 @@ Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json
 | `sdd-pipeline-guard-codex.js` | `apply_patch` | **Deniega** aplicar un parche sobre un archivo que ninguna task de una spec APROBADA declara | Bloqueante |
 | `sdd-commit-guard-codex.js` | `shell` | **Deniega** `git commit --no-verify` y `git push --no-verify`; avisa de commits mal formados | Bloqueante + advisory |
 
+Ademas del par de guards, `.codex/hooks.json` cablea el registro de sesiones (`sdd-session-start.js`), que es el mismo codigo compartido con los demas backends.
+
 Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohibe esos mismos comandos via politica de ejecucion (funcionalidad experimental del CLI; si tu version no la carga, el hook sigue siendo la via principal).
 
 **Limite honesto de los hooks de Codex:** son un **guardarrail**, no una frontera completa de enforcement — asi lo declara el propio fabricante. No interceptan todas las llamadas al shell ni todas las rutas de escritura: un proceso hijo lanzado desde un comando permitido puede escapar al matcher, y el payload de `apply_patch` no tiene esquema publico estable (si el guard no puede leer las rutas del parche, avisa en vez de denegar, porque bloquear a ciegas seria arbitrario). Sirven para que el camino correcto sea el camino por defecto y para que desviarse sea deliberado. Si necesitas una frontera dura, ponla en el CI y en las protecciones de rama.
@@ -475,6 +558,10 @@ Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohibe esos mismos com
 **Hay dos bloqueos reales: escrituras y commits sin revision.** `sdd-pipeline-guard.js` impide escribir codigo que nadie planifico: puede comprobarlo mecanicamente, porque el archivo que se va a escribir esta declarado en una task o no lo esta. `sdd-review-gate.js` impide commitear un diff que no consta revisado: la revision adversarial ocurre POR TASK, antes del commit, y su senal guarda el hash del diff revisado; el hook recalcula el hash de `git diff --cached` y lo contrasta. Sin senal, o con un hash que no ata el diff staged, deniega. Cuando no hay diff cacheado computable no bloquea a ciegas: degrada a aviso. Que el codigo entregado se revise lo sostiene el flujo (`/implementar-spec` revisa cada task antes de commitearla) reforzado por el gate. Si necesitas una frontera aun mas dura sobre lo que llega a la rama, ponla en CI y en las protecciones de rama.
 
 **Configuracion (`hooks/config.json`):** `sdd-review-gate.js` viene desactivado. Ponlo en `"enabled": true` para que bloquee cuando vayas a commitear codigo sin constancia de revision. El workflow `/implementar-spec` emite la senal que lo satisface; su contrato vive en `hooks/sdd-review-signal.js`. Solo se cablea en Claude Code: los demas backends no tienen motor de workflows y, por tanto, no tienen emisor de la senal — el gate ahi no podria satisfacerse por ninguna via legitima.
+
+**Registro de sesiones y como apagarlo (`hooks/config.json`):** `sdd-session-start.js` viene **activo**. En cada arranque de sesion anade una linea al fichero `ai_docs/audits/provenance.jsonl`, dentro de tu repositorio, con el directorio de trabajo, la rama, el commit, el modelo de la sesion y hashes de los componentes instalados. No envia nada a ningun sitio: escribe un fichero local (el `.gitignore` que instala el framework lo excluye del control de versiones). Para que deje de escribir, pon `"sdd_session_start": { "enabled": false }`: con `false` el hook no escribe nada, ni la linea ni el fichero.
+
+**Configuracion propia de tu proyecto (`sdd.config.json`):** el destino de ese registro y los campos que quieras anadir a cada linea se declaran en un fichero opcional en la raiz de tu proyecto, que la actualizacion del framework nunca sobreescribe. Casi ningun proyecto lo necesita. Esquema completo, precedencias y casos limite: [`docs/extension-config-schema.md`](docs/extension-config-schema.md), que se instala junto al framework, asi que tambien lo tienes en tu proyecto.
 
 **Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada ambos bloqueos (escrituras y revision) a aviso. Uso puntual para desbloquear una urgencia; si se queda fijo en el shell, el enforcement deja de existir.
 

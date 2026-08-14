@@ -252,6 +252,50 @@ test('el aviso de revision solo se cablea donde hay emisor de la senal', () => {
   }
 });
 
+// ── Hooks cableados y su rastro en la documentacion ──────────────────────────
+//
+// Un hook cableado por defecto y ausente de la documentacion es invisible para
+// quien recibe el framework: corre en su maquina y no aparece en ninguno de los
+// dos sitios donde lo buscaria (su documento de instrucciones y el README). Se
+// comprueba por nombre logico, asi que la variante `-codex` cuenta como el mismo
+// hook. Los documentos de instrucciones son salidas generadas: si este test
+// falla, la correccion va en `docs-src/` y luego `node scripts/compile.js --write`.
+
+const DOC_DE_INSTRUCCIONES = {
+  claude: 'CLAUDE.md',
+  gemini: 'GEMINI.md',
+  codex: 'AGENTS.md',
+  antigravity: 'AGENTS.md'
+};
+
+test('todo hook cableado aparece en el documento de instrucciones de su backend', () => {
+  for (const backend of Object.keys(BACKENDS)) {
+    const doc = DOC_DE_INSTRUCCIONES[backend];
+    const contenido = leer(doc);
+
+    for (const hook of hooksCableados(backend)) {
+      assert.ok(
+        contenido.includes(hook),
+        `${doc} no menciona ${hook}, cableado en ${BACKENDS[backend].cableado}. `
+          + 'Un hook activo sin documentar corre sin que su usuario pueda saberlo.'
+      );
+    }
+  }
+});
+
+test('todo hook cableado en algun backend aparece en el README', () => {
+  const readme = leer('README.md');
+  const todos = [...new Set(Object.keys(BACKENDS).flatMap(hooksCableados))].sort();
+
+  for (const hook of todos) {
+    assert.ok(
+      readme.includes(hook),
+      `README.md no menciona ${hook}, cableado en al menos un backend. `
+        + 'El inventario de hooks del README es donde se busca que corre en el proyecto.'
+    );
+  }
+});
+
 // ── Conteos citados en la documentacion ──────────────────────────────────────
 //
 // La doc cita cuantas plantillas hay. Un conteo escrito a mano envejece en
@@ -294,10 +338,8 @@ test('conteos: la documentacion cita el numero real de plantillas', () => {
 
 // ── Versiones de los manifiestos ─────────────────────────────────────────────
 
-test('los tres manifiestos declaran la misma version', () => {
+test('los manifiestos vigentes declaran la misma version', () => {
   const version = m => JSON.parse(leer(m)).version;
-  const plugin = version('.claude-plugin/plugin.json');
 
-  assert.strictEqual(version('package.json'), plugin, 'package.json y plugin.json declaran versiones distintas');
-  assert.strictEqual(version('gemini-extension.json'), plugin, 'gemini-extension.json y plugin.json declaran versiones distintas');
+  assert.strictEqual(version('gemini-extension.json'), version('package.json'), 'gemini-extension.json y package.json declaran versiones distintas');
 });

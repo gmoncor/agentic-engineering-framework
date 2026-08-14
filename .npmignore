@@ -3,23 +3,46 @@
 # inclusion explicitamente para que llegue como archivo regular al paquete.
 !.gitignore
 
-# Tests (no necesarios en el paquete distribuido)
-tests/
-hooks/tests/
+# Tests de estructura/paridad del repo fuente (no aplican al destino). Ancla
+# a la raiz (/tests/): sin la barra inicial tambien excluiria hooks/tests/,
+# que SI se distribuye para verificar los hooks instalados (scripts.test).
+/tests/
 
 # Desarrollo
 .cursor/
 .github/
-.claude-plugin/
 
 # Documentacion de desarrollo (no del framework)
 ai_docs/core/
 ai_docs/tasks/
 ai_docs/refs/
 
-# Archivos de CI/entorno
+# Datos de la instalacion local de este propio repo: el inventario que escribe
+# install/update y el registro NDJSON al que el arranque de sesion anade una
+# linea. Nadie los lee desde la raiz del paquete (el instalador solo copia
+# ai_docs/core_templates/ y ai_docs/dev_templates/), y el registro publicaria
+# rutas absolutas, identificadores de sesion y hashes de la maquina que
+# empaqueta. Anclados a la raiz: llevan barra intermedia.
+ai_docs/_meta/
+ai_docs/audits/
+
+# docs-src/ NO se excluye a proposito. La orden 'compile' del CLI publicado lo
+# lee desde la raiz del paquete instalado (scripts/compile.js resuelve las
+# rutas contra el directorio del paquete, no contra el del usuario). Sin esas
+# fuentes falla con SOURCE_NOT_FOUND: docs-src/core.md y no verifica ninguno
+# de los documentos de instrucciones raiz.
+
+# Archivos de CI/entorno. Al empaquetar, npm usa ESTE archivo EN LUGAR de
+# .gitignore: lo que se ignora en git no queda excluido del paquete por
+# herencia. De ahí que el estado local de una instalación de este propio repo
+# (el inventario de hashes y el lockfile que install/update crea antes de copiar
+# y borra al terminar) tenga que repetirse aquí. Publicar con el lockfile suelto
+# distribuiría la fecha y el backend de la máquina que empaqueta, y además
+# cualquier ejecución del CLI cuyo destino sea la raíz del paquete avisaría de
+# una instalación interrumpida que nunca ocurrió ahí.
 .worktrees/
 .sdd-installed-hashes.json
+.sdd-install-in-progress
 .env
 .env.*
 node_modules/

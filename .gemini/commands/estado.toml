@@ -8,7 +8,7 @@ Muestra el estado actual del proyecto SDD.
 1. Lee todos los archivos en `ai_docs/tasks/`
 2. Clasifica cada archivo:
    - **Specs:** archivos con prefijo `spec_` — indica estado (BORRADOR / APROBADA)
-   - **Tasks:** archivos con prefijo numerico `NNN_` — indica estado y spec madre
+   - **Tasks:** archivos con prefijo numerico `NNN_` — indica estado y spec madre. Las tasks `NNN_convergencia_<spec>.md` (generadas por la garantia de convergencia al cerrar una spec) se clasifican igual; para el resumen, cuenta cuantas tienen estado PENDIENTE
 3. Presenta un resumen con este formato:
 
 ```
@@ -29,6 +29,7 @@ Muestra el estado actual del proyecto SDD.
 - Tasks pendientes: N
 - Tasks completadas: N
 - Tasks en progreso: N
+- Tasks de convergencia pendientes: N
 ```
 
 4. Si `ai_docs/tasks/` esta vacio, indica que no hay specs ni tasks creadas y sugiere empezar con `/planificar` (o `/spec` si solo necesita crear una spec individual)

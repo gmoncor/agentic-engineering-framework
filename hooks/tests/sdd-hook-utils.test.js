@@ -67,14 +67,27 @@ function closingStdin(chunks) {
 
 // Async iterable que nunca resuelve su siguiente valor: simula un pipe que
 // jamas envia EOF.
+//
+// La espera se apoya en un temporizador ref'd, no en una promesa suelta: un descriptor de stdin
+// abierto de verdad mantiene vivo el bucle de eventos mientras aguarda datos, y el doble debe
+// reproducir eso. Con una promesa que nadie retiene, el doble modelaria un stdin que ni entrega
+// datos ni sostiene el proceso — algo que ningun descriptor real hace — y la carrera de
+// readPayload() se decidiria por el vaciado del bucle en lugar de por su timeout.
+//
+// El temporizador se registra para desarmarlo al acabar el test: la lectura pierde la carrera y su
+// generador queda suspendido para siempre, asi que nadie mas lo limpiaria. Su plazo es ademas muy
+// superior al timeout bajo prueba, para que sea siempre el timeout quien gane.
+const temporizadoresDelDoble = [];
+
 function hangingStdin() {
   return async function* () {
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      await new Promise(() => {}); // nunca se resuelve
-      yield ''; // inalcanzable, pero mantiene la forma de generador
-    }
+    await new Promise((resolve) => { temporizadoresDelDoble.push(setTimeout(resolve, 5000)); });
+    yield ''; // inalcanzable dentro del horizonte del test, mantiene la forma de generador
   };
+}
+
+function clearHangingStdin() {
+  while (temporizadoresDelDoble.length) clearTimeout(temporizadoresDelDoble.pop());
 }
 
 test('stdin llega completo y valido -> devuelve el objeto parseado', async () => {
@@ -97,6 +110,7 @@ test('stdin nunca cierra -> resuelve a null tras el timeout, en tiempo acotado',
     assert.ok(elapsed < 2000, `readPayload() debe resolver en tiempo acotado, tardo ${elapsed}ms`);
   } finally {
     restoreStdin();
+    clearHangingStdin();
   }
 });
 

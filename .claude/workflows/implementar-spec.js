@@ -81,11 +81,67 @@ const CONVERGENCIA_SCHEMA = {
 // ── Modulos del repo ──────────────────────────────────────────────────────────
 // Se cargan por ruta absoluta desde la raiz del proyecto: el workflow se evalua
 // sin una URL de modulo propia, asi que un import relativo no resolveria.
-async function cargarModulo(rutaRelativa) {
+//
+// La ruta se ancla al directorio del PROYECTO, no al directorio en curso del proceso. No son el
+// mismo sitio en cuanto la sesion arranca en un subdirectorio o en un arbol de trabajo enlazado, y
+// resolver contra el segundo dejaba el modulo sin encontrar. Peor: el fallo era mudo — la senal de
+// revision no se emitia y el gate denegaba el commit despues sin que nada explicase por que.
+//
+// Se asciende desde el directorio en curso hasta dar con el que contiene la ruta pedida. El
+// directorio en curso se prueba PRIMERO: donde la carga ya funcionaba, resuelve exactamente igual
+// que antes.
+const MAX_ASCENSO = 10
+
+// Comienzo de una ruta absoluta de Windows: unidad (C:\ o C:/) o recurso de red (\\servidor).
+const PREFIJO_WINDOWS_RE = /^(?:[A-Za-z]:[\\/]|\\\\)/
+
+// Traduce a los separadores del sistema en curso una ruta que puede venir de otro. SIEMPRE ANTES
+// de resolverla: la barra invertida es separador en Windows y un caracter valido de nombre de
+// archivo en los sistemas tipo Unix, asi que sin traducir "hooks\sdd-review-signal.js" no denota
+// dos tramos sino UN nombre de archivo, y no se encuentra. Sobre una ruta nativa de cada
+// plataforma es la identidad. Mismo criterio que hooks/sdd-plan-state.js `toNativePath`.
+function rutaNativa(cruda, path) {
+  const ruta = String(cruda == null ? '' : cruda)
+  if (path.sep === '\\' || !ruta.includes('\\')) return ruta
+  if (ruta.includes('/') && !PREFIJO_WINDOWS_RE.test(ruta)) return ruta
+  return ruta.replace(/\\/g, '/')
+}
+
+async function resolverEnProyecto(rutaRelativa) {
   const path = await import('node:path')
+  const fs = await import('node:fs')
+  const rel = rutaNativa(rutaRelativa, path)
+  if (path.isAbsolute(rel)) return rel
+
+  var dir = process.cwd()
+  for (var i = 0; i < MAX_ASCENSO; i++) {
+    const candidato = path.resolve(dir, rel)
+    if (fs.existsSync(candidato)) return candidato
+    const padre = path.dirname(dir)
+    if (padre === dir) break
+    dir = padre
+  }
+  // Sin encontrarlo en ningun nivel: la ruta de siempre, para que el error nombre el sitio
+  // donde el modulo se esperaba.
+  return path.resolve(process.cwd(), rel)
+}
+
+async function cargarModulo(rutaRelativa) {
   const url = await import('node:url')
-  const mod = await import(url.pathToFileURL(path.resolve(rutaRelativa)).href)
+  const mod = await import(url.pathToFileURL(await resolverEnProyecto(rutaRelativa)).href)
   return mod.default || mod
+}
+
+// Ancla contra la que se busca cualquier cosa "del proyecto": el directorio que contiene
+// .claude/workflows/, localizado por el mismo ascenso. Lo usan el descubrimiento del comando de
+// test y la validacion de las dependencias, que antes resolvian contra el directorio en curso.
+// Ese resto importa ahora mas que antes: con los modulos ya localizados, una sesion arrancada en
+// un subdirectorio llegaba al gate de tests, no encontraba alli el comando del proyecto y
+// bloqueaba la task descartando su trabajo. Cuando el directorio en curso ES la raiz — el caso
+// habitual — el ancla es exactamente ese directorio y nada cambia.
+async function raizDelProyecto() {
+  const path = await import('node:path')
+  return path.dirname(path.dirname(await resolverEnProyecto('.claude/workflows')))
 }
 
 // ── Git del working tree ──────────────────────────────────────────────────────
@@ -95,7 +151,26 @@ async function cargarModulo(rutaRelativa) {
 async function git(argv) {
   const cp = await import('node:child_process')
   const r = cp.spawnSync('git', argv, { encoding: 'utf8', timeout: 15000 })
-  return { code: r.status, out: r.stdout || '', err: r.stderr || '' }
+  // Un spawn que no llega a arrancar (git ausente) o que agota su tiempo deja status en null y el
+  // motivo en r.error, no en stderr: sin recogerlo, el fallo se queda sin causa que reportar.
+  return { code: r.status, out: r.stdout || '', err: r.stderr || (r.error ? r.error.message : '') }
+}
+
+// Toda lectura de git que sostenga un veredicto pasa por orq.gitVerificado, que exige codigo de
+// salida 0: leer solo la salida estandar confunde el vacio legitimo (exit 0, nada preparado) con
+// el fallo (indice bloqueado, tiempo agotado, git ausente), y ese es el peor de los dos errores.
+// Un fallo de infraestructura pasaba por veredicto, se registraba la constancia de revision del
+// diff vacio y el gate denegaba el commit despues sin explicacion.
+
+// Deshace el trabajo sin commitear de una task descartada. git clean respeta .gitignore.
+async function descartarTrabajo() {
+  await git(['reset', '--hard', 'HEAD'])
+  await git(['clean', '-fd'])
+}
+
+// El registro del flujo se pasa a orquestacion.js como dependencia.
+function registro(mensaje) {
+  log(mensaje)
 }
 
 // ── Gate de tests: ejecuta el comando real y lee el exit code ─────────────────
@@ -113,11 +188,18 @@ async function ejecutarTests(comando) {
 // archivos se leen del diff staged (cambios reales), no del auto-reporte: asi la
 // exencion docs/config se decide sobre lo que de verdad se toco.
 async function gateTests(task) {
-  await git(['add', '-A'])
-  const archivos = (await git(['diff', '--cached', '--name-only'])).out
+  const preparado = await orq.gitVerificado(['add', '-A'], git)
+  if (!preparado.ok) return { estado: 'FALLIDA', infraestructura: true, nota: preparado.error }
+
+  const listado = await orq.gitVerificado(['diff', '--cached', '--name-only'], git)
+  // Sin listado fiable no se puede decidir la exencion de docs/config: una lista vacia por fallo
+  // de git eximiria a una task que si toca codigo.
+  if (!listado.ok) return { estado: 'FALLIDA', infraestructura: true, nota: listado.error }
+
+  const archivos = listado.out
     .split('\n').map(function(s) { return s.trim() }).filter(Boolean)
 
-  const comando = orq.descubrirComandoTest('.')
+  const comando = orq.descubrirComandoTest(raizProyecto)
   var exitCode = null
   if (comando) {
     log('Gate de tests (' + task.titulo + '): ' + comando.cmd + ' ' + comando.args.join(' ') + ' [' + comando.fuente + ']')
@@ -133,25 +215,53 @@ async function gateTests(task) {
 // una mera marca de "hubo revision"). El contrato vive en hooks/sdd-review-signal.js
 // (un solo formato para emisor y consumidor). Si el modulo no esta disponible
 // (framework sin hooks instalados), la emision se omite sin romper el workflow.
+//
+// Ninguna via de "no se emitio" es muda. Una senal que falta hace que el gate deniegue el commit
+// mucho despues y en otro sitio, asi que el motivo tiene que constar aqui, cuando aun se sabe cual
+// es. Y las dos situaciones se separan: sin hooks instalados no hay gate que satisfacer (nota
+// informativa), mientras que un fallo con los hooks presentes anticipa la denegacion.
 async function emitirSenalRevision(diffRevisado) {
+  const fs = await import('node:fs')
+  const ruta = await resolverEnProyecto('hooks/sdd-review-signal.js')
+
+  if (!fs.existsSync(ruta)) {
+    log('Senal de revision omitida: el proyecto no tiene hooks/sdd-review-signal.js instalado, '
+      + 'asi que tampoco hay gate de revision que satisfacer.')
+    return null
+  }
+
+  const aviso = 'Si el gate de revision esta activo, denegara el commit de esta task.'
   try {
     const senal = await cargarModulo('hooks/sdd-review-signal.js')
+    const sesion = senal.resolveSessionId()
+    if (!sesion) {
+      log('Senal de revision NO emitida: la sesion no expone identificador. ' + aviso)
+      return null
+    }
     const hash = senal.hashDiff(diffRevisado)
-    senal.writeSignal(senal.resolveSessionId(), hash)
+    if (!senal.writeSignal(sesion, hash)) {
+      log('Senal de revision NO emitida: la senal de la sesion ' + sesion + ' no se pudo escribir. ' + aviso)
+      return null
+    }
     return hash
   } catch (e) {
+    log('Senal de revision NO emitida: ' + e.message + '. ' + aviso)
     return null
   }
 }
 
 // ── Fase 1: Descubrimiento ────────────────────────────────────────────────────
 phase('Descubrimiento')
-const specPath = (typeof args === 'string' ? args : '').trim()
-if (!specPath || specPath.length < 5) {
-  return { error: 'Se requiere el path de la spec como argumento (ej: ai_docs/tasks/spec_autenticacion.md)' }
-}
 
 const orq = await cargarModulo('.claude/workflows/lib/orquestacion.js')
+const raizProyecto = await raizDelProyecto()
+
+// El modo de ejecucion y la ruta de la spec llegan en el mismo argumento.
+// --parallel activa, en la Fase 2, la ejecucion concurrente de las tasks de un
+// mismo nivel de dependencias; el defecto es una task tras otra. Que garantiza
+// ese modo y que no: `recorrerNiveles` en lib/orquestacion.js.
+const { modoParalelo, specPath, error: errorArgs } = orq.parsearArgs(args)
+if (errorArgs) return { error: errorArgs }
 
 const discovery = await agent(`
 Encuentra todas las tasks asociadas a la spec: ${specPath}
@@ -180,7 +290,7 @@ if (taskList.length === 0) {
 // tasks en niveles topologicos que el bucle recorre en orden.
 var niveles
 try {
-  niveles = orq.computeNiveles(taskList, '.')
+  niveles = orq.computeNiveles(taskList, raizProyecto)
 } catch (e) {
   return { spec: specPath, error: e.message }
 }
@@ -190,7 +300,8 @@ for (var ci = 0; ci < contratosRotos.length; ci++) {
   log('AVISO contrato: ' + contratosRotos[ci])
 }
 
-log(taskList.length + ' tasks, ' + niveles.length + ' nivel(es) de dependencia')
+log(taskList.length + ' tasks, ' + niveles.length + ' nivel(es) de dependencia, modo '
+  + (modoParalelo ? 'concurrente (--parallel)' : 'secuencial'))
 for (var w = 0; w < niveles.length; w++) {
   log('Nivel ' + (w + 1) + ': ' + niveles[w].map(function(t) { return t.titulo }).join(', '))
 }
@@ -301,118 +412,46 @@ REGLAS:\n\
 }
 
 // Revisa el diff de la task y, si aprueba, emite la senal atada al diff y commitea.
-// Devuelve el resultado del implementador con el veredicto reflejado.
+// El criterio (que diff se revisa, cuando se descarta el trabajo, como se lee cada
+// comando de git) vive en orquestacion.js, donde se prueba con dobles; aqui solo se
+// cablean las piezas que hablan con el mundo exterior.
 async function revisarYComitear(task, resultado) {
-  await git(['add', '-A'])
-  var diff = (await git(['diff', '--cached'])).out
-
-  // Task sin cambios en el working tree (nada que revisar ni que commitear).
-  if (!diff || !diff.trim()) {
-    resultado.notas = (resultado.notas ? resultado.notas + ' ' : '') + '(sin cambios en el working tree: no se commitea)'
-    return resultado
-  }
-
-  var revision = await revisarDiff(task, diff)
-  var veredicto = revision ? revision.veredicto : 'ERROR'
-
-  // Una sola pasada de correccion si la revision es adversa.
-  if (veredicto !== 'APROBADA') {
-    log('Revision de ' + task.titulo + ': ' + veredicto + ' — una pasada de correccion')
-    await corregirTask(task, revision || { problemas_criticos: [], problemas_menores: [] })
-    await git(['add', '-A'])
-    diff = (await git(['diff', '--cached'])).out
-    revision = await revisarDiff(task, diff)
-    veredicto = revision ? revision.veredicto : 'ERROR'
-  }
-
-  // Sigue adversa: no se commitea. Se descarta el trabajo para no contaminar el
-  // diff de la siguiente task (git clean respeta .gitignore).
-  if (veredicto !== 'APROBADA') {
-    log('Task ' + task.titulo + ': FALLIDA (revision ' + veredicto + '), no se commitea')
-    await git(['reset', '--hard', 'HEAD'])
-    await git(['clean', '-fd'])
-    resultado.resultado = 'FALLIDA'
-    resultado.revision = revision
-    resultado.notas = (resultado.notas ? resultado.notas + ' ' : '') + '(revision adversarial: ' + veredicto + ')'
-    return resultado
-  }
-
-  // Aprobada: la senal ata el hash al diff revisado; despues se commitea.
-  const marca = await emitirSenalRevision(diff)
-  const subject = String(resultado.commit_message || ('feat: ' + task.titulo)).substring(0, 72)
-  const cuerpo = resultado.commit_cuerpo || resultado.notas || 'Implementa la task segun su especificacion.'
-  await git(['commit', '-m', subject, '-m', cuerpo])
-  log('Task ' + task.titulo + ': APROBADA y commiteada' + (marca ? ' (senal ' + marca + ')' : ''))
-  resultado.revision = revision
-  resultado.marca_revision = marca
-  return resultado
+  return orq.revisarYComitear(task, resultado, {
+    spawnGit: git,
+    log: registro,
+    revisar: revisarDiff,
+    corregir: corregirTask,
+    emitirSenal: emitirSenalRevision,
+    descartar: descartarTrabajo,
+  })
 }
 
-// Recorrido topologico: los niveles en orden y, dentro de cada nivel, una task
-// tras otra. Si una dependencia previa termino FALLIDA, la task se marca
-// bloqueada sin ejecutarla — y su propio FALLIDA arrastra a quien dependa de ella.
-const allResults = []
-for (const nivel of niveles) {
-  for (const task of nivel) {
-    const depsFallidas = (task.dependencias || []).filter(function(d) {
-      return allResults.some(function(r) { return r.task_path === d && r.resultado === 'FALLIDA' })
-    })
-
-    if (depsFallidas.length > 0) {
-      log('Task ' + task.titulo + ': BLOQUEADA (dependencias fallidas: ' + depsFallidas.join(', ') + ')')
-      allResults.push({
-        task_path: task.path,
-        task_titulo: task.titulo,
-        resultado: 'FALLIDA',
-        archivos_modificados: [],
-        notas: 'No se implemento: sus dependencias no se completaron (' + depsFallidas.join(', ') + ')'
-      })
-      continue
-    }
-
-    log('Implementando: ' + task.titulo)
-    const resultado = await implementarTask(task)
-
-    // Sin resultado, o el propio implementador fallo: nada que revisar ni commitear.
-    if (!resultado || resultado.resultado === 'FALLIDA') {
-      allResults.push(resultado || {
-        task_path: task.path,
-        task_titulo: task.titulo,
-        resultado: 'FALLIDA',
-        archivos_modificados: [],
-        notas: 'El agente no retorno resultado'
-      })
-      continue
-    }
-
-    // Gate de tests: ejecuta la suite real y lee el exit code, antes de la
-    // revision y del commit. Rojo (exit != 0) bloquea; falta de comando bloquea
-    // solo si la task toca codigo. SDD_GUARD_SKIP=1 degrada el bloqueo a aviso
-    // (escape puntual para un fallo ajeno a la task).
-    const gate = await gateTests(task)
-    resultado.gate_tests = gate
-    if (gate.estado === 'FALLIDA' && process.env.SDD_GUARD_SKIP !== '1') {
-      log('Task ' + task.titulo + ': FALLIDA (gate de tests) — ' + gate.nota + ', no se commitea')
-      await git(['reset', '--hard', 'HEAD'])
-      await git(['clean', '-fd'])
-      resultado.resultado = 'FALLIDA'
-      resultado.notas = (resultado.notas ? resultado.notas + ' ' : '') + '(gate de tests: ' + gate.nota + ')'
-      allResults.push(resultado)
-      continue
-    }
-    if (gate.estado !== 'PASA') {
-      log('Gate de tests (' + task.titulo + '): ' + gate.nota)
-    }
-
-    allResults.push(await revisarYComitear(task, resultado))
-  }
+// Ejecuta una task completa: gate de dependencias fallidas, implementacion, gate de
+// tests y, si pasa, revision + commit. El gate de tests corre la suite real y lee su
+// exit code: rojo bloquea el commit y descarta el trabajo de la task; la falta de
+// comando bloquea solo si la task toca codigo. SDD_GUARD_SKIP=1 degrada ese bloqueo a
+// aviso (escape puntual para un fallo ajeno a la task), pero nunca el fallo de git.
+//
+// El orden y las decisiones viven en orquestacion.js, probados con dobles; aqui se
+// cablean las piezas con efecto: el agente implementador, el gate que spawnea la
+// suite, la revision + commit y el descarte del trabajo.
+async function ejecutarTask(task, resultadosPrevios) {
+  return orq.ejecutarTask(task, resultadosPrevios, {
+    log: registro,
+    implementar: implementarTask,
+    gateTests: gateTests,
+    revisarYComitear: revisarYComitear,
+    descartar: descartarTrabajo,
+  })
 }
 
-var completadas = 0
-var fallidas = 0
-for (var ri = 0; ri < allResults.length; ri++) {
-  if (allResults[ri].resultado === 'COMPLETADA') { completadas++ } else { fallidas++ }
-}
+// Recorrido topologico: los niveles en orden y, dentro de cada nivel, una task tras
+// otra (defecto) o todas a la vez con --parallel. La frontera de lo que el modo
+// concurrente garantiza y de lo que deja en manos de quien lo pide esta documentada
+// sobre `recorrerNiveles`, en lib/orquestacion.js.
+const allResults = await orq.recorrerNiveles(niveles, ejecutarTask, { modoParalelo })
+
+const { completadas, fallidas } = orq.resumirResultados(allResults)
 log('Implementacion: ' + completadas + ' completadas, ' + fallidas + ' fallidas de ' + taskList.length)
 
 // ── Fase 3: Convergencia ───────────────────────────────────────────────────────
@@ -437,40 +476,21 @@ Emite el veredicto.', {
   })
 }
 
-var convergencia
-if (completadas !== taskList.length) {
-  log('Convergencia omitida: ' + fallidas + ' tasks fallidas/bloqueadas')
-  convergencia = { veredicto: 'OMITIDA', razon: 'tasks_fallidas' }
-} else {
-  const resultadoConvergencia = await verificarConvergencia()
-  if (!resultadoConvergencia || !resultadoConvergencia.veredicto) {
-    log('Convergencia: la respuesta del agente no parseo contra el schema')
-    convergencia = { veredicto: 'ERROR', razon: 'parse_failed' }
-  } else if (resultadoConvergencia.veredicto === 'DIVERGE') {
-    const tasksGeneradas = resultadoConvergencia.tasks_generadas || []
-    log('DIVERGENCIA: spec no cerrada, ' + tasksGeneradas.length + ' task(s) de convergencia generadas: ' + tasksGeneradas.join(', '))
-    convergencia = {
-      veredicto: 'DIVERGE',
-      criterios_verificados: resultadoConvergencia.criterios_verificados,
-      tasks_generadas: tasksGeneradas
-    }
-  } else {
-    log('CONVERGENCIA: spec cerrada, ' + (resultadoConvergencia.criterios_verificados || 0) + ' criterios verificados')
-    convergencia = {
-      veredicto: 'CONVERGIDA',
-      criterios_verificados: resultadoConvergencia.criterios_verificados,
-      tasks_generadas: []
-    }
-  }
-}
+const convergencia = await orq.resolverConvergencia({
+  completadas: completadas,
+  fallidas: fallidas,
+  total: taskList.length,
+  verificar: verificarConvergencia,
+  log: registro,
+})
 
-return {
+return orq.construirResultado({
   spec: specPath,
   spec_titulo: discovery.spec_titulo,
   tasks_total: taskList.length,
   niveles: niveles.length,
-  tasks_completadas: completadas,
-  tasks_fallidas: fallidas,
+  completadas: completadas,
+  fallidas: fallidas,
   implementaciones: allResults,
-  convergencia: convergencia
-}
+  convergencia: convergencia,
+})

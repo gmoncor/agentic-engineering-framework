@@ -39,6 +39,7 @@ const fs = require('fs');
 const path = require('path');
 const { readPayload, readToolCall, warn, loadConfig } = require('./sdd-hook-utils');
 const { trackRead, hasRead, hasAnyRead } = require('./sdd-read-tracker');
+const { resolveRepoPath } = require('./sdd-plan-state');
 
 const READ_TOOLS = new Set([
   'Read',        // Claude Code
@@ -60,8 +61,12 @@ const WRITE_TOOLS = new Set([
   'create_file',
 ]);
 
+// Firma estable (ver hooks/gate-signatures.json). Este hook es advisory-only: nunca deniega, asi
+// que no existe una firma _BLOCK para el, solo esta _ADVISORY.
+const ADVISORY_FIRMA = '[SDD_READ_EDIT_ADVISORY] ';
+
 function advisory(filePath) {
-  return 'SDD: escribiendo ' + filePath + ' sin haberlo leido primero en esta '
+  return ADVISORY_FIRMA + 'SDD: escribiendo ' + filePath + ' sin haberlo leido primero en esta '
     + 'sesion. Verifica que conoces el contenido actual antes de sobrescribirlo.';
 }
 
@@ -89,16 +94,21 @@ async function main() {
   if (!sessionId) process.exit(0);
 
   if (READ_TOOLS.has(call.name)) {
-    if (filePath) trackRead(sessionId, filePath);
+    if (filePath) trackRead(sessionId, filePath, data.cwd);
     process.exit(0);
   }
 
   if (!WRITE_TOOLS.has(call.name) || !filePath) process.exit(0);
 
-  // Archivo nuevo: no existia para leerlo.
-  if (!fs.existsSync(path.resolve(filePath))) process.exit(0);
+  // Archivo nuevo, o ruta que no se puede situar en el proyecto: no habia nada que leer. La ruta
+  // se ancla a la raiz del proyecto (resolveRepoPath, en sdd-plan-state.js) porque una comprobada
+  // contra el directorio equivocado responde "no existe" en silencio y calla el aviso entero.
+  const resolved = resolveRepoPath(filePath, data.cwd);
+  if (!resolved || !fs.existsSync(resolved)) process.exit(0);
 
-  if (hasRead(sessionId, filePath)) process.exit(0);
+  // resolveRepoPath es idempotente sobre una absoluta: se reutiliza la ya situada en vez de
+  // volver a buscar la raiz del repositorio.
+  if (hasRead(sessionId, resolved)) process.exit(0);
 
   // Sin lectura de esta ruta. Solo se avisa si consta que el backend entrega
   // lecturas: Claude Code siempre; los demas solo si ya hubo alguna lectura.
@@ -109,4 +119,9 @@ async function main() {
   warn(advisory(filePath), call);
 }
 
-main().catch(() => process.exit(0));
+// Hook advisory-only: no entra por runWithFailOpen porque nunca emite un veredicto de bloqueo,
+// asi que su fallo interno no puede leerse como uno. La guarda de ejecucion directa si aplica:
+// importar el modulo para reutilizar sus constantes no debe disparar la lectura de stdin.
+if (require.main === module) {
+  main().catch(() => process.exit(0));
+}

@@ -36,26 +36,31 @@
 
 const { spawnSync } = require('child_process');
 const path = require('path');
-const { readPayload, readToolCall, warn, deny, skipRequested, loadConfig } = require('./sdd-hook-utils');
+const { readPayload, readToolCall, warn, deny, skipRequested, loadConfig, runWithFailOpen } = require('./sdd-hook-utils');
 const { DEFAULT_TTL_MS, readSignal, hashDiff } = require('./sdd-review-signal');
 
 const SHELL_TOOLS = new Set(['Bash', 'run_command', 'shell']);
 const GUARDED_CMD_RE = /\bgit\s+(commit|merge)\b/;
 
-const SIN_SENAL = 'SDD: este diff no consta revisado. La revision adversarial por task debe '
-  + 'pasar ANTES del commit y emitir su senal. Usa /implementar-spec, que emite la senal de '
-  + 'revision automaticamente. Los comandos /implementar y /revision manuales no emiten esta senal.';
+// Firmas estables (ver hooks/gate-signatures.json): el escaner de auditoria distingue el
+// bloqueo real (sin senal, o hash que no ata) del aviso que nunca impide el commit.
+const BLOCK_FIRMA = '[SDD_REVIEW_BLOCK] ';
+const ADVISORY_FIRMA = '[SDD_REVIEW_ADVISORY] ';
 
-const HASH_NO_ATA = 'SDD: la revision registrada no corresponde al diff que vas a commitear '
-  + '(el codigo cambio despues de revisarse). Usa /implementar-spec, que emite la senal de '
-  + 'revision automaticamente sobre el diff actual antes de commitear.';
+const SIN_SENAL = BLOCK_FIRMA + 'SDD: este diff no consta revisado. La revision adversarial por '
+  + 'task debe pasar ANTES del commit y emitir su senal. Usa /implementar-spec, que emite la senal '
+  + 'de revision automaticamente. Los comandos /implementar y /revision manuales no emiten esta senal.';
 
-const SIN_DIFF = 'SDD: no hay diff cacheado que contrastar (nada staged, o git no disponible). '
-  + 'Este aviso no bloquea: sin el diff no se puede verificar la revision. Haz git add de lo que '
-  + 'vas a commitear y asegurate de que paso la revision adversarial.';
+const HASH_NO_ATA = BLOCK_FIRMA + 'SDD: la revision registrada no corresponde al diff que vas a '
+  + 'commitear (el codigo cambio despues de revisarse). Usa /implementar-spec, que emite la senal '
+  + 'de revision automaticamente sobre el diff actual antes de commitear.';
 
-const SKIP_AVISO = 'SDD: SDD_GUARD_SKIP activo. El bloqueo de revision queda degradado a aviso; '
-  + 'usalo solo para desbloquear una situacion puntual, no de forma permanente.';
+const SIN_DIFF = ADVISORY_FIRMA + 'SDD: no hay diff cacheado que contrastar (nada staged, o git no '
+  + 'disponible). Este aviso no bloquea: sin el diff no se puede verificar la revision. Haz git add '
+  + 'de lo que vas a commitear y asegurate de que paso la revision adversarial.';
+
+const SKIP_AVISO = ADVISORY_FIRMA + 'SDD: SDD_GUARD_SKIP activo. El bloqueo de revision queda '
+  + 'degradado a aviso; usalo solo para desbloquear una situacion puntual, no de forma permanente.';
 
 async function main() {
   const data = await readPayload();
@@ -104,4 +109,7 @@ function ttlMs(config) {
   return hours > 0 ? hours * 60 * 60 * 1000 : DEFAULT_TTL_MS;
 }
 
-main().catch(() => process.exit(0));
+// El fallo interno sale por runWithFailOpen (exit 0 + aviso firmado), nunca como veredicto.
+if (require.main === module) {
+  runWithFailOpen('sdd-review-gate', main);
+}

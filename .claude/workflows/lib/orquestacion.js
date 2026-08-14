@@ -10,6 +10,43 @@
 const fs = require('fs');
 const path = require('path');
 
+// ── Separadores de ruta en contenido externo ─────────────────────────────────
+
+// Comienzo de una ruta absoluta de Windows: unidad (C:\ o C:/) o recurso de red (\\servidor).
+const PREFIJO_WINDOWS_RE = /^(?:[A-Za-z]:[\\/]|\\\\)/;
+
+/**
+ * Traduce a los separadores del sistema en curso una ruta de procedencia externa: aqui, el path
+ * de una dependencia declarada en el documento de una task.
+ *
+ * SIEMPRE ANTES de resolver, comparar o partir la ruta. La barra invertida es separador en Windows
+ * y un caracter valido de nombre de archivo en los sistemas tipo Unix: sin traducirla,
+ * "ai_docs\tasks\001_a.md" no es una ruta de tres tramos sino UN nombre de archivo. De ahi salian
+ * las dos averias de este modulo: el archivo no existe con ese nombre, asi que la dependencia se
+ * denunciaba como inexistente (un bloqueo falso y visible), y la misma cadena tampoco casaba con
+ * ninguna task conocida, asi que el orden topologico la perdia.
+ *
+ * Solo actua en el cruce entre sistemas, nunca sobre una ruta nativa:
+ *   - En Windows la ruta se devuelve intacta: alli las dos barras ya son separadores.
+ *   - En un sistema tipo Unix se traduce solo si lleva barra invertida y ademas no lleva ninguna
+ *     barra normal, o si abre con un prefijo de unidad de Windows.
+ *
+ * El criterio es el mismo que aplica el guard de escrituras (hooks/sdd-plan-state.js
+ * `toNativePath`), y un canary de la suite exige que ambas copias coincidan sobre la misma bateria
+ * de formas. Se replica en vez de importarse porque este modulo pertenece a la orquestacion y los
+ * hooks son la capa de enforcement: importar hacia abajo ataria el motor de workflows al detalle
+ * interno de un guard, cuya presencia el proyecto puede recortar.
+ *
+ * `api` (path.win32 / path.posix) solo existe para ejercitar las dos plataformas desde una sola.
+ */
+function rutaNativa(cruda, api) {
+  const ruta = String(cruda == null ? '' : cruda);
+  const impl = api || path;
+  if (impl.sep === '\\' || !ruta.includes('\\')) return ruta;
+  if (ruta.includes('/') && !PREFIJO_WINDOWS_RE.test(ruta)) return ruta;
+  return ruta.replace(/\\/g, '/');
+}
+
 // ── Niveles topologicos y ciclos ─────────────────────────────────────────────
 
 /**
@@ -18,9 +55,19 @@ const path = require('path');
  * el documento al que apuntan EXISTE. Verificarlo es cosa de validarDependencias:
  * sin esa comprobacion previa, una dependencia mal escrita se cuela aqui como
  * "externa" y la task arranca como si no dependiera de nada.
+ *
+ * La comparacion se hace sobre la ruta ya traducida, en los dos lados: una dependencia escrita con
+ * separadores de Windows denota la misma task que la nativa, y compararlas crudas la dejaria
+ * fuera del grafo. Devuelve las rutas traducidas porque quien las recibe las contrasta contra el
+ * mismo conjunto de claves.
  */
 function depsInternas(task, conocidas) {
-  return (task.dependencias || []).filter(d => conocidas.has(d));
+  return (task.dependencias || []).map(d => rutaNativa(d)).filter(d => conocidas.has(d));
+}
+
+/** Clave con la que una task se identifica dentro del grafo: su path, ya traducido. */
+function clave(task) {
+  return rutaNativa(task.path);
 }
 
 /**
@@ -29,13 +76,19 @@ function depsInternas(task, conocidas) {
  * escrito: descartarla en silencio lanzaria la task sin su pre-requisito.
  */
 function validarDependencias(tasks, raiz) {
-  const conocidas = new Set(tasks.map(t => t.path));
+  const conocidas = new Set(tasks.map(clave));
+  const base = rutaNativa(raiz || '.');
   const rotas = [];
 
   for (const t of tasks) {
     for (const d of (t.dependencias || [])) {
-      if (conocidas.has(d)) continue;
-      if (!fs.existsSync(path.resolve(raiz || '.', d))) rotas.push(t.path + ' -> ' + d);
+      const dep = rutaNativa(d);
+      if (conocidas.has(dep)) continue;
+      // El path se traduce ANTES de resolverlo: sin eso, una dependencia escrita con separadores
+      // de Windows se busca en disco como un unico nombre de archivo, no existe con ese nombre, y
+      // el plan queda denunciado por una averia que no tiene. La ruta cruda se conserva en el
+      // mensaje: es lo que el autor escribio y lo que tiene que corregir.
+      if (!fs.existsSync(path.resolve(base, dep))) rotas.push(t.path + ' -> ' + d);
     }
   }
 
@@ -49,8 +102,10 @@ function validarDependencias(tasks, raiz) {
 
 /**
  * Agrupa las tasks en niveles topologicos: nivel 1 = sin dependencias, nivel N =
- * dependencias resueltas en niveles anteriores. Sirve para visualizar el plan; el
- * despacho real va task a task, en cuanto las dependencias de cada una terminan.
+ * dependencias resueltas en niveles anteriores. Los niveles son un plan de
+ * ejecucion. Las tasks de un mismo nivel son independientes entre si. Por
+ * defecto se ejecutan secuencialmente; el invocador puede pedir ejecucion
+ * concurrente dentro de un nivel.
  *
  * Un ciclo es un error de planificacion: lanzarlo en paralelo seria ejecutar a la
  * vez justo lo que la dependencia pretendia ordenar.
@@ -58,7 +113,7 @@ function validarDependencias(tasks, raiz) {
 function computeNiveles(tasks, raiz) {
   validarDependencias(tasks, raiz);
 
-  const conocidas = new Set(tasks.map(t => t.path));
+  const conocidas = new Set(tasks.map(clave));
   const completadas = new Set();
   const niveles = [];
   let restantes = tasks.slice();
@@ -72,9 +127,9 @@ function computeNiveles(tasks, raiz) {
         + '. Corregir las dependencias antes de implementar.');
     }
 
-    for (const t of nivel) completadas.add(t.path);
+    for (const t of nivel) completadas.add(clave(t));
     niveles.push(nivel);
-    restantes = restantes.filter(t => !completadas.has(t.path));
+    restantes = restantes.filter(t => !completadas.has(clave(t)));
   }
   return niveles;
 }
@@ -90,12 +145,13 @@ function verificarContratos(tasks) {
   const productores = new Map();
   for (const t of tasks) {
     for (const c of (t.contratos || [])) {
-      if (c.tipo === 'produce') productores.set(c.nombre, t.path);
+      // Se indexa por la clave traducida: es la que despues se contrasta con las dependencias.
+      if (c.tipo === 'produce') productores.set(c.nombre, clave(t));
     }
   }
 
   const problemas = [];
-  const conocidas = new Set(tasks.map(t => t.path));
+  const conocidas = new Set(tasks.map(clave));
 
   for (const t of tasks) {
     for (const c of (t.contratos || [])) {
@@ -103,7 +159,7 @@ function verificarContratos(tasks) {
       const productor = productores.get(c.nombre);
       if (!productor) {
         problemas.push(t.path + ' consume el contrato "' + c.nombre + '" que ninguna task produce');
-      } else if (productor !== t.path && !depsInternas(t, conocidas).includes(productor)) {
+      } else if (productor !== clave(t) && !depsInternas(t, conocidas).includes(productor)) {
         problemas.push(t.path + ' consume "' + c.nombre + '" pero no depende de su productor ' + productor);
       }
     }
@@ -116,7 +172,8 @@ function verificarContratos(tasks) {
 /**
  * Descubre el comando de test del proyecto. El gate lo EJECUTA y lee su exit
  * code: nunca cree numeros de tests que el propio implementador reporte (quien
- * escribe el codigo no puede certificar sus tests sin circularidad).
+ * escribe el codigo no puede certificar sus tests sin circularidad) ni lee el
+ * texto que la suite imprime (un arnes puede imprimir "OK" y terminar en rojo).
  *
  * Prioridad: comando configurado explicitamente > npm > pytest. La ausencia de
  * comando NO es un fallo aqui; es el llamador quien decide si degrada o bloquea
@@ -187,20 +244,35 @@ function tocaCodigoEjecutable(archivos) {
 }
 
 /**
+ * Traduce el exit code del comando a veredicto. Verde es EXACTAMENTE exit 0: no
+ * hay otra evidencia admisible.
+ *
+ * Un proceso que agota su tiempo limite, que muere por una senal o que no llega
+ * a arrancar no devuelve codigo (null): eso es rojo, nunca un pase. Se separa
+ * del rojo normal solo en el mensaje, porque la causa se investiga distinto —
+ * el estado es el mismo y bloquea igual.
+ */
+function veredictoPorExitCode(exitCode, fuente) {
+  if (exitCode === 0) return { estado: 'PASA', nota: 'Tests verdes (exit 0) via ' + fuente };
+  if (!Number.isInteger(exitCode)) {
+    return {
+      estado: 'FALLIDA',
+      nota: 'Tests en rojo (sin codigo de salida: timeout, senal o comando no ejecutable) via ' + fuente,
+    };
+  }
+  return { estado: 'FALLIDA', nota: 'Tests en rojo (exit ' + exitCode + ') via ' + fuente };
+}
+
+/**
  * Decide el veredicto del gate a partir del comando descubierto, su exit code y
  * los archivos que la task modifico. Funcion pura: el spawn del comando ocurre en
- * el workflow. Estados: PASA | FALLIDA | ADVISORY.
+ * el workflow, que pasa aqui el codigo tal cual lo devolvio el proceso.
+ * Estados: PASA | FALLIDA | ADVISORY; solo PASA desbloquea.
  */
 function evaluarGateTests(entrada) {
   const { comando, exitCode, archivos } = entrada || {};
 
-  // Hay comando: manda el exit code. Rojo (!= 0) SIEMPRE bloquea.
-  if (comando) {
-    if (exitCode === 0) {
-      return { estado: 'PASA', nota: 'Tests verdes (exit 0) via ' + comando.fuente };
-    }
-    return { estado: 'FALLIDA', nota: 'Tests en rojo (exit ' + exitCode + ') via ' + comando.fuente };
-  }
+  if (comando) return veredictoPorExitCode(exitCode, comando.fuente);
 
   // Sin comando: bloquea solo si la task toca codigo (no hay como probarlo);
   // docs/config quedan exentas y continuan con aviso, no se bloquea sin evidencia.
@@ -210,11 +282,445 @@ function evaluarGateTests(entrada) {
   return { estado: 'ADVISORY', nota: 'No se encontro comando de test; la task solo toca docs/config (exenta)' };
 }
 
+// ── Salida de git: dato utilizable o fallo de infraestructura ────────────────
+
+/**
+ * Traduce el resultado de un comando de git a "salida utilizable" o "fallo", por su CODIGO DE
+ * SALIDA. Funcion pura: el spawn ocurre en el workflow, que pasa aqui lo que devolvio el proceso.
+ *
+ * EL DEFECTO QUE CIERRA
+ * Leer solo la salida estandar confunde dos situaciones que no son la misma: no hay nada
+ * preparado (exit 0, diff vacio de verdad) y git no pudo ejecutarse (indice bloqueado, tiempo
+ * agotado, binario ausente). Ambas daban cadena vacia, asi que un fallo de infraestructura pasaba
+ * por veredicto: se registraba el hash de esa cadena vacia como constancia de revision y el gate
+ * denegaba el commit despues, sin que nada explicase por que.
+ *
+ * Verde es EXACTAMENTE exit 0, igual que en el gate de tests. Un proceso sin codigo (null) agoto
+ * su tiempo, murio por una senal o no llego a arrancar: eso es fallo, nunca un vacio legitimo.
+ */
+function interpretarSalidaGit(argv, resultado) {
+  const cmd = 'git ' + (argv || []).join(' ');
+  const code = resultado ? resultado.code : null;
+
+  if (code === 0) return { ok: true, out: (resultado && resultado.out) || '' };
+
+  const causa = Number.isInteger(code)
+    ? 'exit ' + code
+    : 'sin codigo de salida (tiempo agotado, senal o git no ejecutable)';
+  const detalle = String((resultado && resultado.err) || '').trim().slice(-300);
+
+  return {
+    ok: false,
+    out: '',
+    error: cmd + ' fallo: ' + causa + (detalle ? ' — ' + detalle : ''),
+  };
+}
+
+// ── Argumentos del comando ───────────────────────────────────────────────────
+
+// `--parallel` pide ejecutar A LA VEZ las tasks de un mismo nivel de
+// dependencias. El defecto es una task tras otra: el flag es opt-in y no altera
+// el comportamiento de quien no lo escribe.
+const FLAG_PARALELO = /(^|\s)--parallel(\s|$)/;
+
+const USO = 'Se requiere el path de la spec como argumento '
+  + '(ej: ai_docs/tasks/spec_autenticacion.md, opcionalmente con --parallel)';
+
+/**
+ * Separa el modo de ejecucion de la ruta de la spec: los dos llegan en el mismo
+ * argumento. Devuelve `{ modoParalelo, specPath, error }`.
+ *
+ * El flag se RETIRA del texto antes de quedarse con la ruta. Pegado a ella, la
+ * ruta no existiria en disco y la spec se denunciaria como spec sin tasks. El
+ * flag puede ir antes o despues de la ruta.
+ */
+function parsearArgs(crudos) {
+  const texto = (typeof crudos === 'string' ? crudos : '').trim();
+  const modoParalelo = FLAG_PARALELO.test(texto);
+  const specPath = texto.replace(FLAG_PARALELO, ' ').trim();
+  const error = (!specPath || specPath.length < 5) ? USO : null;
+  return { modoParalelo, specPath, error };
+}
+
+// ── Git: lectura verificada por codigo de salida ─────────────────────────────
+
+/** Registro de eventos del flujo. Opcional en toda funcion que lo acepta. */
+function registrar(deps) {
+  return (deps && deps.log) || function () {};
+}
+
+/**
+ * Ejecuta un comando de git y devuelve `{ ok, out, error }`: exige que HAYA
+ * CORRIDO, por su codigo de salida (interpretarSalidaGit, arriba).
+ *
+ * `spawn` se inyecta. El proceso hijo pertenece al workflow, pero el criterio que
+ * decide si su salida sostiene un veredicto vive aqui, donde un doble devuelve el
+ * codigo que se quiera y el test observa la consecuencia. Mientras el criterio
+ * vivia en el workflow, la unica cobertura posible era buscar su texto en el
+ * fuente, y esa busqueda sobrevive a una version que ignore el codigo de salida.
+ */
+async function gitVerificado(argv, spawn) {
+  return interpretarSalidaGit(argv, await spawn(argv));
+}
+
+/**
+ * Un comando de git que no llego a correr no es un veredicto sobre la task: no se
+ * commitea, pero tampoco se descarta el trabajo — nada acredita que este mal, y
+ * descartarlo lo perderia. El motivo va en las notas para que el fallo se lea
+ * como lo que es y no como una revision adversa.
+ */
+function falloDeGit(resultado, mensaje, log) {
+  (log || function () {})('Task ' + resultado.task_titulo
+    + ': FALLIDA (git no pudo ejecutarse) — ' + mensaje
+    + '. No se commitea; el working tree se conserva intacto.');
+  resultado.resultado = 'FALLIDA';
+  resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
+    + '(fallo de git, no veredicto de revision: ' + mensaje + ')';
+  return resultado;
+}
+
+// ── Revision del diff de una task y su commit ────────────────────────────────
+
+/**
+ * Prepara el diff de la task y lo lee. Las dos operaciones se verifican por
+ * codigo de salida: una lectura que no corrio devuelve cadena vacia igual que un
+ * working tree limpio, y confundirlas registraba la constancia de revision de un
+ * diff vacio.
+ */
+async function diffPreparado(spawn) {
+  const preparado = await gitVerificado(['add', '-A'], spawn);
+  if (!preparado.ok) return { ok: false, error: preparado.error };
+
+  const lectura = await gitVerificado(['diff', '--cached'], spawn);
+  if (!lectura.ok) return { ok: false, error: lectura.error };
+
+  return { ok: true, diff: lectura.out };
+}
+
+/** Emite la constancia atada al diff revisado y commitea. El commit tambien se lee por exit code. */
+async function comitearAprobada(task, resultado, contexto, deps) {
+  const log = registrar(deps);
+  const marca = await deps.emitirSenal(contexto.diff);
+  const subject = String(resultado.commit_message || ('feat: ' + task.titulo)).substring(0, 72);
+  const cuerpo = resultado.commit_cuerpo || resultado.notas
+    || 'Implementa la task segun su especificacion.';
+
+  // Un commit denegado (por un gate, por un indice bloqueado) dejaria el trabajo
+  // sin commitear y el informe diria lo contrario.
+  const commit = await gitVerificado(['commit', '-m', subject, '-m', cuerpo], deps.spawnGit);
+  if (!commit.ok) return falloDeGit(resultado, commit.error, log);
+
+  log('Task ' + task.titulo + ': APROBADA y commiteada' + (marca ? ' (senal ' + marca + ')' : ''));
+  resultado.revision = contexto.revision;
+  resultado.marca_revision = marca;
+  return resultado;
+}
+
+/**
+ * Revisa el diff de la task y, si la revision aprueba, emite la constancia atada
+ * a ESE diff y commitea. Devuelve el resultado del implementador con el veredicto
+ * reflejado.
+ *
+ * `deps`: `spawnGit` (ejecuta git), `revisar`, `corregir`, `emitirSenal`,
+ * `descartar` (deshace el trabajo sin commitear), `log`.
+ */
+async function revisarYComitear(task, resultado, deps) {
+  const d = deps || {};
+  const log = registrar(d);
+
+  const primera = await diffPreparado(d.spawnGit);
+  if (!primera.ok) return falloDeGit(resultado, primera.error, log);
+  let diff = primera.diff;
+
+  // Task sin cambios en el working tree: git corrio y no hay nada preparado (el
+  // vacio es real, no el residuo de un comando que fallo).
+  if (!diff.trim()) {
+    resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
+      + '(sin cambios en el working tree: no se commitea)';
+    return resultado;
+  }
+
+  let revision = await d.revisar(task, diff);
+  let veredicto = revision ? revision.veredicto : 'ERROR';
+
+  // Una sola pasada de correccion si la revision es adversa.
+  if (veredicto !== 'APROBADA') {
+    log('Revision de ' + task.titulo + ': ' + veredicto + ' — una pasada de correccion');
+    await d.corregir(task, revision || { problemas_criticos: [], problemas_menores: [] });
+
+    const segunda = await diffPreparado(d.spawnGit);
+    if (!segunda.ok) return falloDeGit(resultado, segunda.error, log);
+    diff = segunda.diff;
+
+    revision = await d.revisar(task, diff);
+    veredicto = revision ? revision.veredicto : 'ERROR';
+  }
+
+  // Sigue adversa: no se commitea. Se descarta el trabajo para que no contamine
+  // el diff de la siguiente task.
+  if (veredicto !== 'APROBADA') {
+    log('Task ' + task.titulo + ': FALLIDA (revision ' + veredicto + '), no se commitea');
+    await d.descartar();
+    resultado.resultado = 'FALLIDA';
+    resultado.revision = revision;
+    resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
+      + '(revision adversarial: ' + veredicto + ')';
+    return resultado;
+  }
+
+  return comitearAprobada(task, resultado, { diff, revision }, d);
+}
+
+// ── Ejecucion de una task ────────────────────────────────────────────────────
+
+/**
+ * Dependencias de la task que quedaron FALLIDAS entre los resultados ya
+ * acumulados. Una task cuyo pre-requisito no se completo no se implementa: se
+ * reporta bloqueada.
+ */
+function depsFallidas(task, resultadosPrevios) {
+  const previos = resultadosPrevios || [];
+  return (task.dependencias || []).filter(function (d) {
+    return previos.some(function (r) { return r && r.task_path === d && r.resultado === 'FALLIDA'; });
+  });
+}
+
+/** Resultado FALLIDA sin trabajo asociado, con el motivo en las notas. */
+function resultadoVacio(task, notas) {
+  return {
+    task_path: task.path,
+    task_titulo: task.titulo,
+    resultado: 'FALLIDA',
+    archivos_modificados: [],
+    notas,
+  };
+}
+
+/**
+ * El escape de emergencia degrada el bloqueo del gate de tests a aviso. Se lee
+ * del entorno; `env` se inyecta para poder ejercitar las dos ramas sin tocar el
+ * entorno del proceso que corre los tests.
+ */
+function escapeActivo(env) {
+  return (env || process.env).SDD_GUARD_SKIP === '1';
+}
+
+/**
+ * Gate de tests y, si pasa, revision + commit. El rojo de la suite BLOQUEA el
+ * commit y descarta el trabajo de la task: es el unico veredicto admisible sobre
+ * los tests, y no se cree ningun numero que el implementador reporte.
+ */
+async function trasGateTests(task, resultado, deps) {
+  const log = registrar(deps);
+  const gate = await deps.gateTests(task);
+  resultado.gate_tests = gate;
+
+  // git no llego a correr: eso no dice nada sobre la task. No se commitea, pero
+  // tampoco se descarta el trabajo, y no lo degrada el escape de emergencia —
+  // con git averiado no hay commit posible.
+  if (gate.infraestructura) return falloDeGit(resultado, gate.nota, log);
+
+  if (gate.estado === 'FALLIDA' && !escapeActivo(deps.env)) {
+    log('Task ' + task.titulo + ': FALLIDA (gate de tests) — ' + gate.nota + ', no se commitea');
+    await deps.descartar();
+    resultado.resultado = 'FALLIDA';
+    resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
+      + '(gate de tests: ' + gate.nota + ')';
+    return resultado;
+  }
+  if (gate.estado !== 'PASA') {
+    log('Gate de tests (' + task.titulo + '): ' + gate.nota);
+  }
+
+  return deps.revisarYComitear(task, resultado);
+}
+
+/**
+ * Ejecuta una task completa: gate de dependencias fallidas, implementacion, gate
+ * de tests y, si pasa, revision + commit. La usan los dos modos de recorrido.
+ *
+ * Nunca propaga una excepcion: cualquier fallo, esperado o no, vuelve como
+ * resultado FALLIDA. De eso depende que el fallo de una task no tumbe a las
+ * hermanas de su mismo nivel cuando el nivel se lanza a la vez.
+ *
+ * `deps`: `implementar`, `gateTests`, `revisarYComitear`, `descartar`, `log`,
+ * `env`.
+ */
+async function ejecutarTask(task, resultadosPrevios, deps) {
+  const d = deps || {};
+  const log = registrar(d);
+
+  const bloqueada = depsFallidas(task, resultadosPrevios);
+  if (bloqueada.length > 0) {
+    log('Task ' + task.titulo + ': BLOQUEADA (dependencias fallidas: ' + bloqueada.join(', ') + ')');
+    return resultadoVacio(task, 'No se implemento: sus dependencias no se completaron ('
+      + bloqueada.join(', ') + ')');
+  }
+
+  try {
+    log('Implementando: ' + task.titulo);
+    const resultado = await d.implementar(task);
+
+    // Sin resultado, o el propio implementador fallo: nada que revisar ni commitear.
+    if (!resultado || resultado.resultado === 'FALLIDA') {
+      return resultado || resultadoVacio(task, 'El agente no retorno resultado');
+    }
+
+    return await trasGateTests(task, resultado, d);
+  } catch (e) {
+    log('Task ' + task.titulo + ': FALLIDA (excepcion) — ' + e.message);
+    return resultadoVacio(task, 'Excepcion durante la ejecucion: ' + e.message);
+  }
+}
+
+// ── Recorrido de los niveles ─────────────────────────────────────────────────
+
+/**
+ * Recorre los niveles EN ORDEN y, dentro de cada nivel, ejecuta las tasks una
+ * tras otra (defecto) o todas a la vez (`modoParalelo`, que el flag `--parallel`
+ * activa). Devuelve los resultados en el orden en que se acumularon.
+ *
+ * Cada task recibe una FOTO de los resultados de niveles YA COMPLETADOS, nunca
+ * los del nivel en curso. Por definicion de nivel topologico ninguna task
+ * depende de otra de su mismo nivel, asi que la foto contiene todo lo que el
+ * gate de dependencias fallidas puede necesitar; pasarla, en vez del acumulador
+ * vivo, hace que los dos modos decidan sobre exactamente el mismo dato.
+ *
+ * FRONTERA DEL MODO CONCURRENTE. Lo que el framework hace: lanza las tasks de un
+ * nivel a la vez y reporta el resultado de cada una (politica best-effort: el
+ * fallo de una no cancela a las demas, y el resumen final distingue cual paso y
+ * cual fallo, no solo la primera excepcion). Lo que NO hace: no hay
+ * single-writer por fichero, no detecta colisiones entre tasks que tocan el
+ * mismo archivo y no particiona el trabajo por ellas. Todas las tasks de un
+ * mismo nivel comparten el mismo working tree mientras se implementan; si el
+ * gate de tests de una falla, el descarte de su trabajo (`reset --hard` +
+ * `clean -fd`) se lleva TODO cambio sin commitear en ese momento, incluido el de
+ * las hermanas aun en curso. Evitar que dos tasks se pisen (mismo fichero, o
+ * exposicion al descarte de otra) es responsabilidad de quien pide el modo
+ * concurrente, no del framework. Las puertas de calidad (gate de tests,
+ * revision del diff) se aplican por task en los dos modos.
+ */
+async function recorrerNiveles(niveles, ejecutar, opciones) {
+  const modoParalelo = !!(opciones && opciones.modoParalelo);
+  const acumulados = [];
+
+  for (const nivel of (niveles || [])) {
+    const completados = acumulados.slice();
+
+    if (modoParalelo) {
+      const resultadosNivel = await Promise.all(nivel.map(function (task) {
+        return ejecutar(task, completados);
+      }));
+      for (const r of resultadosNivel) acumulados.push(r);
+    } else {
+      for (const task of nivel) {
+        acumulados.push(await ejecutar(task, completados));
+      }
+    }
+  }
+
+  return acumulados;
+}
+
+/**
+ * Cuenta el resultado del conjunto. Solo COMPLETADA cuenta como completada: un
+ * PARCIAL, un FALLIDA o un resultado ausente dejan la task sin cerrar.
+ */
+function resumirResultados(resultados) {
+  let completadas = 0;
+  let fallidas = 0;
+  for (const r of (resultados || [])) {
+    if (r && r.resultado === 'COMPLETADA') completadas += 1;
+    else fallidas += 1;
+  }
+  return { completadas, fallidas };
+}
+
+// ── Convergencia y resultado del flujo ───────────────────────────────────────
+
+/** Traduce la respuesta de la verificacion de convergencia al veredicto del flujo. */
+function veredictoConvergencia(respuesta, log) {
+  if (!respuesta || !respuesta.veredicto) {
+    log('Convergencia: la respuesta del agente no parseo contra el schema');
+    return { veredicto: 'ERROR', razon: 'parse_failed' };
+  }
+
+  if (respuesta.veredicto === 'DIVERGE') {
+    const tasksGeneradas = respuesta.tasks_generadas || [];
+    log('DIVERGENCIA: spec no cerrada, ' + tasksGeneradas.length
+      + ' task(s) de convergencia generadas: ' + tasksGeneradas.join(', '));
+    return {
+      veredicto: 'DIVERGE',
+      criterios_verificados: respuesta.criterios_verificados,
+      tasks_generadas: tasksGeneradas,
+    };
+  }
+
+  log('CONVERGENCIA: spec cerrada, ' + (respuesta.criterios_verificados || 0)
+    + ' criterios verificados');
+  return {
+    veredicto: 'CONVERGIDA',
+    criterios_verificados: respuesta.criterios_verificados,
+    tasks_generadas: [],
+  };
+}
+
+/**
+ * Cierra el hueco que la revision por task no cubre: si el CONJUNTO final
+ * converge con la spec original. Se OMITE cuando alguna task quedo sin
+ * completar, y entonces `verificar` no llega a invocarse: medir la convergencia
+ * de lo que no se implemento no dice nada, y la invocacion cuesta.
+ *
+ * `deps`: `completadas`, `fallidas`, `total`, `verificar`, `log`.
+ */
+async function resolverConvergencia(deps) {
+  const d = deps || {};
+  const log = registrar(d);
+
+  if (d.completadas !== d.total) {
+    log('Convergencia omitida: ' + d.fallidas + ' tasks fallidas/bloqueadas');
+    return { veredicto: 'OMITIDA', razon: 'tasks_fallidas' };
+  }
+
+  return veredictoConvergencia(await d.verificar(), log);
+}
+
+/**
+ * Objeto de retorno del flujo. Vive aqui para que su forma quede fijada por un
+ * test que la EJECUTA: una busqueda de texto sobre el fuente la daba por buena
+ * incluso con el campo comentado y el retorno a nulo.
+ */
+function construirResultado(entrada) {
+  const e = entrada || {};
+  return {
+    spec: e.spec,
+    spec_titulo: e.spec_titulo,
+    tasks_total: e.tasks_total,
+    niveles: e.niveles,
+    tasks_completadas: e.completadas,
+    tasks_fallidas: e.fallidas,
+    implementaciones: e.implementaciones,
+    convergencia: e.convergencia,
+  };
+}
+
 module.exports = {
+  rutaNativa,
+  interpretarSalidaGit,
   validarDependencias,
   computeNiveles,
   verificarContratos,
   descubrirComandoTest,
   tocaCodigoEjecutable,
   evaluarGateTests,
+  parsearArgs,
+  gitVerificado,
+  falloDeGit,
+  revisarYComitear,
+  depsFallidas,
+  ejecutarTask,
+  recorrerNiveles,
+  resumirResultados,
+  resolverConvergencia,
+  construirResultado,
 };

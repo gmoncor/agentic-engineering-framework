@@ -70,6 +70,8 @@ Para cada task, usa este formato:
 
 **Spec madre:** <titulo de la spec>
 **Estado:** PENDIENTE
+**Creado:** {{CREATED_AT}}
+**Actualizado:** {{UPDATED_AT}}
 **Dependencias:** <tasks que deben completarse antes, o "Ninguna">
 **Tamano estimado:** <min>-<max> lineas en <N> archivos
 
@@ -86,6 +88,18 @@ Para cada task, usa este formato:
 Esta tabla es la fuente de verdad de que archivos escribe la task. La usa el guard
 que bloquea escrituras no declaradas: si la task intenta escribir un archivo que no
 figura aqui, el guard la detiene. Manten la cabecera y el formato de las celdas.
+
+**`{{CREATED_AT}}`/`{{UPDATED_AT}}`:** sustituye ambos placeholders por la marca de
+tiempo ISO-8601 con desplazamiento horario del momento en que guardas el archivo.
+Obtenla con `date +%Y-%m-%dT%H:%M:%S%:z` (usa `date -u +%Y-%m-%dT%H:%M:%SZ` si no
+puedes determinar la zona horaria del sistema — reserva a horario universal). Al
+crear la task, ambos placeholders se sustituyen por la misma marca. `**Creado:**`
+no vuelve a tocarse nunca despues de ese momento. Si editas una task ya creada
+(correccion tras auditoria, cambio de alcance, cualquier edicion posterior a la
+creacion), refresca SOLO `**Actualizado:**` con la marca de ese momento. Si la task
+que vas a editar es anterior a esta convencion y no tiene estos campos, anadelos
+ahora: `**Creado:**` con la fecha actual (no la dejes vacia; la fecha real de
+creacion ya no se puede recuperar) y `**Actualizado:**` con el mismo valor.
 
 ## Wiring esperado
 
@@ -220,3 +234,4 @@ El siguiente paso es revisar cada task individualmente con `revisar_tarea.md`.
 5. **Si dos tasks tocan el mismo archivo**, una depende de la otra — documentar el orden
 6. **Cada task aprobada genera al menos un commit** — las tasks fallidas (revision adversarial no superada) se descartan sin commit; si una task aprobada es tan pequena que no justifica commit, fusionarla con otra
 7. **Minimo 3 casos limite** por task que involucre logica de negocio
+8. **`**Actualizado:**` se refresca en TODA edicion posterior a la creacion** — no solo al crear el archivo. `**Creado:**` es inmutable: fijalo una vez y no lo vuelvas a escribir

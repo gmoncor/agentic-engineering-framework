@@ -23,6 +23,16 @@ const DEST = process.cwd();
 const BACKENDS_VALIDOS = ['claude', 'gemini', 'codex', 'antigravity', 'all'];
 const DIRS_DEL_PROYECTO = ['ai_docs/core', 'ai_docs/tasks', 'ai_docs/refs'];
 
+// Inventario de la instalacion, escrito en el destino al terminar install y
+// update: deja por escrito que revision del framework quedo instalada, para
+// que una sesion posterior pueda resolverla sin adivinar.
+const ARCHIVO_ECOSISTEMA = 'ai_docs/_meta/ecosystem.json';
+
+// Identificador de revision valido: hexadecimal de 7 a 64 caracteres. Abarca
+// tanto un SHA de git (abreviado o completo) como el SHA-256 del fallback por
+// contenido.
+const PATRON_SHA = /^[a-f0-9]{7,64}$/;
+
 // Archivo de contexto que lleva el marcador `<!-- sdd-framework: X.Y.Z -->`
 // para cada backend. codex y antigravity comparten AGENTS.md.
 const ARCHIVO_CONTEXTO_POR_BACKEND = {
@@ -66,8 +76,10 @@ const LOCKFILE_INSTALACION = '.sdd-install-in-progress';
 // Comando para correr los tests de los hooks instalados. Se ofrece via
 // `scripts.test` del package.json del destino en lugar de copiar el
 // package.json del framework (que pisaria nombre, dependencias y scripts
-// del proyecto del usuario).
-const SCRIPTS_TEST = 'node --test "hooks/tests/*.test.js" "tests/*.test.js"';
+// del proyecto del usuario). Solo apunta a hooks/tests/: es lo unico que el
+// manifiesto copia al destino (`tests/` es la suite de estructura/paridad
+// del repo fuente y nunca llega al proyecto instalado).
+const SCRIPTS_TEST = 'node --test "hooks/tests/*.test.js"';
 
 function mostrarAyuda() {
   console.log(`Uso: agentic-engineering-framework <subcomando> [opciones]
@@ -75,6 +87,7 @@ function mostrarAyuda() {
 Subcomandos:
   install --backend <claude|gemini|codex|antigravity|all>   Instala el framework en el directorio actual.
   update --backend <claude|gemini|codex|antigravity|all>    Actualiza el framework instalado, sin tocar ai_docs/core/, ai_docs/tasks/ ni ai_docs/refs/.
+  compile [--check|--write|--dry-run] [--quiet]             Recompila las superficies por backend desde su manifiesto de artefactos.
   --help                                                     Muestra esta ayuda.
   --version                                                  Muestra la version instalada.
 
@@ -83,6 +96,19 @@ Ejemplos:
   npx github:gmoncor/agentic-engineering-framework update --backend claude
 
 Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).`);
+}
+
+function mostrarAyudaCompile() {
+  console.log(`Uso: agentic-engineering-framework compile [--check|--write|--dry-run] [--quiet]
+
+Compila las entradas "managed" del manifiesto de artefactos (scripts/artifact-manifest.json): lee cada fuente, aplica el transform declarado y compara, escribe o reporta cada salida por backend. Las entradas "preserve" no se tocan.
+
+--check    Compara el resultado con lo que hay en disco y nombra cada salida con deriva, su fuente y las primeras lineas que divergen. Modo por defecto.
+--write    Escribe las salidas a disco, sobreescribiendo las existentes.
+--dry-run  Reporta que archivos cambiarian sin escribir nada en disco.
+--quiet    Reduce el reporte a una sola linea, para usarlo como gate de CI o de pre-push.
+
+Exit codes: 0 sin deriva, 1 con deriva (solo --check), 2 error de compilacion (fuente ausente, transform que falla, manifiesto ilegible).`);
 }
 
 function mostrarAyudaInstall() {
@@ -577,6 +603,60 @@ function crearDirectoriosDelProyecto() {
   return creados;
 }
 
+/**
+ * Identificador de la revision del framework que se esta instalando. Prefiere
+ * el `gitHead` del package.json de origen (npm lo escribe al instalar desde un
+ * repositorio git); en su ausencia -- instalacion desde un directorio local --
+ * cae a un SHA-256 reproducible del contenido del paquete (package.json mas
+ * hooks/), que identifica la revision igual de bien sin depender de git.
+ */
+function calcularUpstreamSha() {
+  const rutaPaquete = path.join(PACKAGE_ROOT, 'package.json');
+  try {
+    const { gitHead } = JSON.parse(fs.readFileSync(rutaPaquete, 'utf8'));
+    if (typeof gitHead === 'string' && PATRON_SHA.test(gitHead)) return gitHead;
+  } catch {
+    // package.json ausente o invalido: el hash por contenido sigue sirviendo.
+  }
+
+  const hash = crypto.createHash('sha256').update(hashFile(rutaPaquete) || '');
+  const dirHooks = path.join(PACKAGE_ROOT, 'hooks');
+  if (fs.existsSync(dirHooks)) {
+    for (const relativa of listarArchivos(dirHooks).sort()) {
+      hash.update(relativa).update(hashFile(path.join(dirHooks, relativa)) || '');
+    }
+  }
+  return hash.digest('hex');
+}
+
+/**
+ * Escribe el inventario de la instalacion en el destino, creando su directorio
+ * si no existe. Se sobrescribe entero en cada ejecucion (describe el estado
+ * actual, no un historico). Un fallo de escritura no revierte la instalacion ya
+ * hecha: se avisa por stderr y se continua.
+ */
+function escribirEcosistema(backend, dryRun) {
+  if (dryRun) {
+    console.log(`[DRY-RUN] escribiria ${ARCHIVO_ECOSISTEMA}`);
+    return;
+  }
+
+  const destino = path.join(DEST, ARCHIVO_ECOSISTEMA);
+  const inventario = {
+    sync: {
+      upstream_sha: calcularUpstreamSha(),
+      installed_at: new Date().toISOString(),
+      backend,
+    },
+  };
+  try {
+    fs.mkdirSync(path.dirname(destino), { recursive: true });
+    fs.writeFileSync(destino, `${JSON.stringify(inventario, null, 2)}\n`);
+  } catch (err) {
+    process.stderr.write(`No se pudo escribir ${ARCHIVO_ECOSISTEMA}: ${err.message}\n`);
+  }
+}
+
 async function preguntarBackend() {
   if (!process.stdin.isTTY) {
     process.stderr.write('Indica el backend con --backend <nombre>. El prompt interactivo requiere un terminal.\n');
@@ -781,6 +861,7 @@ async function cmdInstall(args) {
   const scriptsTestMergeado = mergeScriptsTest(dryRun);
   if (!dryRun) sincronizarMarcadores(backend, copiadas, obtenerVersion());
   reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, scriptsTestMergeado, backend);
+  escribirEcosistema(backend, dryRun);
   if (fallidas.length) process.exit(1);
 }
 
@@ -805,7 +886,14 @@ async function cmdUpdate(args) {
   const version = obtenerVersion();
   if (!dryRun) sincronizarMarcadores(backend, copiadas, version);
   reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version, scriptsTestMergeado);
+  escribirEcosistema(backend, dryRun);
   if (fallidas.length) process.exit(1);
+}
+
+/** Delega en el compilador de `scripts/compile.js`. Aislado en su propio modulo: `bin/cli.js` solo enruta. */
+function cmdCompile(args) {
+  const { ejecutarCompilacion } = require(path.join(__dirname, '..', 'scripts', 'compile.js'));
+  process.exitCode = ejecutarCompilacion(args);
 }
 
 async function main() {
@@ -839,8 +927,16 @@ async function main() {
     await cmdUpdate(resto);
     return;
   }
+  if (subcomando === 'compile') {
+    if (resto.includes('--help') || resto.includes('-h')) {
+      mostrarAyudaCompile();
+      return;
+    }
+    cmdCompile(resto);
+    return;
+  }
 
-  process.stderr.write(`Subcomando '${subcomando}' no reconocido. Subcomandos validos: install, update, --help, --version.\n`);
+  process.stderr.write(`Subcomando '${subcomando}' no reconocido. Subcomandos validos: install, update, compile, --help, --version.\n`);
   process.exit(1);
 }
 

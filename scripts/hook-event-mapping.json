@@ -42,5 +42,16 @@
     "read-before-edit": "Codex no cablea este aviso: carece de un evento de lectura equivalente a read_file en los demas backends para alimentar el rastreador. Las reglas de .codex/rules/ NO compensan este hueco: solo cubren --no-verify en git commit/push, nada relacionado con leer antes de editar.",
     "turn-budget": "Codex no cablea este aviso: el conteo de acciones sin commit depende de un session_id persistente que este backend no expone de la misma forma que los demas.",
     "review-gate": "Solo Claude Code cablea este aviso: la senal que lo silencia la emite el motor de workflows de comandos/agentes, que solo existe en ese backend. Cablearlo donde no hay emisor daria un aviso que nada puede silenciar por una via legitima."
+  },
+  "_readme_lifecycle_events": "Eventos de ciclo de vida (una vez por sesion), distintos de los eventos por tool-call de 'actions': sin matcher de herramienta, y con el nombre del evento nativo declarado en cada entrada de backend en vez de en la tabla 'events'. tests/hook-mapping-parity.test.js recorre esta sección igual que 'actions', con el mismo canario inverso: un backend ausente de una entrada cuenta como no cableado, y el test falla si algún fichero de wiring lo cablea de todos modos. Los tres backends cableados usan el mismo nombre de evento nativo, SessionStart, con el mismo shape de configuracion: { matcher, hooks: [{ type, command }] }.",
+  "lifecycle_events": {
+    "session-start": {
+      "claude": { "event": "SessionStart", "matcher": null, "hook_file": "sdd-session-start", "wired": true },
+      "gemini": { "event": "SessionStart", "matcher": null, "hook_file": "sdd-session-start", "wired": true },
+      "codex": { "event": "SessionStart", "matcher": null, "hook_file": "sdd-session-start", "wired": true }
+    }
+  },
+  "notes_lifecycle_events": {
+    "session-start": "Antigravity queda fuera del cableado: sin confirmación de que su CLI expone un evento de ciclo de vida equivalente a SessionStart, cablearlo daria un hook que nunca corre. matcher null cubre todos los origenes de sesion (startup/resume/clear/compact/fork) en los tres backends: omitir o dejar en null el matcher activa el grupo en cada ocurrencia del evento."
   }
 }

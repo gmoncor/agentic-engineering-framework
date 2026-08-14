@@ -16,6 +16,22 @@ ai_docs/tasks/*
 ai_docs/refs/*
 !ai_docs/refs/.gitkeep
 
+# ai_docs/audits/ recibe una linea nueva por cada sesion, asi que crece sin
+# limite y engordaria cada commit. Ademas su contenido es solo de esta maquina:
+# identificador de sesion, ruta absoluta y hashes de la configuracion local.
+# Se ignora el directorio entero, y no solo el fichero de hoy, porque es por
+# definicion el directorio de datos de sesion: acotar la regla a un nombre
+# dejaria escapar el siguiente artefacto que aterrice ahi.
+ai_docs/audits/*
+!ai_docs/audits/.gitkeep
+
+# ai_docs/_meta/ NO se ignora, y es a proposito. El inventario de instalacion
+# se reescribe entero cada vez (no se acumula), no lleva datos de maquina y
+# deja anotado en el historial del proyecto con que revision del framework se
+# genero cada commit: justo el dato que interesa ver en un PR. Por eso aqui no
+# vale una regla amplia tipo `ai_docs/_meta/` o `ai_docs/*`, que se llevaria
+# por delante algo que si se quiere versionar.
+
 # ===========================================
 # Arboles de trabajo temporales
 # ===========================================

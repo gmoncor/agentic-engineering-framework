@@ -203,12 +203,14 @@ test('el emisor del flujo revisa por task y usa el mismo contrato de senal que e
   assert.doesNotMatch(workflow, /SDD-POST-IMPL/, 'el canal de la marca en el mensaje de commit se elimino');
 });
 
-test('la limitacion frente a falsificacion deliberada esta documentada en README y en el modulo de la senal', (t) => {
+test('la limitacion frente a falsificacion deliberada esta documentada en README y en el modulo de la senal', () => {
+  // La ausencia del fichero es un fallo, no un motivo para omitir el caso: omitirlo
+  // convertia un renombrado o un borrado en un contador de omitidos que nadie mira, y
+  // la comparacion dejaba de ejecutarse en silencio. Los demas casos de este fichero
+  // ya leen el arbol del repositorio sin condicion previa (el motor de workflows y el
+  // wiring del backend), asi que este no gana nada por ser el unico que la tiene.
   const readmePath = path.resolve(HOOKS_DIR, '..', 'README.md');
-  if (!fs.existsSync(readmePath)) {
-    t.skip('README.md no disponible en instalacion destino');
-    return;
-  }
+  assert.ok(fs.existsSync(readmePath), 'README.md ausente: la limitacion no se puede verificar');
   const readme = fs.readFileSync(readmePath, 'utf8');
   const signalSource = fs.readFileSync(path.join(HOOKS_DIR, 'sdd-review-signal.js'), 'utf8');
 

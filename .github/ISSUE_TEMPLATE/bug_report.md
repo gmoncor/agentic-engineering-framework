@@ -23,7 +23,7 @@ labels: bug
 
 ## Entorno
 
-- **Version del framework:** <!-- ver "version" en .claude-plugin/plugin.json -->
+- **Version del framework:** <!-- `node bin/cli.js --version`, o el marcador "sdd-framework: X.Y.Z" al final de tu CLAUDE.md/GEMINI.md/AGENTS.md si instalaste sin el CLI -->
 - **CLI:** <!-- Claude Code / Gemini CLI / Codex /
   Antigravity / Cursor / copy-paste -->
 - **Version de la CLI:**

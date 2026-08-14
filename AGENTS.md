@@ -57,21 +57,25 @@ Definidos en `.codex/agents/*.toml` (Codex) y en `.agents/plugins/sdd/agents/*.m
 CLI). El asesor corre en modo solo lectura; los demas pueden escribir dentro del espacio de
 trabajo.
 
-## Implementacion lineal + revision por task
+## Defecto lineal y modo paralelo a peticion
 
 Este framework NO tiene motor de workflows declarativo en estos backends: la secuenciacion
-depende de como el orquestador escribe sus llamadas. El principio que aplicar:
+depende de como el orquestador escribe sus llamadas. El comportamiento que aplicar:
 
-1. **Implementacion lineal.** Implementa las tasks una tras otra, en orden de dependencias: una
-   task no arranca hasta que las tasks de las que depende estan hechas. Cada task se implementa,
-   se revisa y se commitea antes de pasar a la siguiente. Una task, un commit.
-2. **Un gate de revision por task.** Antes de commitear cada task hay UN punto cuyo veredicto se
-   necesita para continuar: la revision adversarial de esa task. Ahi se espera. En planificacion
-   el gate equivalente es la auditoria cruzada, que si corre en paralelo sobre las tasks del plan.
+1. **Lineal por defecto.** Mientras no se pida otra cosa, implementa las tasks una tras otra,
+   en orden de dependencias: una task no arranca hasta que las tasks de las que depende estan
+   hechas. Cada task se implementa, se revisa y se commitea antes de pasar a la siguiente. Una
+   task, un commit.
+2. **Modo paralelo a peticion.** Si el usuario lo pide de forma explicita ("implementa la spec
+   en paralelo"), lanza a la vez las tasks que no dependen entre si. El orden de dependencias
+   sigue mandando: un grupo no arranca hasta que termina el grupo del que depende.
+3. **Un gate de revision por task.** En ambos modos, antes de commitear cada task hay UN punto
+   cuyo veredicto se necesita para continuar: la revision adversarial de esa task. Ahi se
+   espera. En planificacion el gate equivalente es la auditoria cruzada, que si corre en
+   paralelo sobre las tasks del plan.
 
-No escribas instrucciones del tipo "lanza N agentes en la misma respuesta": es una prescripcion
-que no se ejecuta en la practica y crea la ilusion de paralelismo sin darlo. Describe la
-dependencia real (que necesita el resultado de que) y deja que el orquestador la respete.
+Describe siempre la dependencia real (que necesita el resultado de que): es lo que decide que
+puede ir a la vez y que no.
 
 ## Specs y tasks
 
@@ -102,9 +106,16 @@ dependencia real (que necesita el resultado de que) y deja que el orquestador la
 |------|---------|----------|
 | `hooks/sdd-pipeline-guard-codex.js` | Antes de aplicar un parche | **Deniega** escribir un archivo que ninguna task de una spec APROBADA declara |
 | `hooks/sdd-commit-guard-codex.js` | Antes de ejecutar un comando | **Deniega** `git commit --no-verify` y `git push --no-verify`; avisa de commits mal formados |
+| `hooks/sdd-session-start.js` | Al arrancar la sesion | No enforcea nada: **escribe**. Anade una linea al registro de sesiones (`ai_docs/audits/provenance.jsonl`) con directorio de trabajo, rama, commit, modelo de la sesion y hashes de los componentes instalados |
 
 Registrados en `.codex/hooks.json`. Refuerzo adicional: la regla de politica de ejecucion
 `.codex/rules/sdd-enforcement.rules` prohibe los mismos comandos de bypass.
+
+**El registro de sesiones se apaga con una clave.** `sdd-session-start.js` viene activo y escribe
+una linea por arranque de sesion en un fichero dentro de tu repositorio. Para que deje de escribir:
+`sdd_session_start.enabled: false` en `hooks/config.json`; con `false` no escribe nada, ni la linea
+ni el fichero. Para cambiar el destino o anadir campos propios sin tocar ficheros que la
+actualizacion sobreescribe: `docs/extension-config-schema.md`.
 
 **Limite honesto:** los hooks de este entorno son un **guardarrail**, no una frontera completa de
 enforcement. El propio fabricante lo declara: no interceptan todas las llamadas al shell ni todas
@@ -145,6 +156,10 @@ codigo que los demas backends (`hooks/sdd-pipeline-guard.js`, `hooks/sdd-commit-
 | `read_file`, `view_file`, `write_to_file`, `replace_file_content`, `multi_replace_file_content`, `create_file` | `sdd-read-before-edit.js` | Avisa al escribir un archivo existente sin haberlo leido antes. Rastrea las lecturas via `read_file`/`view_file`; si esta CLI no dispara ese evento, se autolimita a silencio |
 | `read_file`, `view_file`, `write_to_file`, `replace_file_content`, `multi_replace_file_content`, `create_file`, `run_command` | `sdd-turn-budget.js` | Cuenta las acciones sin commit y avisa al superar cada umbral. `git commit` resetea el contador. Si la CLI no expone `session_id`, se autolimita a silencio |
 
+El registro de sesiones (`hooks/sdd-session-start.js`) **no se cablea aqui**: no consta que esta CLI
+exponga un evento de arranque de sesion equivalente, y cablearlo daria un hook que nunca corre. En
+este backend, por tanto, ninguna sesion escribe la linea de registro.
+
 Dos detalles del contrato de esta CLI, distintos de los otros backends:
 
 - El comando de cada hook se ejecuta **desde el directorio que contiene `hooks.json`** (`.agents/`).
@@ -174,12 +189,6 @@ presupuesto.
   dejalo bajo para el trabajo mecanico.
 - **Antigravity:** la CLI usa el modelo que tengas seleccionado; el framework no lo fija.
 
-## Reglas de Cursor (`.cursor/rules/`)
-
-Opcionales: el framework funciona sin ellas. Estan escritas para un stack concreto — Next.js 15 +
-React + Drizzle + PostgreSQL + Python — asi que si el proyecto usa otro stack, la mayoria no aplica
-tal cual. Revisalas antes de darlas por validas.
-
 ## Estilo
 
 - Idioma del proyecto: espanol. La prosa nueva se escribe con ortografia correcta, acentos
@@ -190,4 +199,4 @@ tal cual. Revisalas antes de darlas por validas.
 - Commits: `<tipo>: <descripcion>` (tipos: feat, fix, update, refactor, create, optimize, remove,
   rename, docs, test, style, chore). Sin coautoria de IA en el mensaje.
 
-<!-- sdd-framework: 3.0.0 -->
+<!-- sdd-framework: 4.0.0 -->

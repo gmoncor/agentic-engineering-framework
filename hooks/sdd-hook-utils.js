@@ -9,6 +9,10 @@ const fs = require('fs');
 const path = require('path');
 
 const SKIP_ENV = 'SDD_GUARD_SKIP';
+
+// Firma estable de fallo interno (ver hooks/gate-signatures.json). No es un veredicto: marca que
+// el hook no pudo completarse y se aparta, en vez de aparentar un bloqueo que nadie decidio.
+const INTERNAL_ERROR_FIRMA = '[SDD_INTERNAL_ERROR] ';
 const STDIN_TIMEOUT_MS = 5000;
 const NODE_MINIMO = 20;
 
@@ -42,6 +46,13 @@ async function readPayload(timeoutMs) {
   let timer;
   const timeout = new Promise((resolve) => {
     timer = setTimeout(resolve, timeoutMs || STDIN_TIMEOUT_MS, null);
+    // .unref() retira la reclamacion del temporizador sobre el bucle de eventos; no lo desarma.
+    // Mientras la lectura de stdin sigue pendiente es ella quien mantiene vivo el proceso, asi que
+    // el timeout dispara igual y degrada a null en el caso que motiva la carrera (stdin que no
+    // cierra). Lo que evita es el contrario: que un temporizador armado sea lo unico que retenga
+    // el proceso. Ahi el bucle se vacia y el proceso termina con codigo 0 sin emitir decision,
+    // que es exactamente lo que emite un payload null: ninguna.
+    timer.unref();
   });
 
   const read = (async () => {
@@ -196,4 +207,51 @@ function purgeExpired(dir, prefix, currentFile, ttlMs) {
   }
 }
 
-module.exports = { readPayload, readToolCall, skipRequested, loadConfig, warn, deny, purgeExpired, SKIP_ENV };
+/**
+ * Punto de entrada comun de los hooks: fail-open por clase de error.
+ *
+ * Separa las dos cosas que un exit distinto de 0 confundia:
+ *   - Veredicto deliberado: deny() sale con 2 y warn() con 0. Los dos terminan el proceso desde
+ *     dentro de `mainFn`, asi que el primer exit gana y este envoltorio no llega a reescribirlo.
+ *   - Fallo interno del hook (dependencia caida, estado ilegible, bug): exit 0 mas un aviso con
+ *     firma. Un hook roto no puede leerse como un bloqueo; el agente sigue y ve la causa.
+ *
+ * Cubre el fallo sincrono y el rechazo de la promesa que devuelve `mainFn`. Limite conocido: lo
+ * que el runtime no entrega a un catch (falta de memoria, desbordamiento de pila) mata el proceso
+ * sin pasar por aqui, y su salida se lee como fallo de la herramienta, no como veredicto.
+ */
+function runWithFailOpen(hookName, mainFn) {
+  const failOpen = (err) => {
+    try {
+      fs.writeSync(2, INTERNAL_ERROR_FIRMA + hookName + ': ' + describeError(err) + '\n');
+    } catch {
+      // stderr roto: lo que importa es apartarse, el aviso es secundario.
+    }
+    process.exit(0);
+  };
+
+  try {
+    const pending = mainFn();
+    if (pending && typeof pending.then === 'function') pending.then(undefined, failOpen);
+  } catch (err) {
+    failOpen(err);
+  }
+}
+
+// Un valor lanzado puede no ser un Error (una cadena, null): el aviso nunca debe quedarse vacio.
+function describeError(err) {
+  const message = err && err.message;
+  return message ? String(message) : String(err);
+}
+
+module.exports = {
+  readPayload,
+  readToolCall,
+  skipRequested,
+  loadConfig,
+  warn,
+  deny,
+  purgeExpired,
+  runWithFailOpen,
+  SKIP_ENV,
+};

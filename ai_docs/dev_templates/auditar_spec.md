@@ -138,6 +138,8 @@ Para cada task con dependencias declaradas:
 
 **Spec:** [Titulo]
 **Tasks auditadas:** [N]
+**Creado:** {{CREATED_AT}}
+**Actualizado:** {{UPDATED_AT}}
 
 ### Cobertura
 - Criterios de aceptacion: [N] cubiertos / [N] total
@@ -179,6 +181,13 @@ Para cada task con dependencias declaradas:
 - Si el usuario aplica correcciones, vuelve a ejecutar las verificaciones afectadas (no toda la auditoria)
 - Si el veredicto es APROBADO, proceder a implementacion con `implementar.md`
 
+**`{{CREATED_AT}}`/`{{UPDATED_AT}}`:** sustituye ambos placeholders por la marca de tiempo
+ISO-8601 con desplazamiento horario del momento de esta pasada. Obtenla con
+`date +%Y-%m-%dT%H:%M:%S%:z` (usa `date -u +%Y-%m-%dT%H:%M:%SZ` si no puedes determinar
+la zona horaria del sistema — reserva a horario universal). Si este resultado se guarda
+como documento persistente y se vuelve a auditar sobre el mismo archivo, refresca SOLO
+`**Actualizado:**` en la nueva pasada; `**Creado:**` no se toca.
+
 ---
 
 ## Reglas inquebrantables
@@ -191,3 +200,4 @@ Para cada task con dependencias declaradas:
 6. **Si la spec no esta aprobada**, DETENTE. No audites tasks de una spec en borrador
 7. **Dependencias no declaradas son tan graves como huecos** — documentarlas como hallazgo
 8. **NUNCA emitas APROBADO si el Paso 4.5 encontro adjetivos ambiguos o placeholders sin resolver** — como minimo NECESITA_AJUSTES
+9. **Si el resultado se persiste y se re-audita, `**Actualizado:**` se refresca en cada pasada** — `**Creado:**` es inmutable

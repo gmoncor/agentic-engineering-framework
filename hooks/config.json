@@ -16,5 +16,13 @@
     "warn_at": 30,
     "block_at": 60,
     "hard_stop_at": 90
+  },
+  "_comment_test_gate": "El gate de tests de /implementar-spec (orquestacion.js) lee sdd_test_gate.command para fijar el comando de test explicito, con prioridad sobre el autodescubrimiento (package.json scripts.test, luego pytest.ini o setup.cfg con [tool:pytest]). Vacio o ausente no es un fallo: cae al autodescubrimiento: sin ningun comando resultante, el gate bloquea solo si la task toca codigo ejecutable; docs/config quedan exentas con aviso.",
+  "sdd_test_gate": {
+    "command": ""
+  },
+  "_comment_session_start": "sdd-session-start escribe 1 linea NDJSON de provenance por sesion en ai_docs/audits/provenance.jsonl (append-only). enabled controla on/off (default true): con enabled: false el hook no escribe NADA, porque seguir escribiendo mientras la linea declara la puerta apagada seria un registro que miente sobre su propio origen. Nunca bloquea: sin git, sin directorio de audits, o sin permisos de escritura, degrada a campos null o avisa por stderr y sigue. Destino y campos propios se configuran fuera de este fichero, en el sdd.config.json del proyecto (docs/extension-config-schema.md).",
+  "sdd_session_start": {
+    "enabled": true
   }
 }

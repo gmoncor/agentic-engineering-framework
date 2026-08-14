@@ -9,6 +9,7 @@ Gracias por tu interes en mejorar el framework. Este documento explica como repo
 - **Node.js >= 20** — requerido por los hooks (`hooks/*.js`). Verifica con `node --version`
 - Lee `CLAUDE.md` — define el estilo, el flujo SDD y los limites del framework. Todo cambio debe ser coherente con ellos
 - **Tests:** `npm test` ejecuta los tests de contrato de los hooks. Todo cambio en `hooks/` llega con sus tests en el mismo commit
+- **Deriva:** `npm run check-drift` verifica que las superficies **generadas** coinciden con su fuente. Ejecutalo antes del push si tocas `.claude/` o `docs-src/`. No cubre las superficies que se mantienen a mano, y son mas de las que parece: lee "Artefactos generados y deriva" antes de dar por portado un cambio
 
 ## Reportar un bug
 
@@ -59,18 +60,62 @@ SDD_GUARD_SKIP=1 git commit -m "fix: restaurar el servicio caido"
 
 No lo exportes de forma permanente en tu shell ni en la configuracion del proyecto: con el activo, los guards dejan de enforcar nada. Si necesitas el escape a menudo, el problema esta en el plan, no en el guard.
 
+## Artefactos generados y deriva
+
+Las superficies por backend (`.gemini/`, `.codex/`, `.agents/` y los documentos raiz `CLAUDE.md`, `GEMINI.md`, `AGENTS.md`) estan declaradas en `scripts/artifact-manifest.json`. **Una parte se genera y otra se mantiene a mano**, y el campo `mode` de cada entrada del manifiesto es lo que decide donde editas:
+
+| `mode` | Quien la mantiene | Que hace `check-drift` con ella |
+|---|---|---|
+| `managed` | El compilador, desde su fuente: `.claude/` para agentes, comandos y skills; `docs-src/` para los documentos raiz | La compara contra su fuente. Editar la salida en vez de la fuente deja el arbol en deriva, y la siguiente regeneracion revierte el cambio |
+| `preserve` | Tu, a mano, en su propia ruta | Nada. No hay fuente distinta contra la que compararla, asi que su contenido nunca se verifica |
+
+```bash
+grep -n '"mode": "preserve"' scripts/artifact-manifest.json   # que se mantiene a mano
+npm run check-drift                                           # verifica lo generado contra su fuente
+node scripts/compile.js --write                               # regenera las salidas desde la fuente
+```
+
+Antes de editar un artefacto, comprueba con el `grep` en que grupo cae.
+
+`npm run check-drift` es el paso previo al push de cualquier PR que toque `.claude/` o `docs-src/`, y sirve igual como gate de CI. Sus exit codes:
+
+| Exit | Significado |
+|---|---|
+| 0 | Sin deriva |
+| 1 | Alguna salida no coincide con su fuente. El reporte nombra el fichero, su fuente y las primeras lineas que divergen |
+| 2 | Error de compilacion: fuente ausente, transform que falla, manifiesto ilegible, o un backend que el manifiesto genera y `scripts/model-policy.json` no declara. Ese ultimo caso detiene la compilacion antes de escribir nada, en vez de generar el artefacto sin modelo ni herramientas |
+
+Para un log de CI, `npm run check-drift -- --quiet` reduce el reporte a una sola linea. Reduce el detalle, nunca el codigo de salida: con `--quiet` un exit 2 sigue siendo 2.
+
+La version del framework (`<!-- sdd-framework: X.Y.Z -->` en los documentos raiz) sale de `package.json` en cada regeneracion. No la edites en el documento generado ni en `docs-src/core.md`, que lleva el marcador `{{VERSION}}` en su lugar.
+
+### Que se mantiene a mano, exactamente
+
+El manifiesto tiene hoy **17 entradas `preserve`**. Dos son artefactos exclusivos de Claude Code sin copia en ningun otro backend (`.claude/skills/auditar-sesion/` y `.claude/workflows/`): no plantean problema de paridad. Las **otras 15 declaran una ruta de salida por backend**, y no son todas del mismo tipo:
+
+- **Cinco son formatos nativos sin analogo en `.claude/`**: `.codex/config.toml`, `.codex/hooks.json`, `.codex/rules/sdd-enforcement.rules`, `.agents/hooks.json` y `.agents/plugins/sdd/plugin.json`. No hay nada de lo que generarlas; viven a mano por diseno.
+- **Las otras diez son skills de Codex y Antigravity**: `.agents/skills/{asesor,auditar,estado,implementar,implementar-spec,inicio,planificar,revision,spec,tareas}/SKILL.md`. Cada una es la entrega, para esos dos backends, de una capacidad cuyo comando homonimo en `.claude/commands/` **si** es fuente viva y generada. Son diez de las dieciocho capacidades de `.agents/skills/`; las otras ocho (`bugfix`, `cleanup`, `commit`, `diff`, `pr`, `revisar-tarea`, `revision-adversarial`, `testing`) si se generan desde `.claude/skills/`.
+
+**La trampa esta en el segundo grupo.** Si editas `.claude/commands/planificar.md`, ejecutas `npm run check-drift` y lo ves en verde, **solo dos de los cuatro backends recibieron el cambio**: Claude Code, porque el fichero que editaste es el suyo, y Gemini CLI, porque `.gemini/commands/planificar.toml` se genera. Codex y Antigravity leen `.agents/skills/planificar/SKILL.md`, que es `preserve`: sigue como estaba, y el check no protesta porque no tiene con que compararlo. Igual para los otros nueve comandos de la lista.
+
+Asi que un cambio en cualquiera de esos diez comandos **se porta a mano** a `.agents/skills/<nombre>/SKILL.md` en la misma PR. Nada lo comprueba por ti: `check-drift` no lo ve, y el canario de paridad tampoco (compara nombres logicos, no contenido). La unica defensa es la revision de la PR.
+
+**Limitacion actual, no plan.** Que diez capacidades tengan una copia manual sin lazo mecanico con su origen es una debilidad conocida del manifiesto, no un diseno buscado. Mientras siga asi, portar a mano es el procedimiento; si te estorba al contribuir, abre un issue antes de cambiar el manifiesto por tu cuenta.
+
 ## Paridad entre CLIs
 
 El framework se distribuye para Claude Code, Gemini CLI, Codex y Antigravity. Muchos artefactos existen por duplicado:
 
 | Claude Code | Gemini CLI | Codex | Antigravity |
 |---|---|---|---|
-| `.claude/agents/` | `agents/` | `.codex/agents/` (`.toml`) | `.agents/plugins/sdd/agents/` |
-| `.claude/commands/` (`.md`) | `commands/` (`.toml`) | `.agents/skills/` (los comandos son skills) | `.agents/skills/` |
-| `.claude/skills/` | `skills/` | `.agents/skills/` | `.agents/skills/` |
+| `.claude/agents/` | `.gemini/agents/` | `.codex/agents/` (`.toml`) | `.agents/plugins/sdd/agents/` |
+| `.claude/commands/` (`.md`) | `.gemini/commands/` (`.toml`) | `.agents/skills/` (los comandos son skills) | `.agents/skills/` |
+| `.claude/skills/` | `.gemini/skills/` | `.agents/skills/` | `.agents/skills/` |
 | `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` | `AGENTS.md` |
 
-Si anades o cambias un agente o una skill, **portalo a todos los backends** dentro de la misma PR y ejecuta el canary:
+Las carpetas de Gemini CLI van **bajo `.gemini/`, nunca sueltas en la raiz**: `agents/`, `commands/` o `skills/` en la raiz colisionan con carpetas del proyecto destino y cambian el alcance de la instalacion via extension. `tests/install-native.test.js` falla si alguna reaparece en la raiz, asi que no es una preferencia de estilo. Coloca ahi cualquier artefacto nuevo de Gemini.
+
+Si anades o cambias un agente, un comando o una skill, **portalo a todos los backends** dentro de la misma PR y ejecuta el canary:
 
 ```bash
 node --test tests/backend-parity.test.js
@@ -80,7 +125,9 @@ El canary compara el conjunto de nombres logicos de agentes y de pasos del flujo
 
 En Codex los slash commands versionables estan deprecados: cada comando se entrega como skill, y las skills cuyo nombre coincide con un comando (`bugfix`, `commit`, `pr`) son una sola, con el uso a peticion explicita como seccion adicional. La logica de la skill manda sobre la del comando.
 
-Codex y Antigravity no soportan el frontmatter `argument-hint`. Las skills que lo usan (`bugfix`, `commit`, `pr`) compensan con una seccion `## Uso a peticion explicita` en el cuerpo del skill para esos dos backends. Esta es la unica divergencia de contenido permitida entre backends; el resto de cada skill debe ser identico y puede verificarse con `diff`.
+Codex y Antigravity no soportan el frontmatter `argument-hint`. Las skills que lo usan (`bugfix`, `commit`, `pr`) compensan con una seccion `## Uso a peticion explicita` en el cuerpo del skill para esos dos backends.
+
+**Para las ocho skills generadas** eso es la unica divergencia de contenido admitida: la transformacion garantiza que el resto sea identico, y `diff` contra la fuente lo confirma. **Para las diez skills `preserve` de `.agents/skills/` no hay ninguna garantia equivalente**: son copias mantenidas a mano, `diff` contra el comando de origen no tiene por que dar vacio, y ningun test ata su contenido. No las trates como salidas verificables (ver "Artefactos generados y deriva").
 
 El autor usa Claude Code a diario como backend principal. Los otros tres backends (Gemini CLI, Codex y Antigravity) estan implementados, cableados y con tests de paridad en verde, pero no reciben verificacion diaria propia. Esto no implica menor soporte: la paridad completa entre los cuatro es un requisito del proyecto.
 

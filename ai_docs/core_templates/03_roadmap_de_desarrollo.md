@@ -231,4 +231,4 @@ Roadmap (fases + specs)
 5. **Si faltan documentos prerequisito**, pedir crearlos antes de empezar
 6. **Cada spec dice QUE lograr**, no COMO codificarlo
 7. **Roadmap lineal con fases secuenciales** — cada fase se completa antes de pasar a la siguiente
-8. **Tasks independientes no dependen entre si**, pero se implementan igualmente una tras otra en el orden que el plan establezca — la independencia informa el orden, no habilita ejecucion simultanea
+8. **Tasks independientes no dependen entre si** — la independencia informa el orden que el plan establece; si ejecutarlas en secuencia o en paralelo es una decision de quien implementa el plan, no de esta plantilla

@@ -1,0 +1,68 @@
+<!-- Variante propia del comando para Gemini. El comando de Claude Code delega
+     esta secuencia en su herramienta de workflows, que este backend no tiene:
+     aqui el procedimiento va escrito paso a paso dentro del prompt. Es el
+     unico sitio donde se edita esa version; el .toml se genera desde aqui. -->
+---
+description: "Planificacion exhaustiva: intake + spec + tasks + revision + auditoria"
+---
+
+Lee ai_docs/core/ para contexto del proyecto.
+
+PASO 0 — INTAKE:
+Actua como el asesor (.gemini/agents/asesor.md, seccion "Reglas de intake") y analiza la solicitud ANTES
+de escribir ninguna spec. Este es el unico paso donde se puede preguntar: lo que no se cierre
+aqui, se adivina despues.
+1. Reformula la solicitud en 1-3 frases. Copia LITERALMENTE cifras, entidades y criterios de
+   aceptacion del usuario — parafrasearlos los pierde.
+2. Declara que ASUMISTE y que dijo el usuario. No des por confirmado lo que nadie escribio.
+3. Si la solicitud contradice ai_docs/core/, gana la solicitud. Avisa de la contradiccion.
+4. Si existe un enfoque mas robusto que ataque la causa raiz, proponlo. Decide el usuario.
+5. Veredicto:
+   - NECESITA_CLARIFICACION: falta un dato critico (que problema resuelve, quien lo usa, que
+     cuenta como exito). Formula las preguntas concretas y DETENTE. No crees ninguna spec.
+   - DIVIDIR_EN_SPECS: la solicitud contiene 2+ funcionalidades independientes (no comparten
+     archivos ni logica). Presenta una spec por funcionalidad, con alcance y dependencias entre
+     ellas, y DETENTE. El usuario decide y lanza /planificar por cada spec, en orden de
+     dependencias. No crees ninguna spec.
+   - LISTO_PARA_PLANIFICAR: la solicitud es clara y acotada. Continua al PASO 1.
+Sin documentacion en ai_docs/core/, avisa: la planificacion sera ciega. Recomienda rellenar
+antes las plantillas de ai_docs/core_templates/.
+
+PASO 1 — SPEC:
+Lee ai_docs/dev_templates/spec.md y sigue todos sus pasos.
+NO hagas preguntas de clarificacion — el intake ya cerro los huecos criticos.
+La solicitud literal del usuario MANDA sobre el intake y sobre ai_docs/core/.
+Copia verbatim sus cifras, entidades y criterios de aceptacion. No escribas que el usuario
+confirmo o eligio algo si no consta en su solicitud: lo asumido se declara como asuncion.
+Crea la spec completa con Estado: BORRADOR. Guarda en ai_docs/tasks/spec_<descriptor>.md.
+NUNCA marques la spec como APROBADA: la aprobacion es del usuario y ocurre en el PASO 5.
+
+PASO 2 — TASKS:
+Lee ai_docs/dev_templates/tareas.md y sigue todos sus pasos.
+Deriva tasks granulares de la spec. Crea cada una en ai_docs/tasks/NNN_descriptor.md.
+NO esperes aprobacion — continua directamente.
+
+PASO 3 — REVISION DE CADA TASK:
+Para CADA task creada, lee ai_docs/dev_templates/revisar_tarea.md y ejecuta todos los pasos.
+Se esceptico: tu trabajo es encontrar problemas, no confirmar que todo esta bien.
+Para cada task reporta: coherencia, alcance, dependencias, edge cases, DRY, TDD, riesgos.
+
+PASO 4 — AUDITORIA CRUZADA:
+Lee ai_docs/dev_templates/auditar_spec.md y ejecuta todos los pasos.
+Integra los hallazgos de las revisiones individuales del paso 3.
+Verifica: cobertura de criterios, overlaps, huecos, coherencia, dependencias.
+
+PASO 5 — RESUMEN Y APROBACION:
+Presenta al usuario el resultado completo con veredicto final:
+- APROBADO: pide al usuario que revise el plan y escriba "apruebo". Solo entonces cambia
+  el estado de la spec de BORRADOR a APROBADA. Despues puede implementar con
+  /implementar-spec <spec> (workflow completo) o /implementar <task> (manual)
+- NECESITA_AJUSTES: detalla problemas y propone como resolverlos
+- NECESITA_REPLANTEAMIENTO: recomienda rehacer con mas detalle
+
+La spec permanece en BORRADOR hasta que el usuario da su aprobacion explicita.
+DETENTE aqui: no implementes nada sin esa aprobacion.
+
+Solicitud del usuario:
+
+{{args}}
