@@ -246,6 +246,40 @@ test('depsFallidas: solo una dependencia FALLIDA bloquea', () => {
   assert.deepStrictEqual(orq.depsFallidas(tarea('a'), fallida), []);
 });
 
+test('depsFallidas: normaliza los separadores de ruta antes de comparar, igual que el grafo', () => {
+  // Rojo antes de esta task: la comparacion estricta dejaba pasar una dependencia con barras
+  // invertidas pese a que su padre estaba FALLIDA, evadiendo el bloqueo con separadores de Windows.
+  const task = tarea('hija', ['ai_docs\\tasks\\a.md']);
+  const fallida = [{ task_path: 'ai_docs/tasks/a.md', resultado: 'FALLIDA' }];
+  const completada = [{ task_path: 'ai_docs/tasks/a.md', resultado: 'COMPLETADA' }];
+
+  assert.deepStrictEqual(orq.depsFallidas(task, fallida), ['ai_docs\\tasks\\a.md']);
+  assert.deepStrictEqual(orq.depsFallidas(task, completada), []);
+});
+
+// ── Contratos: productor duplicado ───────────────────────────────────────────
+
+test('verificarContratos: dos productores del mismo contrato se nombran, sin acusar al consumidor correcto', () => {
+  // Rojo antes de esta task: el mapa de ultima-escritura-gana indexaba un solo productor por
+  // nombre, asi que B (que si depende de su productor real) se denunciaba en su lugar, y la
+  // duplicidad real -el error de plan verdadero- nunca se nombraba.
+  const a = { path: 'ai_docs/tasks/001_a.md', contratos: [{ tipo: 'produce', nombre: 'ApiX' }], dependencias: [] };
+  const b = {
+    path: 'ai_docs/tasks/002_b.md',
+    dependencias: ['ai_docs/tasks/001_a.md'],
+    contratos: [{ tipo: 'consume', nombre: 'ApiX' }],
+  };
+  const c = { path: 'ai_docs/tasks/003_c.md', contratos: [{ tipo: 'produce', nombre: 'ApiX' }], dependencias: [] };
+
+  const problemas = orq.verificarContratos([a, b, c]);
+
+  assert.strictEqual(problemas.length, 1, 'un solo problema: la duplicidad, no el falso positivo contra B');
+  assert.match(problemas[0], /"ApiX".*mas de un productor/);
+  assert.match(problemas[0], /001_a\.md/);
+  assert.match(problemas[0], /003_c\.md/);
+  assert.ok(!problemas.some(p => p.includes('002_b.md')), 'B si depende de su productor: no debe aparecer');
+});
+
 test('ejecutarTask: una dependencia fallida de un nivel anterior bloquea, sin invocar al implementador', async () => {
   let invocado = 0;
   const previos = [{ task_path: 'ai_docs/tasks/a.md', task_titulo: 'a', resultado: 'FALLIDA' }];
@@ -467,14 +501,111 @@ test('revisarYComitear: si la preparacion del diff no corre, no hay revision ni 
 test('revisarYComitear: exit 0 sin nada preparado es un working tree limpio, no un fallo', async () => {
   const git = gitDoble({ 'diff --cached': { code: 0, out: '', err: '' } });
   const { deps, visto } = depsRevision(git);
+  // Task sin ficheros declarados: es la situacion legitima que este caso fija, distinta de F2
+  // (diff vacio con trabajo declarado), cubierta abajo.
+  const resultado = Object.assign(resultadoDe(tarea('a')), { archivos_modificados: [] });
 
-  const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+  const r = await orq.revisarYComitear(tarea('a'), resultado, deps);
 
   assert.deepStrictEqual(visto.revisiones, [], 'no hay diff que revisar');
   assert.strictEqual(visto.descartes, 0);
   assert.ok(!git.llamadas.some(c => c.startsWith('commit')));
   assert.strictEqual(r.resultado, 'COMPLETADA', 'el resultado del implementador no se degrada');
   assert.match(r.notas, /sin cambios en el working tree: no se commitea/);
+});
+
+// ── F2: diff vacio inesperado (trabajo declarado que ya no esta) ─────────────
+// Rojo antes de esta task: esta misma rama servia a dos situaciones opuestas — la task sin nada
+// que hacer, y aquella cuyo trabajo desaparecio (absorbido por una hermana o borrado por su
+// descarte) — y las dos se reportaban COMPLETADA. depsFallidas solo bloquea por FALLIDA, asi que
+// las tasks posteriores avanzaban creyendo que el fichero o el contrato existia.
+
+test('revisarYComitear: diff vacio con archivos_modificados declarados es un exito falso, no COMPLETADA', async () => {
+  const git = gitDoble({ 'diff --cached': { code: 0, out: '', err: '' } });
+  const { deps, visto } = depsRevision(git);
+  const resultado = resultadoDe(tarea('a')); // archivos_modificados: ['src/a.js'], no vacio
+
+  const r = await orq.revisarYComitear(tarea('a'), resultado, deps);
+
+  assert.deepStrictEqual(visto.revisiones, [], 'no hay diff que revisar: no llego a existir');
+  assert.strictEqual(visto.descartes, 0, 'nada que descartar: el trabajo ya no esta en el tree');
+  assert.ok(!git.llamadas.some(c => c.startsWith('commit')));
+  assert.strictEqual(r.resultado, 'FALLIDA', 'el trabajo declarado que ya no esta no es un exito');
+  assert.match(r.notas, /no queda nada que commitear|trabajo declarado/);
+});
+
+test('ejecutarTask: la task cuyo trabajo desaparecio protege a las posteriores via depsFallidas', async () => {
+  // Composicion real: el diff vacio inesperado se traduce en FALLIDA, y esa FALLIDA
+  // bloquea a quien dependa de ella (a diferencia de antes, cuando avanzaban sobre un
+  // contrato que en realidad no existia).
+  const git = gitDoble({ 'diff --cached': { code: 0, out: '', err: '' } });
+  const deps = Object.assign(depsTask().deps, {
+    revisarYComitear: (t, r) => orq.revisarYComitear(t, r, depsRevision(git).deps),
+  });
+
+  const r = await orq.ejecutarTask(tarea('a'), [], deps);
+  assert.strictEqual(r.resultado, 'FALLIDA');
+
+  const bloqueada = orq.depsFallidas(tarea('b', ['ai_docs/tasks/a.md']), [r]);
+  assert.deepStrictEqual(bloqueada, ['ai_docs/tasks/a.md']);
+});
+
+// ── F1: el commit de una task no arrastra ficheros de una hermana (ambito) ───
+// Rojo antes de esta task: `git add -A` sin pathspec preparaba el arbol entero, asi que en modo
+// concurrente el commit de una task se llevaba tambien el trabajo sin commitear de una hermana.
+
+test('revisarYComitear: en modo concurrente, add y diff llegan acotados al ambito declarado de la task', async () => {
+  const git = gitDoble({ 'diff --cached -- src/a.js': { code: 0, out: DIFF, err: '' } });
+  const { deps } = depsRevision(git, { ambito: ['src/a.js'] });
+
+  const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+  assert.strictEqual(git.llamadas[0], 'add -A -- src/a.js',
+    'el add no debe absorber los ficheros de una hermana');
+  assert.strictEqual(git.llamadas[1], 'diff --cached -- src/a.js');
+  assert.strictEqual(r.resultado, 'COMPLETADA');
+});
+
+test('revisarYComitear: el ambito acota tambien la segunda preparacion, tras una correccion', async () => {
+  const git = gitDoble({
+    'diff --cached -- src/a.js': n => ({ code: 0, out: n === 1 ? DIFF : DIFF + '+corregido\n', err: '' }),
+  });
+  let veredictos = ['NECESITA_CORRECCIONES', 'APROBADA'];
+  const { deps, visto } = depsRevision(git, {
+    ambito: ['src/a.js'],
+    revisar: async (t, diff) => ({ veredicto: veredictos.shift() }),
+  });
+
+  await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+  assert.strictEqual(visto.correcciones, 1);
+  assert.deepStrictEqual(
+    git.llamadas.filter(c => c.startsWith('diff')),
+    ['diff --cached -- src/a.js', 'diff --cached -- src/a.js'],
+  );
+});
+
+test('revisarYComitear: ambito vacio en modo concurrente conserva el add sin acotar y registra el motivo', async () => {
+  // Task sin tabla "Archivos afectados" legible: acotar a una lista vacia equivaldria a no
+  // commitear nunca, asi que se conserva el comportamiento actual (add -A sin pathspec).
+  const git = gitDoble({ 'diff --cached': { code: 0, out: DIFF, err: '' } });
+  const { deps } = depsRevision(git, { ambito: [] });
+
+  const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+  assert.deepStrictEqual(git.llamadas.slice(0, 2), ['add -A', 'diff --cached']);
+  assert.match(r.notas, /ambito vacio/);
+  assert.strictEqual(r.resultado, 'COMPLETADA');
+});
+
+test('revisarYComitear: sin ambito (modo secuencial) el add sigue sin acotar y sin nota alguna', async () => {
+  const git = gitDoble({ 'diff --cached': { code: 0, out: DIFF, err: '' } });
+  const { deps } = depsRevision(git); // sin `ambito` en absoluto
+
+  const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+  assert.deepStrictEqual(git.llamadas.slice(0, 2), ['add -A', 'diff --cached']);
+  assert.doesNotMatch(r.notas || '', /ambito/);
 });
 
 test('revisarYComitear: revision adversa -> una pasada de correccion y re-revision del nuevo diff', async () => {
