@@ -79,6 +79,27 @@ test('git push --no-verify: deny', () => {
   assert.strictEqual(r.code, 2);
 });
 
+// Confirmacion end-to-end de las formas que evadian el bloqueo antes del fix del tokenizador
+// (envoltorio sin flags, sintaxis de shell tomada como programa, parentesis pegados al nombre,
+// `&` suelto sin partir segmento, alternacion asignacion/envoltorio). El control positivo ya
+// esta cubierto arriba ('git commit --no-verify: deny'); aqui no se duplica.
+for (const cmd of [
+  'sudo git commit --no-verify -m "x"',
+  '{ git commit --no-verify -m "x"; }',
+  'if true; then git commit --no-verify -m "x"; fi',
+  '(git commit --no-verify -m "x")',
+  'sleep 1 & git commit --no-verify -m "x"',
+  'env FOO=bar git commit --no-verify -m "x"',
+]) {
+  test(`sdd-commit-guard.js contra el binario real: ${cmd} -> deny`, () => {
+    const r = runHook(HOOK, bash(cmd));
+
+    assert.strictEqual(r.decision.decision, 'deny');
+    assert.strictEqual(r.code, 2);
+    assert.match(r.decision.reason, /--no-verify/);
+  });
+}
+
 test('Antigravity: git commit --no-verify -> deny expresado sin exit code de bloqueo', () => {
   const r = runHook(HOOK, agy('git commit --no-verify -m "fix: algo"'));
 

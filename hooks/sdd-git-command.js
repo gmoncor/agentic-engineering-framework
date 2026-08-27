@@ -23,7 +23,7 @@ const path = require('path');
  */
 
 // Separadores de shell que no van entrecomillados: parten la lista de tokens en invocaciones.
-const SEPARADORES = new Set(['&&', '||', ';', '|', '\n']);
+const SEPARADORES = new Set(['&&', '||', ';', '|', '&', '\n']);
 
 // Asignacion de entorno al inicio de una invocacion (FOO=bar git commit): no es el programa.
 const ASIGNACION_ENTORNO_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
@@ -49,19 +49,31 @@ function esFlagDeScript(programa, flag) {
 }
 
 // Envoltorios que anteponen su propio nombre al programa real sin cambiar la invocacion que
-// git/gh reciben: `env git commit`, `/usr/bin/git commit` y `command git commit` invocan git
-// igual que `git commit` a secas. Se saltan (por su nombre base, para tolerar rutas absolutas)
-// antes de fijar `programa`, siempre que no lleven flags propios.
+// git/gh reciben: `env git commit`, `/usr/bin/git commit`, `command git commit` y `sudo git
+// commit` invocan git igual que `git commit` a secas (`sudo`/`doas` en su forma corriente, sin
+// flags propios: `sudo -u otro git commit` cae en el LIMITE REAL de abajo). Se saltan (por su
+// nombre base, para tolerar rutas absolutas) antes de fijar `programa`, siempre que no lleven
+// flags propios.
 //
-// LIMITE REAL, no cosmetico: un envoltorio CON flags/argumentos (`nice -n 10 git commit`,
-// `timeout 30 git commit`, `xargs git commit -m x`) no se resuelve -- el modulo no intenta
-// aprender la gramatica de flags de cada programa externo posible. Para los consumidores que
-// reemplazan una regex de subcadena cruda (sdd-turn-budget.js, sdd-review-gate.js), esto ES UNA
-// REDUCCION real de lo que se detectaba antes: la regex vieja encontraba "git commit" en
-// cualquier posicion del string, envoltorio con flags incluido. Si un caso asi importa en la
-// practica, resolverlo exige una lista de flags por envoltorio (como OPCIONES_GLOBALES_CON_VALOR
-// para git/gh), no extender este Set.
-const ENVOLTORIOS_SIN_FLAGS = new Set(['env', 'command', 'nohup', 'stdbuf', 'nice', 'time']);
+// LIMITE REAL, no cosmetico (dueño mecanico: P19): un envoltorio CON flags/argumentos (`nice -n
+// 10 git commit`, `timeout 30 git commit`, `xargs git commit -m x`, `sudo -u otro git commit`)
+// no se resuelve -- el modulo no intenta aprender la gramatica de flags de cada programa externo
+// posible. Para los consumidores que reemplazan una regex de subcadena cruda (sdd-turn-budget.js,
+// sdd-review-gate.js), esto ES UNA REDUCCION real de lo que se detectaba antes: la regex vieja
+// encontraba "git commit" en cualquier posicion del string, envoltorio con flags incluido. Si un
+// caso asi importa en la practica, resolverlo exige una lista de flags por envoltorio (como
+// OPCIONES_GLOBALES_CON_VALOR para git/gh), no extender este Set.
+const ENVOLTORIOS_SIN_FLAGS = new Set(['env', 'command', 'nohup', 'stdbuf', 'nice', 'time', 'sudo', 'doas']);
+
+// Tokens de sintaxis de shell que nunca son el programa de una invocacion: aparecen en cabeza de
+// segmento cuando una agrupacion (bloque, subshell, condicional, bucle, negacion) envuelve la
+// invocacion real. `case`/`esac` y la definicion de funcion (`f() { ... }`) quedan fuera a
+// proposito: comparten forma de bypass con lo de mas abajo (una palabra suelta en cabeza de
+// segmento que ningun descarte puede saltar sin adivinar) y piden tratamiento propio, no una
+// entrada de Set (ver Riesgos aceptados de la task que cerro esta clase).
+const SINTAXIS_DE_SHELL = new Set([
+  '(', ')', '{', '}', '!', 'if', 'then', 'elif', 'else', 'fi', 'while', 'until', 'for', 'do', 'done',
+]);
 
 // Letras cortas de `git commit` que consumen un valor. Una vez alcanzada una de estas dentro de
 // un grupo de flags cortos (-uno, -Cxyz...), el resto del grupo es el VALOR, no mas flags: por
@@ -107,7 +119,7 @@ function retirarHeredocs(cmd) {
   return out;
 }
 
-const ES_SEPARADOR_UN_CHAR = ch => ch === ';' || ch === '|' || ch === '&';
+const ES_SEPARADOR_UN_CHAR = ch => ch === ';' || ch === '|' || ch === '&' || ch === '(' || ch === ')';
 const ES_BLANCO = ch => ch === ' ' || ch === '\t' || ch === '\r';
 const CORTA_PALABRA = ch => ES_BLANCO(ch) || ch === '\n' || ch === '"' || ch === "'" || ES_SEPARADOR_UN_CHAR(ch);
 
@@ -175,21 +187,32 @@ function tokenizar(cmd) {
   return tokens;
 }
 
+// Un token en cabeza de segmento que nunca es `programa`: asignacion de entorno, sintaxis de
+// shell o envoltorio sin flags, en cualquier orden y cualquier alternacion de los tres. Un orden
+// fijo de pasadas (primero asignaciones, luego envoltorios) no tolera la alternacion -- `env
+// FOO=bar git commit` la burla porque `env` no es asignacion y `FOO=bar` no es envoltorio, cada
+// pasada se detiene ante lo que la otra sabe descartar. Un unico predicado que se reevalua en
+// cada token si tolera cualquier orden.
+function esPrefijoDescartable(tok) {
+  return !tok.entrecomillado && (
+    ASIGNACION_ENTORNO_RE.test(tok.valor)
+    || SINTAXIS_DE_SHELL.has(tok.valor)
+    || ENVOLTORIOS_SIN_FLAGS.has(path.basename(tok.valor))
+  );
+}
+
 /**
- * Una invocacion (descarta asignaciones de entorno iniciales, toma el primer token restante
- * como `programa`, y recorre el resto acumulando en `flags` los tokens NO entrecomillados que
- * empiezan por "-" y en `palabras` los demas). Las opciones globales que consumen valor se
- * saltan junto a su valor. Si el programa es un ejecutor de shell y el flag es de tipo -c, el
- * resto del segmento no son sus flags/palabras: es un script anidado, y se re-analiza como una
- * invocacion propia (recursivo, por si el script anidado a su vez envuelve otro ejecutor).
+ * Una invocacion (descarta el prefijo de asignaciones/sintaxis/envoltorios en cabeza de
+ * segmento, toma el primer token restante como `programa`, y recorre el resto acumulando en
+ * `flags` los tokens NO entrecomillados que empiezan por "-" y en `palabras` los demas). Las
+ * opciones globales que consumen valor se saltan junto a su valor. Si el programa es un ejecutor
+ * de shell y el flag es de tipo -c, el resto del segmento no son sus flags/palabras: es un
+ * script anidado, y se re-analiza como una invocacion propia (recursivo, por si el script
+ * anidado a su vez envuelve otro ejecutor).
  */
 function parseSegmento(seg) {
   let idx = 0;
-  while (idx < seg.length && !seg[idx].entrecomillado && ASIGNACION_ENTORNO_RE.test(seg[idx].valor)) idx += 1;
-  if (idx >= seg.length) return [];
-
-  while (idx < seg.length && !seg[idx].entrecomillado
-    && ENVOLTORIOS_SIN_FLAGS.has(path.basename(seg[idx].valor))) idx += 1;
+  while (idx < seg.length && esPrefijoDescartable(seg[idx])) idx += 1;
   if (idx >= seg.length) return [];
 
   const programa = path.basename(seg[idx].valor);
