@@ -2268,3 +2268,87 @@ test('F5: package.json como directorio se reporta sin afirmar que el JSON es inv
   assert.match(stderr, /No se pudo leer o interpretar package\.json/);
   assert.match(stderr, /EISDIR/);
 });
+
+// s12/18: un destino malformado no puede dejar el lockfile de instalacion
+// huerfano -- eso convertia un fallo recuperable en un destino sellado para
+// siempre. Los tres casos de abajo cubren la clase completa: el disparador
+// de disco real (Caso A), el seam que prueba la propiedad sin depender de
+// ningun fallo incidental (Caso B), y la rama 'ausente' con un error parcial
+// (Caso C).
+
+test('Caso A: ai_docs como fichero regular no sella el destino, el siguiente intento tras corregirlo completa', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  fs.writeFileSync(path.join(proyecto, 'ai_docs'), '');
+
+  const intento1 = ejecutar(['install', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+  assert.strictEqual(intento1.codigo, 1);
+  assert.match(intento1.stderr, /ai_docs/);
+  assert.match(intento1.stderr, /ENOTDIR/);
+  assert.doesNotMatch(intento1.stderr, /Error inesperado/);
+  assert.ok(
+    !fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
+    'un destino malformado no debe dejar el lockfile huerfano',
+  );
+
+  fs.unlinkSync(path.join(proyecto, 'ai_docs'));
+  const intento2 = ejecutar(['install', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+  assert.strictEqual(intento2.codigo, 0, 'tras corregir la causa, el mismo destino debe volver a ser instalable');
+});
+
+test('Caso B: excepcion inyectada en el cuerpo (SDD_TEST_THROW_IN_BODY) retira el lockfile igual que un fallo real', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  const { codigo } = ejecutar(['install', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete, SDD_TEST_THROW_IN_BODY: '1' },
+  });
+  assert.notStrictEqual(codigo, 0);
+  assert.ok(
+    !fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
+    'el finally debe retirar el lockfile aunque la excepcion no venga de un fallo de disco',
+  );
+});
+
+test('Caso C: ai_docs/core como enlace simbolico roto deja error parcial sin sellar el destino', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  fs.mkdirSync(path.join(proyecto, 'ai_docs'));
+  fs.symlinkSync(path.join(proyecto, 'blanco-inexistente'), path.join(proyecto, 'ai_docs', 'core'), 'dir');
+
+  const { codigo, stderr } = ejecutar(['install', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 1);
+  assert.match(stderr, /ai_docs\/core/);
+  assert.doesNotMatch(stderr, /Error inesperado/);
+  assert.ok(
+    fs.statSync(path.join(proyecto, 'ai_docs', 'tasks')).isDirectory(),
+    'ai_docs/tasks debe crearse aunque ai_docs/core falle',
+  );
+  assert.ok(
+    fs.statSync(path.join(proyecto, 'ai_docs', 'refs')).isDirectory(),
+    'ai_docs/refs debe crearse aunque ai_docs/core falle',
+  );
+  assert.ok(
+    !fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
+    'un error parcial no debe dejar lockfile residual',
+  );
+});

@@ -620,7 +620,15 @@ function mergeScriptsTest(dryRun) {
  */
 function estadoDeRuta(rutaAbsoluta, tipoEsperado) {
   if (!fs.existsSync(rutaAbsoluta)) return 'ausente';
-  const tipoReal = fs.statSync(rutaAbsoluta).isDirectory() ? 'directory' : 'file';
+  let tipoReal;
+  try {
+    tipoReal = fs.statSync(rutaAbsoluta).isDirectory() ? 'directory' : 'file';
+  } catch {
+    // Carrera real entre existsSync y statSync (p.ej. borrado concurrente
+    // justo entre ambas llamadas): se lee como si nunca hubiera existido, no
+    // se propaga.
+    return 'ausente';
+  }
   return tipoReal === tipoEsperado ? 'ok' : 'tipo-incorrecto';
 }
 
@@ -638,8 +646,13 @@ function crearDirectoriosDelProyecto() {
     const destino = path.join(DEST, dir);
     const estado = estadoDeRuta(destino, 'directory');
     if (estado === 'ausente') {
-      fs.mkdirSync(destino, { recursive: true });
-      creados.push(dir);
+      try {
+        fs.mkdirSync(destino, { recursive: true });
+        creados.push(dir);
+      } catch (err) {
+        process.stderr.write(`${dir} no se pudo crear (${err.code}): ${err.message}\n`);
+        fallidos.push(dir);
+      }
     } else if (estado === 'tipo-incorrecto') {
       process.stderr.write(`${dir} existe pero no es un directorio: no se puede usar como carpeta del proyecto.\n`);
       fallidos.push(dir);
@@ -773,39 +786,52 @@ function copiarRutasFramework(backend, skip, opciones = {}) {
 
   if (!opciones.dryRun) crearLockfileInstalacion(backend);
 
-  const resultados = [];
-  const fallidas = [];
-  for (const ruta of rutas) {
-    try {
-      resultados.push(
-        copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, opciones.resetProtected, opciones.dryRun, opciones.generalizado),
-      );
-    } catch (err) {
-      fallidas.push({ ruta, error: err.message });
+  try {
+    if (process.env.SDD_TEST_THROW_IN_BODY) {
+      // Seam de test: fuerza una excepcion dentro del cuerpo para acreditar
+      // que el finally de abajo retira el lockfile ante CUALQUIER fallo, no
+      // solo el ultimo que un test de disco consiga reproducir hoy -- una
+      // correccion futura de ese fallo incidental no debe dejar la propiedad
+      // sin instrumento. Sin efecto en ejecucion normal (variable no
+      // definida). Precedente: SDD_FRAMEWORK_ROOT (L18).
+      throw new Error('fallo inyectado por SDD_TEST_THROW_IN_BODY');
     }
-  }
 
-  const copiadas = resultados.filter(r => r.copiada).map(r => r.ruta);
-  const saltadas = resultados
-    .filter(r => !r.copiada && !saltadasPorEdicion.includes(r.ruta))
-    .map(r => r.ruta);
-  const { creados, fallidos: dirsFallidos } = opciones.crearDirsUsuario && !opciones.dryRun
-    ? crearDirectoriosDelProyecto()
-    : { creados: [], fallidos: [] };
+    const resultados = [];
+    const fallidas = [];
+    for (const ruta of rutas) {
+      try {
+        resultados.push(
+          copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, opciones.resetProtected, opciones.dryRun, opciones.generalizado),
+        );
+      } catch (err) {
+        fallidas.push({ ruta, error: err.message });
+      }
+    }
 
-  if (!opciones.dryRun) {
-    // Solo las rutas copiadas con exito entran al sidecar: una ruta fallida
-    // no debe registrar un hash de un archivo que nunca llego a escribirse.
-    actualizarHashesInstalados(hashesInstalados, copiadas, saltadasPorEdicion);
+    const copiadas = resultados.filter(r => r.copiada).map(r => r.ruta);
+    const saltadas = resultados
+      .filter(r => !r.copiada && !saltadasPorEdicion.includes(r.ruta))
+      .map(r => r.ruta);
+    const { creados, fallidos: dirsFallidos } = opciones.crearDirsUsuario && !opciones.dryRun
+      ? crearDirectoriosDelProyecto()
+      : { creados: [], fallidos: [] };
+
+    if (!opciones.dryRun) {
+      // Solo las rutas copiadas con exito entran al sidecar: una ruta fallida
+      // no debe registrar un hash de un archivo que nunca llego a escribirse.
+      actualizarHashesInstalados(hashesInstalados, copiadas, saltadasPorEdicion);
+    }
+
+    if (fallidas.length) reportarRutasFallidas(fallidas);
+
+    return { copiadas, saltadas, creados, saltadasPorEdicion, fallidas, dirsFallidos };
+  } finally {
     // El lockfile se borra siempre al terminar, con exito o con fallo: dejarlo
     // huerfano tras un fallo bloquearia el siguiente intento legitimo con el
     // mismo aborto que protege contra la ejecucion concurrente.
-    eliminarLockfileInstalacion();
+    if (!opciones.dryRun) eliminarLockfileInstalacion();
   }
-
-  if (fallidas.length) reportarRutasFallidas(fallidas);
-
-  return { copiadas, saltadas, creados, saltadasPorEdicion, fallidas, dirsFallidos };
 }
 
 /** Sustituye el marcador de version en `archivo` por `version`. Retorna true si hubo cambio. */
