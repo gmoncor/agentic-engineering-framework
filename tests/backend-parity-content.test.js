@@ -114,22 +114,33 @@ test('README.md "Modos de ejecucion" no niega el modo paralelo fuera de Claude C
 // dejar rastro. Estos dos casos leen AGENTS.md y GEMINI.md directamente para
 // que una garantia perdida en el fragmento origen falle aqui, no en silencio.
 
-test('AGENTS.md declara por duplicado que el commit sin revision lo sostiene la disciplina, no un hook', () => {
+/**
+ * Corta desde una cabecera de nivel 2 hasta la SIGUIENTE cabecera de nivel 2
+ * (o el final del fichero), sin fijar el nombre del cierre: acota a la
+ * seccion real de la cabecera, no a la distancia hasta una cabecera vecina
+ * cuyo nombre no tiene relacion con la propiedad que se comprueba.
+ */
+function acotarSeccion(contenido, cabecera) {
+  const inicio = contenido.indexOf(cabecera);
+  if (inicio === -1) return null;
+  const finBusqueda = contenido.indexOf('\n## ', inicio + cabecera.length);
+  return contenido.slice(inicio, finBusqueda === -1 ? contenido.length : finBusqueda);
+}
+
+test('AGENTS.md declara en sus dos secciones de origen que el commit sin revision lo sostiene la disciplina, no un hook', () => {
   const contenido = leer('AGENTS.md');
-  const inicioSeccion = contenido.indexOf('## Defecto lineal y modo paralelo a peticion');
-  const inicioAntigravity = contenido.indexOf('## Antigravity CLI');
+  const hogares = ['## Defecto lineal y modo paralelo a peticion', '## Enforcement mecanico y su limite'];
 
-  assert.ok(inicioSeccion !== -1, 'AGENTS.md debe tener la seccion "Defecto lineal y modo paralelo a peticion"');
-  assert.ok(inicioAntigravity !== -1, 'AGENTS.md debe tener la seccion "Antigravity CLI"');
+  for (const cabecera of hogares) {
+    const seccion = acotarSeccion(contenido, cabecera);
 
-  const seccion = contenido.slice(inicioSeccion, inicioAntigravity);
-  const apariciones = seccion.match(/disciplina, no un hook/g) || [];
-
-  assert.ok(
-    apariciones.length >= 2,
-    'La clarificacion "lo sostiene la disciplina, no un hook" debe aparecer al menos dos veces '
-      + '(el punto de la lista y el parrafo de limite honesto): retirar una no debe pasar inadvertido'
-  );
+    assert.ok(seccion !== null, `AGENTS.md debe tener la seccion "${cabecera}"`);
+    assert.ok(
+      /disciplina, no un hook/.test(seccion),
+      `La seccion "${cabecera}" debe declarar que el commit sin revision lo sostiene la disciplina, no un hook `
+        + '(una aparicion por seccion de origen: moverla a otra seccion no debe pasar inadvertido)'
+    );
+  }
 });
 
 test('GEMINI.md tiene "Defecto lineal y modo paralelo a peticion" como cabecera y declara que aqui no hay flag', () => {
@@ -141,10 +152,9 @@ test('GEMINI.md tiene "Defecto lineal y modo paralelo a peticion" como cabecera 
     'GEMINI.md debe tener "Defecto lineal y modo paralelo a peticion" como cabecera de nivel 2'
   );
 
-  const inicioSeccion = contenido.indexOf('## Defecto lineal y modo paralelo a peticion');
-  const inicioEstructura = contenido.indexOf('## Estructura de archivos');
-  const seccion = contenido.slice(inicioSeccion, inicioEstructura);
+  const seccion = acotarSeccion(contenido, '## Defecto lineal y modo paralelo a peticion');
 
+  assert.ok(seccion !== null, 'GEMINI.md debe tener la seccion "Defecto lineal y modo paralelo a peticion"');
   assert.ok(
     /no hay flag/i.test(seccion),
     'La seccion debe declarar que en este backend el modo paralelo no se pide con un flag'
