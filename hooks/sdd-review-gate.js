@@ -7,6 +7,12 @@
  * BLOQUEA `git commit` o `git merge` cuando el diff que se va a commitear no
  * consta revisado por la revision adversarial por task.
  *
+ * QUE DISPARA EL GATE
+ * Lo dispara el subcomando REALMENTE invocado (`git commit` / `git merge`, opciones
+ * globales incluidas: `git -c k=v commit` cuenta), no la aparicion de la frase en el
+ * comando crudo: un `git log --grep="git commit"` de solo lectura no lo activa. El
+ * criterio vive en sdd-git-command.js (compartido con los demas guards de git).
+ *
  * POR QUE AHORA SI PUEDE BLOQUEAR
  * La revision ocurre por task, ANTES del commit, y su senal guarda el hash del
  * diff revisado. Aqui se recalcula el hash del diff cacheado (`git diff --cached`,
@@ -38,9 +44,17 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 const { readPayload, readToolCall, warn, deny, skipRequested, loadConfig, runWithFailOpen } = require('./sdd-hook-utils');
 const { DEFAULT_TTL_MS, readSignal, hashDiff } = require('./sdd-review-signal');
+const { invocacionesDe } = require('./sdd-git-command');
 
 const SHELL_TOOLS = new Set(['Bash', 'run_command', 'shell']);
-const GUARDED_CMD_RE = /\bgit\s+(commit|merge)\b/;
+
+// El gate se aplica si el comando invoca de verdad `git commit` o `git merge` (opciones
+// globales incluidas), no si el texto contiene la frase. Criterio compartido: ver
+// sdd-git-command.js.
+function invocaGitCommitOMerge(cmd) {
+  return invocacionesDe(cmd, 'git', ['commit']).length > 0
+    || invocacionesDe(cmd, 'git', ['merge']).length > 0;
+}
 
 // Firmas estables (ver hooks/gate-signatures.json): el escaner de auditoria distingue el
 // bloqueo real (sin senal, o hash que no ata) del aviso que nunca impide el commit.
@@ -70,7 +84,7 @@ async function main() {
   if (!SHELL_TOOLS.has(call.name)) process.exit(0);
 
   const cmd = String(call.input.command || '').trim();
-  if (!GUARDED_CMD_RE.test(cmd)) process.exit(0);
+  if (!invocaGitCommitOMerge(cmd)) process.exit(0);
 
   const config = loadConfig(path.join(__dirname, 'config.json')).sdd_review_gate || {};
   if (config.enabled !== true) process.exit(0);
