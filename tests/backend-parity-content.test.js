@@ -107,6 +107,65 @@ test('README.md "Modos de ejecucion" no niega el modo paralelo fuera de Claude C
   );
 });
 
+// ── Superficies generadas: propiedades que el compilador no protege ─────────
+//
+// El compilador detecta que una salida se edito a mano y ya no coincide con
+// su fuente, pero una edicion seguida de una regeneracion sincroniza sin
+// dejar rastro. Estos dos casos leen AGENTS.md y GEMINI.md directamente para
+// que una garantia perdida en el fragmento origen falle aqui, no en silencio.
+
+/**
+ * Corta desde una cabecera hasta la SIGUIENTE cabecera de nivel 1 o 2 (o el
+ * final del fichero), sin fijar el nombre del cierre: acota a la seccion
+ * real de la cabecera, no a la distancia hasta una cabecera vecina cuyo
+ * nombre no tiene relacion con la propiedad que se comprueba. Ancla por
+ * linea completa (no por subcadena) para que una cabecera degradada a nivel
+ * 3, o un apendice de nivel 1 insertado antes del cierre esperado, no la
+ * absorban en silencio dentro de la seccion.
+ */
+function acotarSeccion(contenido, cabecera) {
+  const lineas = contenido.split('\n');
+  const inicio = lineas.indexOf(cabecera);
+  if (inicio === -1) return null;
+  const resto = lineas.slice(inicio + 1);
+  const fin = resto.findIndex(linea => /^#{1,2} /.test(linea));
+  return (fin === -1 ? resto : resto.slice(0, fin)).join('\n');
+}
+
+test('AGENTS.md declara en sus dos secciones de origen que el commit sin revision lo sostiene la disciplina, no un hook', () => {
+  const contenido = leer('AGENTS.md');
+  const hogares = ['## Defecto lineal y modo paralelo a peticion', '## Enforcement mecanico y su limite'];
+
+  for (const cabecera of hogares) {
+    const seccion = acotarSeccion(contenido, cabecera);
+
+    assert.ok(seccion !== null, `AGENTS.md debe tener la seccion "${cabecera}"`);
+    assert.ok(
+      /disciplina, no un hook/.test(seccion),
+      `La seccion "${cabecera}" debe declarar que el commit sin revision lo sostiene la disciplina, no un hook `
+        + '(una aparicion por seccion de origen: moverla a otra seccion no debe pasar inadvertido)'
+    );
+  }
+});
+
+test('GEMINI.md tiene "Defecto lineal y modo paralelo a peticion" como cabecera y declara que aqui no hay flag', () => {
+  const contenido = leer('GEMINI.md');
+  const cabeceras = contenido.split('\n').filter(linea => linea.startsWith('## '));
+
+  assert.ok(
+    cabeceras.includes('## Defecto lineal y modo paralelo a peticion'),
+    'GEMINI.md debe tener "Defecto lineal y modo paralelo a peticion" como cabecera de nivel 2'
+  );
+
+  const seccion = acotarSeccion(contenido, '## Defecto lineal y modo paralelo a peticion');
+
+  assert.ok(seccion !== null, 'GEMINI.md debe tener la seccion "Defecto lineal y modo paralelo a peticion"');
+  assert.ok(
+    /no hay flag/i.test(seccion),
+    'La seccion debe declarar que en este backend el modo paralelo no se pide con un flag'
+  );
+});
+
 // ── Igualdad de cuerpo de agentes identicos-por-diseno ──────────────────────
 //
 // Los agentes de Codex (TOML) y Antigravity (Markdown+frontmatter) comparten
