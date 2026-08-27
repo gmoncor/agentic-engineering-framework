@@ -304,14 +304,22 @@ test('rejilla: 630 filas, todas regex-positivas, ninguna sin detectar', () => {
 //
 // Estas tres quedan fuera de la rejilla a proposito: su eje es "envoltorio con argumentos
 // propios", que el modulo no resuelve por diseno (ver comentario L51-63 de sdd-git-command.js).
+//
+// Las dos siguientes (P20) son la otra mitad del mismo limite: una palabra suelta en cabeza
+// de segmento (nombre de rama de "case" o nombre de funcion) tampoco se puede descartar sin
+// adivinar, igual que "envoltorio con argumentos propios". Regresion frente a la ultima
+// release publicada (4.0.0): la regex por subcadena que el tokenizador sustituyo si las
+// detectaba.
 
 const LIMITES_DECLARADOS = [
   { id: 'timeout 30', comando: 'timeout 30 git commit -m x' }, // LIMITE DECLARADO — P19
   { id: 'nice -n 10', comando: 'nice -n 10 git commit -m x' }, // LIMITE DECLARADO — P19
   { id: 'xargs', comando: 'xargs git commit -m x' }, // LIMITE DECLARADO — P19
+  { id: 'case/esac', comando: 'case x in a) git commit -m x;; esac' }, // LIMITE DECLARADO — P20
+  { id: 'definicion de funcion', comando: 'f() { git commit -m x; }; f' }, // LIMITE DECLARADO — P20
 ];
 
-test('limites declarados: envoltorio con argumentos propios no se detecta (P19, fuera de alcance)', () => {
+test('limites declarados: envoltorio con argumentos propios y palabra suelta en cabeza de segmento no se detectan (P19/P20, fuera de alcance)', () => {
   const detectadas = LIMITES_DECLARADOS.filter(l => esInvocacion(l.comando, 'git', ['commit']));
   assert.deepStrictEqual(
     detectadas.map(l => l.id),
