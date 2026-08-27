@@ -30,8 +30,12 @@ const BLOQUE_ARGUMENTOS = /\n\n(?:[^\n]*:[^\S\n]*\n\n)?\$ARGUMENTS[^\S\n]*\n*$/;
 
 /**
  * Referencia a un comando por su barra (`/planificar`, con o sin comillas
- * invertidas). La mirada atras descarta las barras de una ruta
- * (`ai_docs/tasks/`, `../spec-x`): solo cuenta la que abre la palabra.
+ * invertidas). La mirada atras descarta las barras de una ruta con caracter
+ * previo (`ai_docs/tasks/`, `../spec-x`): barata, pero no basta para una ruta
+ * absoluta al inicio de frase, tras un espacio o tras dos puntos, que no
+ * tiene nada que la mirada atras pueda excluir. El criterio que decide si es
+ * una referencia real es la pertenencia al conjunto de comandos conocidos,
+ * comprobada en `traducirReferenciasDeComando`.
  */
 const REFERENCIA_DE_COMANDO = /(?<![\w/.\-])`?\/([a-z][a-z0-9-]*)`?/g;
 
@@ -54,12 +58,21 @@ function quitarBloqueDeArgumentos(cuerpo) {
 }
 
 /**
- * `cuerpo` con cada referencia `/<nombre>` reescrita como la skill homonima.
+ * `cuerpo` con cada referencia `/<nombre>` reescrita como la skill homonima,
+ * cuando `nombre` pertenece a `comandosConocidos`. Sin ese conjunto, conserva
+ * el comportamiento anterior a esta funcion: un llamador que no sabe que
+ * comandos existen no debe empezar a borrar traducciones legitimas en
+ * silencio. Con el conjunto, una barra seguida de un nombre que no es un
+ * comando declarado no se toca: es texto (a menudo una ruta) que no hay que
+ * traducir.
  * En Codex y en Antigravity cada comando se entrega como skill: mantener la
  * barra mandaria al usuario a invocar algo que en su backend no existe.
  */
-function traducirReferenciasDeComando(cuerpo) {
-  return cuerpo.replace(REFERENCIA_DE_COMANDO, (_, nombre) => `la skill \`${nombre}\``);
+function traducirReferenciasDeComando(cuerpo, comandosConocidos) {
+  return cuerpo.replace(REFERENCIA_DE_COMANDO, (coincidencia, nombre) => {
+    if (comandosConocidos && !comandosConocidos.has(nombre)) return coincidencia;
+    return `la skill \`${nombre}\``;
+  });
 }
 
 module.exports = {

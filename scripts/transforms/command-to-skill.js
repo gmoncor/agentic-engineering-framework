@@ -35,6 +35,7 @@
 // El modelo sigue la regla comun a todos los artefactos generados: lo decide
 // `scripts/model-policy.json`, nunca el fichero fuente.
 
+const path = require('node:path');
 const { parsearFrontmatter, valorCrudo, valorObligatorio, componerMarkdown } = require('./frontmatter');
 const { modeloDe } = require('./policy-lookup');
 const {
@@ -42,9 +43,23 @@ const {
   quitarBloqueDeArgumentos,
   traducirReferenciasDeComando,
 } = require('./command-body');
+const manifest = require('../artifact-manifest.json');
 
 /** Backends que leen `.agents/skills/`. Los dos reciben el mismo fichero. */
 const BACKENDS_DE_SKILL = new Set(['antigravity', 'codex']);
+
+/**
+ * Nombres de los comandos que este mismo transform sabe convertir en skill
+ * (`.claude/commands/<nombre>.md`, sin extension), leidos del manifiesto de
+ * artefactos. Es el conjunto que `traducirReferenciasDeComando` usa para
+ * distinguir una referencia real (`/planificar`) de una ruta que empieza por
+ * barra: solo un comando declarado aqui se traduce.
+ */
+const COMANDOS_CONOCIDOS = new Set(
+  manifest.artifacts
+    .filter(entry => entry.transform === 'command-to-skill')
+    .map(entry => path.basename(entry.source, '.md'))
+);
 
 /** Campo del fragmento que decide el cuerpo. No es un campo de la skill: no llega a la salida. */
 const CAMPO_CUERPO = 'source-body';
@@ -91,7 +106,7 @@ function frontmatterDeLaSkill(campos, politica, backend, nombre) {
 /** El cuerpo del comando adaptado al formato de skill. */
 function cuerpoDelComando(contenidoFuente, origen) {
   const { cuerpo } = parsearFrontmatter(contenidoFuente, origen);
-  return traducirReferenciasDeComando(quitarBloqueDeArgumentos(quitarBloquesSoloClaude(cuerpo)));
+  return traducirReferenciasDeComando(quitarBloqueDeArgumentos(quitarBloquesSoloClaude(cuerpo)), COMANDOS_CONOCIDOS);
 }
 
 /** `base` y `anexo` unidos por una linea en blanco. Ignora el que venga vacio. */
