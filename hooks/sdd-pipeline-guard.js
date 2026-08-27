@@ -15,7 +15,8 @@
  * Escape de emergencia: SDD_GUARD_SKIP=1 degrada el bloqueo a aviso.
  *
  * Herramientas de escritura por CLI (el payload se normaliza en sdd-hook-utils.js):
- *   - Claude Code:     PreToolUse matcher "Write|Edit"; la ruta llega en tool_input.file_path
+ *   - Claude Code:     PreToolUse matcher "Write|Edit|NotebookEdit"; la ruta llega en
+ *                      tool_input.file_path (Write/Edit) o tool_input.notebook_path (NotebookEdit)
  *   - Gemini CLI:      BeforeTool matcher "write_file|edit_file"
  *   - Antigravity CLI: PreToolUse matcher "write_to_file|replace_file_content|
  *                      multi_replace_file_content|create_file"; la ruta llega en args.TargetFile
@@ -26,12 +27,12 @@ const { readPayload, readToolCall, skipRequested, warn, deny, runWithFailOpen } 
 const { isInsideAiDocs, findTasksDir, denialReason, resolveRepoPath } = require('./sdd-plan-state');
 
 const WRITE_TOOLS = new Set([
-  'Write', 'Edit',              // Claude Code
-  'write_file', 'edit_file',    // Gemini CLI
-  'write_to_file',              // Antigravity CLI: escribe el archivo entero
-  'replace_file_content',       // Antigravity CLI: sustituye fragmentos de un archivo
-  'multi_replace_file_content', // Antigravity CLI: sustituye fragmentos de varios archivos
-  'create_file',                // Antigravity CLI: crea un archivo
+  'Write', 'Edit', 'NotebookEdit', // Claude Code
+  'write_file', 'edit_file',       // Gemini CLI
+  'write_to_file',                 // Antigravity CLI: escribe el archivo entero
+  'replace_file_content',          // Antigravity CLI: sustituye fragmentos de un archivo
+  'multi_replace_file_content',    // Antigravity CLI: sustituye fragmentos de varios archivos
+  'create_file',                   // Antigravity CLI: crea un archivo
 ]);
 
 // Firmas estables (ver hooks/gate-signatures.json): un escaner de auditoria clasifica el
@@ -59,7 +60,8 @@ async function main() {
   const call = readToolCall(data);
   if (!WRITE_TOOLS.has(call.name)) process.exit(0);
 
-  const filePath = call.input.file_path || call.input.path || call.input.TargetFile || '';
+  const filePath = call.input.file_path || call.input.path || call.input.TargetFile
+    || call.input.notebook_path || '';
   // Una escritura sin ruta legible no se puede contrastar con el plan. Se declara el hueco en vez
   // de dejarla pasar en silencio, que es lo que convertiria el guardarrail en un adorno.
   if (!filePath) warn(NO_PATH_REASON, call);

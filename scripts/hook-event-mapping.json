@@ -8,7 +8,7 @@
   },
   "actions": {
     "pipeline-guard": {
-      "claude": { "matcher": "Write|Edit", "hook_file": "sdd-pipeline-guard", "wired": true },
+      "claude": { "matcher": "Write|Edit|NotebookEdit", "hook_file": "sdd-pipeline-guard", "wired": true },
       "gemini": { "matcher": "write_file|edit_file", "hook_file": "sdd-pipeline-guard", "wired": true },
       "codex": { "matcher": "apply_patch", "hook_file": "sdd-pipeline-guard", "wired": true },
       "antigravity": { "matcher": "write_to_file|replace_file_content|multi_replace_file_content|create_file", "hook_file": "sdd-pipeline-guard", "wired": true }

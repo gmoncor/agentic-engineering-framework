@@ -252,6 +252,44 @@ test('tool que no escribe: allow', () => {
   assert.strictEqual(r.code, 0);
 });
 
+// --- Contrato de NotebookEdit (Claude Code) -----------------------------------------------------
+// La ruta del cuaderno llega en tool_input.notebook_path, no en file_path: es una herramienta de
+// escritura distinta de Write/Edit y necesita su propio caso, con control positivo y negativo.
+
+function escrituraNotebook(root, relPath) {
+  return { tool_name: 'NotebookEdit', tool_input: { notebook_path: path.join(root, relPath) } };
+}
+
+test('NotebookEdit: cuaderno NO declarado en ninguna task: deny', () => {
+  const root = proyecto({ 'spec_autenticacion.md': SPEC_APROBADA }, { '001_login.md': TASK_CON_ARCHIVOS });
+  const r = runHook(HOOK, escrituraNotebook(root, 'src/no_declarado.ipynb'));
+
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.code, 2);
+  assert.match(r.decision.reason, /no esta declarado en ninguna task/);
+});
+
+test('NotebookEdit: cuaderno SI declarado en la tabla de la task: allow', () => {
+  const TASK_CON_NOTEBOOK = TASK_CON_ARCHIVOS.replace(
+    '| `src/auth/login.js` | CREAR | Servicio de login |\n',
+    '| `src/auth/login.js` | CREAR | Servicio de login |\n'
+      + '| `src/auth/analisis.ipynb` | CREAR | Cuaderno de analisis |\n'
+  );
+  const root = proyecto({ 'spec_autenticacion.md': SPEC_APROBADA }, { '001_login.md': TASK_CON_NOTEBOOK });
+  const r = runHook(HOOK, escrituraNotebook(root, 'src/auth/analisis.ipynb'));
+
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null);
+});
+
+test('NotebookEdit: cuaderno bajo ai_docs/: siempre allow', () => {
+  const root = proyecto({}, {});
+  const r = runHook(HOOK, escrituraNotebook(root, 'ai_docs/tasks/notas.ipynb'));
+
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null);
+});
+
 // --- Contrato de Antigravity CLI ---------------------------------------------------------------
 // Su payload es distinto: la llamada llega en toolCall {name, args} (camelCase) y la ruta del
 // archivo en args.TargetFile. La decision viaja SOLO por stdout: su contrato no incluye el codigo
