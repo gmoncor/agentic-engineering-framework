@@ -12,13 +12,20 @@
  *   - hard_stop_at: interrupcion ("INTERRUMPE y espera instrucciones").
  *
  * COMO CUENTA
- * Un fichero temporal por sesion, <tmp>/sdd-turns-<session_id>.json, con { count }.
- * Cada tool call incrementa el contador; una tool call de shell con `git commit`
- * lo resetea a 0 (el commit es el checkpoint que el budget vigila). El estado vive
- * fuera del proceso porque cada tool call es una invocacion distinta del hook.
- * Al escribir el contador de la sesion actual se purgan (best-effort) los
- * ficheros `sdd-turns-*.json` de otras sesiones con mas de 24h sin actividad,
- * para que no se acumulen indefinidamente en maquinas de larga duracion.
+ * Un registro de solo-anexado por sesion, <tmp>/sdd-turns-<session_id>.log: una
+ * linea por accion contada, y el contador es el numero de lineas. Cada tool call
+ * anexa una linea (escritura independiente, sin leer el estado anterior); una
+ * tool call de shell que invoque `git commit` de verdad trunca el registro (el
+ * commit es el checkpoint que el budget vigila). El estado vive fuera del
+ * proceso porque cada tool call es una invocacion distinta del hook, y el
+ * anexado evita el leer-modificar-escribir que pierde incrementos cuando varias
+ * llamadas concurren en la misma sesion (p.ej. el fan-out de subagentes).
+ * La invocacion real de `git commit` (frente a una mencion textual, o la misma
+ * invocacion con opciones globales de por medio) se decide con el criterio
+ * compartido de sdd-git-command.js, el mismo que usan los guards hermanos.
+ * Al anexar o truncar se purgan (best-effort) los ficheros `sdd-turns-*.log`
+ * de otras sesiones con mas de 24h sin actividad, para que no se acumulen
+ * indefinidamente en maquinas de larga duracion.
  *
  * MODO (config .mode)
  *   - "advisory" (default): los tres umbrales AVISAN, nunca bloquean.
@@ -50,10 +57,11 @@ const os = require('os');
 const path = require('path');
 const {
   readPayload, readToolCall, warn, deny, skipRequested, loadConfig, purgeExpired, runWithFailOpen,
+  sessionStatePath,
 } = require('./sdd-hook-utils');
+const { esInvocacion } = require('./sdd-git-command');
 
 const SHELL_TOOLS = new Set(['Bash', 'run_command', 'shell']);
-const COMMIT_RE = /\bgit\s+commit\b/;
 
 // Firmas estables (ver hooks/gate-signatures.json): distinguen el mensaje que deniega (hilo
 // principal en modo enforce) del que solo avisa (warn_at, modo advisory, o subagente).
@@ -68,32 +76,47 @@ function turnsDir() {
 }
 
 function turnsPath(sessionId) {
-  const safe = String(sessionId).replace(/[^a-zA-Z0-9_-]/g, '_');
-  return path.join(turnsDir(), 'sdd-turns-' + safe + '.json');
+  return sessionStatePath(turnsDir(), 'sdd-turns-', sessionId, '.log');
 }
 
-// Contador actual de la sesion. 0 si no hay fichero (nada contado aun) o si esta
-// corrupto: un contador ilegible no debe convertirse en un bloqueo espurio.
-function loadCount(sessionId) {
+// Contador actual de la sesion: numero de lineas del registro. 0 si no hay
+// fichero (nada contado aun) o si el registro es ilegible: un registro que no
+// se puede leer no debe convertirse en un bloqueo espurio.
+function countActions(sessionId) {
   try {
-    const raw = JSON.parse(fs.readFileSync(turnsPath(sessionId), 'utf8'));
-    return Number.isInteger(raw.count) && raw.count >= 0 ? raw.count : 0;
+    const raw = fs.readFileSync(turnsPath(sessionId), 'utf8');
+    return raw === '' ? 0 : raw.split('\n').filter(Boolean).length;
   } catch {
     return 0;
   }
 }
 
-function saveCount(sessionId, count) {
+// Anexa una linea por accion: una escritura independiente por llamada, sin leer
+// el estado anterior. Sin leer-modificar-escribir no hay incremento que pisar
+// cuando varias llamadas concurren sobre la misma sesion.
+function appendAction(sessionId) {
   const file = turnsPath(sessionId);
   try {
-    fs.writeFileSync(file, JSON.stringify({ count }));
+    fs.appendFileSync(file, '1\n');
   } catch {
-    // Disco lento o de solo lectura: perder un incremento solo relaja el aviso,
-    // nunca lo endurece. No se propaga.
+    // Disco lleno o de solo lectura: la accion no se cuenta. Se acepta: la
+    // alternativa es que el hook impida trabajar por no poder escribir en el
+    // temporal.
     return;
   }
-  // Purga oportunista: retira contadores de sesiones anteriores sin actividad
+  // Purga oportunista: retira registros de sesiones anteriores sin actividad
   // en el ultimo TTL. Ver purgeExpired en sdd-hook-utils.js.
+  purgeExpired(turnsDir(), 'sdd-turns-', file, TTL_MS);
+}
+
+// El commit es el checkpoint que el budget vigila: trunca el registro a vacio.
+function resetActions(sessionId) {
+  const file = turnsPath(sessionId);
+  try {
+    fs.writeFileSync(file, '');
+  } catch {
+    return;
+  }
   purgeExpired(turnsDir(), 'sdd-turns-', file, TTL_MS);
 }
 
@@ -158,15 +181,18 @@ async function main() {
 
   const call = readToolCall(data);
 
-  // El commit es el checkpoint que el budget vigila: reinicia la cuenta.
-  const cmd = String(call.input.command || '');
-  if (SHELL_TOOLS.has(call.name) && COMMIT_RE.test(cmd)) {
-    saveCount(sessionId, 0);
+  // El commit es el checkpoint que el budget vigila: reinicia la cuenta. El
+  // comando llega como `command` (Claude Code, Gemini CLI, Codex) o como
+  // `CommandLine` (Antigravity CLI); la invocacion real de `git commit` (frente
+  // a una mencion textual) se decide con el criterio compartido.
+  const cmd = String(call.input.command || call.input.CommandLine || '');
+  if (SHELL_TOOLS.has(call.name) && esInvocacion(cmd, 'git', ['commit'])) {
+    resetActions(sessionId);
     process.exit(0);
   }
 
-  const count = loadCount(sessionId) + 1;
-  saveCount(sessionId, count);
+  appendAction(sessionId);
+  const count = countActions(sessionId);
 
   const enforce = cfg.mode === 'enforce';
   const subagent = isSubagentCall(data);

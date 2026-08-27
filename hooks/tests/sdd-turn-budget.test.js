@@ -16,10 +16,44 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { runHook, tempDir, writeFile } = require('./helpers');
+const { spawn } = require('child_process');
+const { runHook, tempDir, writeFile, HOOKS_DIR } = require('./helpers');
 
 const HOOK = 'sdd-turn-budget.js';
 const SESSION = 'sesion-turnos-1';
+
+// Ejecuta el hook como proceso real sin bloquear el hilo del test, para poder
+// lanzar varias invocaciones a la vez (F4: la carrera solo se observa con
+// procesos concurrentes de verdad).
+function runHookAsync(hookName, payload, env) {
+  return new Promise((resolve) => {
+    const proc = spawn(process.execPath, [path.join(HOOKS_DIR, hookName)], {
+      env: Object.assign({}, process.env, env || {}),
+    });
+    let stdout = '';
+    proc.stdout.on('data', (chunk) => { stdout += chunk; });
+    proc.on('close', (code) => {
+      let decision = null;
+      try {
+        decision = JSON.parse(stdout.trim());
+      } catch {
+        decision = null;
+      }
+      resolve({ code, decision });
+    });
+    proc.stdin.end(JSON.stringify(payload));
+  });
+}
+
+// Payload con un comando de shell arbitrario (para F1/F2, que no encajan en
+// el helper `commit()` porque no son "git commit" a secas).
+const shell = (session, command) => ({ tool_name: 'Bash', tool_input: { command }, session_id: session });
+
+// Payload con la forma de Antigravity (toolCall.args.CommandLine en vez de tool_input.command).
+const antigravityCommit = (session, command) => ({
+  session_id: session,
+  toolCall: { name: 'run_command', args: { CommandLine: command } },
+});
 
 // Umbrales bajos para no lanzar decenas de procesos por test.
 const base = { enabled: true, warn_at: 2, block_at: 3, hard_stop_at: 4 };
@@ -170,12 +204,16 @@ test('SDD_GUARD_SKIP=1 -> bypass total (ni cuenta ni avisa)', () => {
   assert.strictEqual(r.decision, null);
 });
 
-test('fichero de contador corrupto -> arranca en 0, no bloquea', () => {
+test('registro ilegible (directorio en vez de fichero) -> arranca en 0, no bloquea', () => {
+  // El formato de solo-anexado no parsea el contenido de cada linea (cualquier
+  // texto es una linea valida), asi que "ilegible" ya no significa "contenido
+  // invalido": significa que la lectura del fichero de estado falla (p.ej. es
+  // un directorio, EISDIR). Ese fallo sigue degradando a 0 sin bloquear.
   const e = entorno(CONFIG_ADVISORY);
-  writeFile(path.join(e.dir, 'sdd-turns-' + SESSION + '.json'), 'no es json {');
+  fs.mkdirSync(path.join(e.dir, 'sdd-turns-' + SESSION + '.log'));
   const r = repetir(1, e.env);
   assert.strictEqual(r.code, 0);
-  assert.strictEqual(r.decision, null, 'el contador corrupto se lee como 0 y una accion queda por debajo del umbral');
+  assert.strictEqual(r.decision, null, 'el registro ilegible se lee como 0 y una accion queda por debajo del umbral');
 });
 
 test('enforce + subagente: al alcanzar block_at avisa (no deniega) con mensaje accionable', () => {
@@ -245,8 +283,8 @@ test('subagente sin session_id -> silencio, no rompe la deteccion de subagente',
 
 test('purga: al guardar el contador actual, elimina ficheros sdd-turns-* de otras sesiones con mas de 24h de antiguedad', () => {
   const e = entorno(CONFIG_ADVISORY);
-  const viejo = path.join(e.dir, 'sdd-turns-sesion-vieja.json');
-  writeFile(viejo, JSON.stringify({ count: 5 }));
+  const viejo = path.join(e.dir, 'sdd-turns-sesion-vieja.log');
+  writeFile(viejo, '1\n');
   const t = (Date.now() - 25 * 60 * 60 * 1000) / 1000; // 25h atras
   fs.utimesSync(viejo, t, t);
 
@@ -258,7 +296,7 @@ test('purga: al guardar el contador actual, elimina ficheros sdd-turns-* de otra
 test('purga: no elimina el fichero de la sesion actual que se acaba de escribir', () => {
   const e = entorno(CONFIG_ADVISORY);
   repetir(1, e.env);
-  const actual = path.join(e.dir, 'sdd-turns-' + SESSION + '.json');
+  const actual = path.join(e.dir, 'sdd-turns-' + SESSION + '.log');
   assert.strictEqual(fs.existsSync(actual), true);
 });
 
@@ -269,4 +307,69 @@ test('sesiones concurrentes: cada una lleva su propio contador', () => {
 
   const b = repetir(1, e.env, 'sesion-B');
   assert.strictEqual(b.decision, null, 'la sesion B arranca de cero, sin heredar el contador de A');
+});
+
+// --- F1/F2/F3/F4: reset por criterio compartido y cuenta sin perdida bajo concurrencia ---
+
+test('F1: git -c <opcion global> commit resetea el contador (opciones globales ya no rompen el match)', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  const avisado = repetir(2, e.env); // warn_at = 2
+  assert.strictEqual(avisado.decision.decision, 'warn', 'antes del commit ya avisaba');
+
+  const reset = runHook(HOOK, shell(SESSION, 'git -c core.hooksPath=/tmp commit -m x'), e.env);
+  assert.strictEqual(reset.decision, null, 'el commit con opcion global pasa sin decision');
+
+  const tras = repetir(1, e.env);
+  assert.strictEqual(tras.decision, null, 'tras el reset, una accion vuelve a estar por debajo del umbral');
+});
+
+test('F2: una mencion de "git commit" dentro de otro comando (grep) NO resetea', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  repetir(2, e.env); // warn_at = 2: ya avisando (count = 2)
+  const mencion = runHook(HOOK, shell(SESSION, 'grep -r "git commit" README.md'), e.env);
+  assert.notStrictEqual(mencion.decision, null, 'la mencion no debe pasar como un reset silencioso (decision no debe ser null)');
+  assert.match(mencion.decision.reason, /\b3\b/, 'la mencion cuenta como una accion mas: el contador sigue subiendo, no se reinicia');
+
+  // Una accion mas debe seguir sumando sobre el contador NO reiniciado (4, no 1).
+  const siguiente = runHook(HOOK, accion(SESSION), e.env);
+  assert.match(siguiente.decision.reason, /\b4\b/, 'el contador siguio sumando: no hubo reset indebido');
+});
+
+test('F3: backend Antigravity (toolCall.args.CommandLine) resetea igual que el payload de Claude', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  repetir(2, e.env); // warn_at = 2: ya avisando
+
+  const reset = runHook(HOOK, antigravityCommit(SESSION, 'git commit -m x'), e.env);
+  assert.strictEqual(reset.decision, null, 'el commit en forma Antigravity resetea sin emitir aviso');
+
+  const tras = repetir(1, e.env);
+  assert.strictEqual(tras.decision, null, 'tras el reset, una accion vuelve a estar por debajo del umbral');
+});
+
+test('F3 control: el mismo commit con tool_input.command (forma Claude) tambien resetea', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  repetir(2, e.env);
+  const reset = runHook(HOOK, commit(SESSION, ' -m x'), e.env);
+  assert.strictEqual(reset.decision, null);
+  const tras = repetir(1, e.env);
+  assert.strictEqual(tras.decision, null);
+});
+
+test('F4: 20 llamadas concurrentes sobre la misma sesion no pierden incrementos', async () => {
+  const dir = tempDir('sdd-turns-race-');
+  const cfg = { sdd_turn_budget: { enabled: true, mode: 'advisory', warn_at: 20, block_at: 0, hard_stop_at: 0 } };
+  writeFile(path.join(dir, 'config.json'), JSON.stringify(cfg));
+  const env = { SDD_CONFIG_PATH: path.join(dir, 'config.json'), SDD_TURNS_DIR: dir };
+  const session = 'sesion-carrera';
+
+  const payload = (i) => ({ tool_name: 'Read', tool_input: { file_path: 'a' + i + '.js' }, session_id: session });
+  await Promise.all(Array.from({ length: 20 }, (_, i) => runHookAsync(HOOK, payload(i), env)));
+
+  // block_at/hard_stop_at en 0 hacen que el tier "hard stop" dispare desde la
+  // primera accion (0 no desactiva el tier, lo satura): el mensaje resultante
+  // cita el numero exacto de acciones vistas, que es justo lo que se quiere
+  // observar. Ver premise_check del task doc para el mismo montaje.
+  const r = runHook(HOOK, { tool_name: 'Read', tool_input: { file_path: 'z.js' }, session_id: session }, env);
+  assert.strictEqual(r.decision.code, 'TURN_BUDGET_HARD_STOP');
+  assert.match(r.decision.reason, /llevas 21 acciones sin commit/, 'las 20 llamadas concurrentes mas esta deben sumar 21, sin perdida');
 });

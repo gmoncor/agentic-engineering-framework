@@ -1,6 +1,7 @@
 ---
 name: implementador
 description: "Ejecuta UNA task del plan: escribe codigo y tests, valida y commitea. Se activa en el paso de implementacion."
+tools: [view_file, replace_file_content, grep_search, run_command]
 ---
 
 # Implementador

@@ -705,7 +705,10 @@ test('6.2 Codex y Antigravity reciben el mismo cuerpo, que sale del fragmento y 
   const codex = transformarAgente(AGENTE_FUENTE, entradaDeAgente('codex'), politica);
   const antigravity = transformarAgente(AGENTE_FUENTE, entradaDeAgente('antigravity'), politica);
 
-  assert.strictEqual(antigravity, '---\nname: asesor\ndescription: "Descripcion corta"\n---\n\n# Asesor\n\nCuerpo condensado.\n');
+  assert.ok(antigravity.includes('---\nname: asesor\ndescription: "Descripcion corta"'), 'el frontmatter base de Antigravity no cambia');
+  assert.ok(antigravity.endsWith('\n\n# Asesor\n\nCuerpo condensado.\n'), 'el body de Antigravity sale del fragmento, no de la fuente');
+  assert.ok(antigravity.includes('tools: [view_file, grep_search, run_command]'),
+    'el rol asesor declara su allowlist de solo lectura (politica antigravity.tools_allowlist.roles.asesor)');
   assert.ok(codex.includes('Cuerpo condensado.'), 'el TOML de Codex debe llevar el cuerpo del fragmento');
   assert.ok(!codex.includes('Cuerpo largo'), 'el cuerpo propio de Claude no debe viajar a los demas backends');
   assert.ok(!antigravity.includes('Cuerpo largo'), 'el cuerpo propio de Claude no debe viajar a los demas backends');

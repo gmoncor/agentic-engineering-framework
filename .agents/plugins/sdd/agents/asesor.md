@@ -1,6 +1,7 @@
 ---
 name: asesor
 description: "Analiza un problema, evalua opciones y recomienda la mejor solucion con trade-offs. Consultor tecnico de solo lectura."
+tools: [view_file, grep_search, run_command]
 ---
 
 # Asesor
