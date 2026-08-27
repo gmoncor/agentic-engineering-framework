@@ -71,7 +71,12 @@ depende de como el orquestador escribe sus llamadas. El comportamiento que aplic
    sigue mandando: un grupo no arranca hasta que termina el grupo del que depende.
 3. **Un gate de revision por task.** En ambos modos, antes de commitear cada task hay UN punto
    cuyo veredicto se necesita para continuar: la revision adversarial de esa task. Ahi se
-   espera. En planificacion el gate equivalente es la auditoria cruzada, que si corre en
+   espera. Aqui ese gate lo sostiene la disciplina, no un hook: ningun hook cableado en estos
+   backends bloquea un commit por falta de revision. El hook `sdd-review-gate.js` existe en el
+   repositorio, pero se cablea solo en el backend de Claude Code: la senal que lo silencia la
+   emite su motor de workflows, que estos backends no tienen. Ver «Enforcement mecanico y su
+   limite»: ahi, escribir un archivo no declarado y `--no-verify` estan denegados; el commit sin
+   revision, no. En planificacion el gate equivalente es la auditoria cruzada, que si corre en
    paralelo sobre las tasks del plan.
 
 Describe siempre la dependencia real (que necesita el resultado de que): es lo que decide que
@@ -122,7 +127,8 @@ enforcement. El propio fabricante lo declara: no interceptan todas las llamadas 
 las rutas de escritura, y un proceso hijo lanzado desde un comando permitido puede escapar al
 matcher. Sirven para que el camino correcto sea el camino por defecto y para que desviarse sea
 deliberado; no sustituyen a la revision humana ni a los controles del repositorio (protecciones de
-rama, CI). Si necesitas una frontera dura, ponla en CI.
+rama, CI). Si necesitas una frontera dura, ponla en CI. El commit sin revision no esta entre esos
+bloqueos: aqui lo sostiene la disciplina, no un hook.
 
 **Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada los bloqueos a aviso. Es para desbloquear una
 situacion puntual, no para dejarlo fijo en el shell: con el activo el pipeline no enforcea nada.
