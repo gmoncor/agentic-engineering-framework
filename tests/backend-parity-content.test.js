@@ -115,16 +115,21 @@ test('README.md "Modos de ejecucion" no niega el modo paralelo fuera de Claude C
 // que una garantia perdida en el fragmento origen falle aqui, no en silencio.
 
 /**
- * Corta desde una cabecera de nivel 2 hasta la SIGUIENTE cabecera de nivel 2
- * (o el final del fichero), sin fijar el nombre del cierre: acota a la
- * seccion real de la cabecera, no a la distancia hasta una cabecera vecina
- * cuyo nombre no tiene relacion con la propiedad que se comprueba.
+ * Corta desde una cabecera hasta la SIGUIENTE cabecera de nivel 1 o 2 (o el
+ * final del fichero), sin fijar el nombre del cierre: acota a la seccion
+ * real de la cabecera, no a la distancia hasta una cabecera vecina cuyo
+ * nombre no tiene relacion con la propiedad que se comprueba. Ancla por
+ * linea completa (no por subcadena) para que una cabecera degradada a nivel
+ * 3, o un apendice de nivel 1 insertado antes del cierre esperado, no la
+ * absorban en silencio dentro de la seccion.
  */
 function acotarSeccion(contenido, cabecera) {
-  const inicio = contenido.indexOf(cabecera);
+  const lineas = contenido.split('\n');
+  const inicio = lineas.indexOf(cabecera);
   if (inicio === -1) return null;
-  const finBusqueda = contenido.indexOf('\n## ', inicio + cabecera.length);
-  return contenido.slice(inicio, finBusqueda === -1 ? contenido.length : finBusqueda);
+  const resto = lineas.slice(inicio + 1);
+  const fin = resto.findIndex(linea => /^#{1,2} /.test(linea));
+  return (fin === -1 ? resto : resto.slice(0, fin)).join('\n');
 }
 
 test('AGENTS.md declara en sus dos secciones de origen que el commit sin revision lo sostiene la disciplina, no un hook', () => {
