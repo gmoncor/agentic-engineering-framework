@@ -35,10 +35,17 @@ function entorno(config, extra) {
   return Object.assign({ SDD_CONFIG_PATH: path.join(dir, 'config.json'), SDD_SIGNAL_DIR: dir }, extra || {});
 }
 
-function commit(mensaje, sessionId) {
-  const payload = { tool_name: 'Bash', tool_input: { command: 'git commit -m "' + mensaje + '"' } };
+// Construye el payload con un comando arbitrario. commit() sigue con su firma de
+// siempre para los casos vigentes; los casos nuevos (F1/F2) necesitan invocaciones
+// de shell que no son "git commit -m <mensaje>".
+function bashPayload(cmd, sessionId) {
+  const payload = { tool_name: 'Bash', tool_input: { command: cmd } };
   if (sessionId !== null) payload.session_id = sessionId === undefined ? SESSION : sessionId;
   return payload;
+}
+
+function commit(mensaje, sessionId) {
+  return bashPayload('git commit -m "' + mensaje + '"', sessionId);
 }
 
 // Emite la senal igual que el flujo de implementacion: mismo modulo, misma funcion.
@@ -155,6 +162,44 @@ test('git merge sin senal, con diff staged: DENIEGA', () => {
 
   assert.strictEqual(r.decision.decision, 'deny');
   assert.strictEqual(r.code, 2);
+});
+
+// F1 (fail-open): una opcion global entre "git" y el subcomando rompe la regex cruda y el
+// gate no llega a mirar el diff. `sin senal, con diff staged` deberia denegar igual que el
+// commit liso: la opcion global no es una via legitima de saltarse la revision.
+test('F1: opcion global antes de commit (git -c k=v commit) sin senal: DENIEGA igual que el commit liso', () => {
+  const env = entorno(CONFIG_ON, { SDD_STAGED_DIFF: DIFF });
+  const r = runHook(HOOK, bashPayload('git -c foo=bar commit -m x'), env);
+
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.code, 2);
+});
+
+test('F1: opcion global antes de merge (git -c k=v merge) sin senal: DENIEGA igual que el merge liso', () => {
+  const env = entorno(CONFIG_ON, { SDD_STAGED_DIFF: DIFF });
+  const r = runHook(HOOK, bashPayload('git -c foo=bar merge feature/pagos'), env);
+
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.code, 2);
+});
+
+// F2 (fail-closed): la frase "git commit"/"git merge" aparece dentro de un argumento
+// entrecomillado de un comando de solo lectura. El gate no debe activarse: no hay nada
+// que commitear, asi que no hay diff que contrastar.
+test('F2: git log de solo lectura con la frase "git commit" en un argumento: silencio', () => {
+  const env = entorno(CONFIG_ON, { SDD_STAGED_DIFF: DIFF });
+  const r = runHook(HOOK, bashPayload('git log --oneline --grep="remember to git commit after this"'), env);
+
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null);
+});
+
+test('F2: git show de solo lectura con la frase "git merge" en un argumento: silencio', () => {
+  const env = entorno(CONFIG_ON, { SDD_STAGED_DIFF: DIFF });
+  const r = runHook(HOOK, bashPayload('git show --stat --grep="pending git merge cleanup"'), env);
+
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null);
 });
 
 test('sin session_id en el payload: silencio (no hay sesion que correlacionar)', () => {
