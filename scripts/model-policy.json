@@ -5,6 +5,7 @@
     "model_field": "false si el formato del backend no admite campo de modelo; el transform omite el campo en vez de escribir un valor vacio.",
     "roles": "Excepcion por nombre de agente. Sin entrada propia, el agente hereda `default`.",
     "tools": "`map` traduce el vocabulario de herramientas; `always` anade las que el backend da por concedidas; `unsupported` declara las que ese backend no tiene. Una herramienta de la fuente ausente de las tres detiene la generacion (`TOOL_NOT_MAPPED`).",
+    "tools_allowlist": "Forma `default` + `roles` (igual que `sandbox_mode`), no el `map` de traduccion: valor literal de la lista de herramientas nativas que el backend permite a ese rol. La usa Antigravity, cuyo formato de agente declara un `tools: []` explicito por agente (fuente: https://antigravity.google/docs/subagents/, seccion \"Frontmatter Configuration (YAML)\", consultada 2026-08-27) en vez de un sandbox de plataforma o un mapa de traduccion.",
     "backends_declarados": "Todo backend que el manifiesto genere con un transform sujeto a esta politica debe tener seccion propia. Si falta, la compilacion falla; no se degrada a un artefacto sin modelo ni sin herramientas."
   },
   "backends": {
@@ -22,7 +23,14 @@
       "sandbox_mode": { "default": "workspace-write", "roles": { "asesor": "read-only", "revisor": "read-only" } }
     },
     "antigravity": {
-      "model_field": false
+      "model_field": false,
+      "tools_allowlist": {
+        "default": ["view_file", "replace_file_content", "grep_search", "run_command"],
+        "roles": {
+          "asesor": ["view_file", "grep_search", "run_command"],
+          "revisor": ["view_file", "grep_search", "run_command"]
+        }
+      }
     }
   }
 }

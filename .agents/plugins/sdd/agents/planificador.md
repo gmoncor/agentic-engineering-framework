@@ -1,6 +1,7 @@
 ---
 name: planificador
 description: "Crea especificaciones SDD y las parte en tasks granulares. Se activa cuando el usuario quiere empezar algo nuevo o planificar trabajo."
+tools: [view_file, replace_file_content, grep_search, run_command]
 ---
 
 # Planificador

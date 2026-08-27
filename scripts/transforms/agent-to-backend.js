@@ -19,6 +19,12 @@
 // una herramienta de la fuente que el backend no tenga se declara ahi como
 // `unsupported`. Sin esa declaracion la generacion falla, para que ningun
 // agente pierda una herramienta por omision.
+//
+// Antigravity no traduce: su `tools_allowlist` en la politica declara el valor
+// literal que ese backend entiende, con la misma forma `default` + `roles`
+// que el `sandbox_mode` de Codex, porque su frontmatter (a diferencia del de
+// Gemini) no expone un sandbox de plataforma sino una lista explicita de
+// herramientas permitidas por agente.
 
 const {
   parsearFrontmatter,
@@ -30,7 +36,7 @@ const {
   aTomlMultilinea,
   nuevoCampo,
 } = require('./frontmatter');
-const { modeloDe, sandboxDe, herramientasDe } = require('./policy-lookup');
+const { modeloDe, sandboxDe, herramientasDe, porRol, seccionDe } = require('./policy-lookup');
 
 /** Contenido del fragmento de la entrada. Lanza si el engine no lo entrego. */
 function varianteDe(entrada) {
@@ -60,7 +66,7 @@ function agenteCodex(nombre, variante, politica, origen) {
   return lineas.join('\n');
 }
 
-/** Definicion Markdown para Antigravity: frontmatter minimo y el mismo cuerpo condensado que Codex. */
+/** Definicion Markdown para Antigravity: frontmatter minimo, el mismo cuerpo condensado que Codex, y el `tools` que la politica asigne al rol. */
 function agenteAntigravity(nombre, variante, politica) {
   const campos = [
     nuevoCampo('name', nombre),
@@ -69,6 +75,9 @@ function agenteAntigravity(nombre, variante, politica) {
 
   const modelo = modeloDe(politica, 'antigravity', nombre);
   if (modelo !== null) campos.push(nuevoCampo('model', modelo));
+
+  const tools = porRol(seccionDe(politica, 'antigravity').tools_allowlist, nombre);
+  if (tools !== undefined) campos.push(nuevoCampo('tools', `[${tools.join(', ')}]`));
 
   return componerMarkdown(campos, variante.cuerpo);
 }
