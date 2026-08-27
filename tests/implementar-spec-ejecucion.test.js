@@ -608,6 +608,30 @@ test('revisarYComitear: sin ambito (modo secuencial) el add sigue sin acotar y s
   assert.doesNotMatch(r.notas || '', /ambito/);
 });
 
+// Regresion: acotar add/diff (arriba) no bastaba. En modo concurrente el indice es compartido,
+// asi que `git commit` sin pathspec se llevaba igual el trabajo ya preparado de una hermana --
+// exactamente lo que add/diff ya evitaban, colandose de vuelta en el propio commit.
+test('revisarYComitear: en modo concurrente, el commit tambien llega acotado al ambito declarado', async () => {
+  const git = gitDoble({ 'diff --cached -- src/a.js': { code: 0, out: DIFF, err: '' } });
+  const { deps } = depsRevision(git, { ambito: ['src/a.js'] });
+
+  await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+  const commit = git.llamadas.find(c => c.startsWith('commit'));
+  assert.match(commit, /-- src\/a\.js$/,
+    'el commit debe acotarse al mismo ambito que add/diff, o absorbe el indice de una hermana');
+});
+
+test('revisarYComitear: sin ambito, el commit sigue sin pathspec (compatibilidad con modo secuencial)', async () => {
+  const git = gitDoble({ 'diff --cached': { code: 0, out: DIFF, err: '' } });
+  const { deps } = depsRevision(git); // sin `ambito`
+
+  await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+  const commit = git.llamadas.find(c => c.startsWith('commit'));
+  assert.doesNotMatch(commit, /--/, 'sin ambito no debe aparecer pathspec en el commit');
+});
+
 test('revisarYComitear: revision adversa -> una pasada de correccion y re-revision del nuevo diff', async () => {
   const CORREGIDO = DIFF + '+corregido\n';
   const git = gitDoble({

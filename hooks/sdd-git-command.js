@@ -1,5 +1,7 @@
 'use strict';
 
+const path = require('path');
+
 /**
  * Reconocimiento de invocaciones de git/gh en un string de comando de shell.
  *
@@ -45,6 +47,14 @@ const FLAG_DE_SCRIPT_RE = /^-[a-zA-Z]*c[a-zA-Z]*$/;
 function esFlagDeScript(programa, flag) {
   return EJECUTORES_DE_SHELL.has(programa) && FLAG_DE_SCRIPT_RE.test(flag);
 }
+
+// Envoltorios que anteponen su propio nombre al programa real sin cambiar la invocacion que
+// git/gh reciben: `env git commit`, `/usr/bin/git commit` y `command git commit` invocan git
+// igual que `git commit` a secas. Se saltan (por su nombre base, para tolerar rutas absolutas)
+// antes de fijar `programa`, siempre que no lleven flags propios -- un envoltorio CON flags
+// (`env -i FOO=bar git commit`, `nice -n 10 git commit`) no se resuelve: es el mismo limite
+// declarado arriba para sustitucion de comandos, no una regresion sobre lo que ya se detectaba.
+const ENVOLTORIOS_SIN_FLAGS = new Set(['env', 'command', 'nohup', 'stdbuf', 'nice', 'time']);
 
 // Letras cortas de `git commit` que consumen un valor. Una vez alcanzada una de estas dentro de
 // un grupo de flags cortos (-uno, -Cxyz...), el resto del grupo es el VALOR, no mas flags: por
@@ -148,18 +158,26 @@ function parseSegmento(seg) {
   while (idx < seg.length && !seg[idx].entrecomillado && ASIGNACION_ENTORNO_RE.test(seg[idx].valor)) idx += 1;
   if (idx >= seg.length) return [];
 
-  const programa = seg[idx].valor;
+  while (idx < seg.length && !seg[idx].entrecomillado
+    && ENVOLTORIOS_SIN_FLAGS.has(path.basename(seg[idx].valor))) idx += 1;
+  if (idx >= seg.length) return [];
+
+  const programa = path.basename(seg[idx].valor);
   idx += 1;
   const palabras = [];
   const flags = [];
 
   while (idx < seg.length) {
     const tok = seg[idx];
-    if (!tok.entrecomillado && OPCIONES_GLOBALES_CON_VALOR.has(tok.valor)) { idx += 2; continue; }
     if (!tok.entrecomillado && esFlagDeScript(programa, tok.valor)) {
       flags.push(tok.valor);
-      return [{ programa, palabras, flags }, ...parseSegmento(seg.slice(idx + 1))];
+      const resto = seg.slice(idx + 1);
+      if (resto.length === 1 && resto[0].entrecomillado) {
+        return [{ programa, palabras, flags }, ...invocaciones(resto[0].valor)];
+      }
+      return [{ programa, palabras, flags }, ...parseSegmento(resto)];
     }
+    if (!tok.entrecomillado && OPCIONES_GLOBALES_CON_VALOR.has(tok.valor)) { idx += 2; continue; }
     if (!tok.entrecomillado && tok.valor.startsWith('-')) flags.push(tok.valor);
     else palabras.push(tok.valor);
     idx += 1;

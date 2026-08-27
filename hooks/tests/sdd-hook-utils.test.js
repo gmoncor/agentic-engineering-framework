@@ -287,9 +287,9 @@ test('purgeExpired: diff === ttlMs exacto -> NO se purga (solo estrictamente sup
 });
 
 // sessionStatePath(dir, prefix, sessionId, extension): nombre del fichero de
-// estado por sesion, compartido por sdd-turn-budget.js y sdd-read-tracker.js
-// (unica fuente de la sanitizacion del identificador de sesion; ver task
-// s12/06). Sustituye la sanitizacion duplicada en cada hook.
+// estado por sesion, compartido por sdd-turn-budget.js y sdd-read-tracker.js.
+// Unica fuente de la sanitizacion del identificador de sesion: sustituye la
+// sanitizacion duplicada que antes vivia en cada hook por separado.
 test('sessionStatePath: identificador ya seguro conserva el nombre de hoy', () => {
   const ruta = sessionStatePath('/tmp', 'sdd-reads-', 'sesion-actual', '.jsonl');
   assert.strictEqual(ruta, path.join('/tmp', 'sdd-reads-sesion-actual.jsonl'));

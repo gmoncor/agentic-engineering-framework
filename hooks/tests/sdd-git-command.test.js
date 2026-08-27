@@ -92,11 +92,33 @@ test('esInvocacion negativo: echo "git commit" no es una invocacion de git', () 
   assert.strictEqual(esInvocacion('echo "git commit"', 'git', ['commit']), false);
 });
 
-test('esInvocacion: bash -lc "git commit ..." reconoce la invocacion anidada de git', () => {
+test('esInvocacion: bash -lc git commit ... (sin comillas) reconoce la invocacion anidada de git', () => {
   // Un comando entregado como argv (["bash","-lc","git commit --no-verify -m x"]) se aplana a
   // este string exacto antes de llegar al modulo: sin desenvolver el -lc, "git commit" se leeria
   // como palabras sueltas de bash, no como una invocacion de git.
   assert.strictEqual(esInvocacion('bash -lc git commit --no-verify -m "fix: algo"', 'git', ['commit']), true);
+});
+
+// Regresion: la forma ENTRECOMILLADA (bash -lc "script") es la que de verdad escribe cualquier
+// persona o agente en una tool call de shell -- la forma sin comillas del test anterior no la
+// cubre porque los tokens ya llegan sueltos. Sin re-tokenizar el script anidado, `programa`
+// terminaba siendo el script completo ("git commit --no-verify -m x"), nunca "git".
+for (const ejecutor of ['bash -lc', 'bash -c', 'sh -c']) {
+  test(`esInvocacion: ${ejecutor} "git commit --no-verify" (script entrecomillado) reconoce git`, () => {
+    assert.strictEqual(
+      esInvocacion(`${ejecutor} "git commit --no-verify -m x"`, 'git', ['commit']),
+      true,
+    );
+  });
+}
+
+test('esInvocacion: envoltorios sin flags (env/command) no ocultan al programa real', () => {
+  assert.strictEqual(esInvocacion('env git commit --no-verify -m x', 'git', ['commit']), true);
+  assert.strictEqual(esInvocacion('command git commit --no-verify -m x', 'git', ['commit']), true);
+});
+
+test('esInvocacion: ruta absoluta al binario se normaliza al nombre base', () => {
+  assert.strictEqual(esInvocacion('/usr/bin/git commit --no-verify -m x', 'git', ['commit']), true);
 });
 
 test('invocaciones: descarta asignaciones de entorno iniciales', () => {

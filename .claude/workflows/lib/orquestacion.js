@@ -436,9 +436,17 @@ async function comitearAprobada(task, resultado, contexto, deps) {
   const cuerpo = resultado.commit_cuerpo || resultado.notas
     || 'Implementa la task segun su especificacion.';
 
+  // Mismo `ambito` que acoto add/diff (F1): sin el, `git commit` sobre un indice
+  // compartido en modo concurrente se lleva TODO lo preparado, incluido lo que
+  // ya stageo una hermana en curso — exactamente lo que diffPreparado evita en
+  // add/diff pero que aqui, sin pathspec, volveria a colar. `git commit -- <ruta>`
+  // commitea solo esas rutas del indice y deja el resto preparado para su dueña.
+  const ambito = deps.ambito;
+  const pathspec = (Array.isArray(ambito) && ambito.length > 0) ? ['--'].concat(ambito) : [];
+
   // Un commit denegado (por un gate, por un indice bloqueado) dejaria el trabajo
   // sin commitear y el informe diria lo contrario.
-  const commit = await gitVerificado(['commit', '-m', subject, '-m', cuerpo], deps.spawnGit);
+  const commit = await gitVerificado(['commit', '-m', subject, '-m', cuerpo].concat(pathspec), deps.spawnGit);
   if (!commit.ok) return falloDeGit(resultado, commit.error, log);
 
   log('Task ' + task.titulo + ': APROBADA y commiteada' + (marca ? ' (senal ' + marca + ')' : ''));
