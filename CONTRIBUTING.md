@@ -77,7 +77,7 @@ node scripts/compile.js --write                               # regenera las sal
 
 Antes de editar un artefacto, comprueba con el `grep` en que grupo cae.
 
-`npm run check-drift` es el paso previo al push de cualquier PR que toque `.claude/` o `docs-src/`, y sirve igual como gate de CI. Sus exit codes:
+`npm run check-drift` es el paso previo manual al push de cualquier PR que toque `.claude/` o `docs-src/`: este repositorio no tiene integracion continua que lo ejecute por ti. Es apto para usarse como gate en un flujo de integracion continua si alguna vez se monta uno. Sus exit codes:
 
 | Exit | Significado |
 |---|---|
