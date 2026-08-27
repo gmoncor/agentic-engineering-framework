@@ -24,6 +24,9 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { parsearFrontmatter, listaDe } = require('../scripts/transforms/frontmatter');
+const { sandboxDe } = require('../scripts/transforms/policy-lookup');
+
 const RAIZ = path.join(__dirname, '..');
 
 // Codex y Antigravity descubren sus skills en el MISMO directorio: no hay dos
@@ -249,6 +252,91 @@ test('el aviso de revision solo se cablea donde hay emisor de la senal', () => {
         : `${backend} no tiene emisor de la senal de revision: cablear ${AVISO_DE_REVISION} ahi daria `
           + 'un aviso que nadie puede silenciar por una via legitima'
     );
+  }
+});
+
+// ── Enforcement de los roles de solo lectura ─────────────────────────────────
+//
+// La paridad de nombres no dice si un backend impide de verdad que asesor y
+// revisor escriban: cada uno traduce esa restriccion a un mecanismo propio
+// (sandbox de plataforma, lista de herramientas del frontmatter), y la unica
+// fuente que declara cual es cada uno es scripts/model-policy.json. Este caso
+// no repite aqui la lista de que backend tiene que: lee la politica y el
+// artefacto generado, y falla si un backend no tiene ni mecanismo ni una
+// excepcion declarada, o si el mecanismo declarado no bloquea la escritura.
+
+const POLITICA = require('../scripts/model-policy.json');
+const ROLES_SOLO_LECTURA = ['asesor', 'revisor'];
+
+// Nombre de la herramienta de escritura en el vocabulario propio de cada
+// backend con frontmatter de herramientas. Codex no aparece: no tiene
+// vocabulario de herramientas, resuelve por `sandbox_mode`.
+const HERRAMIENTA_DE_ESCRITURA = {
+  claude: 'Write',
+  gemini: 'write_file',
+  antigravity: 'replace_file_content'
+};
+
+const DIR_AGENTES = {
+  claude: { dir: '.claude/agents', ext: '.md' },
+  gemini: { dir: '.gemini/agents', ext: '.md' },
+  antigravity: { dir: '.agents/plugins/sdd/agents', ext: '.md' }
+};
+
+/** Herramientas declaradas en el frontmatter del artefacto Markdown de `rol` en `backend`. */
+function herramientasDeclaradas(backend, rol) {
+  const ruta = path.join(DIR_AGENTES[backend].dir, `${rol}${DIR_AGENTES[backend].ext}`);
+  const { campos } = parsearFrontmatter(leer(ruta), ruta);
+  return listaDe(campos, 'tools');
+}
+
+/**
+ * Mecanismo de enforcement de `rol` en `backend`: `{ bloqueada }` si el backend
+ * declara algo comprobable, o `undefined` si no declara ninguno. `bloqueada`
+ * es el hecho que importa: que la escritura este realmente excluida, no que
+ * exista una clave con ese nombre.
+ */
+function mecanismoDe(backend, rol) {
+  if (backend === 'codex') {
+    if (!POLITICA.backends.codex.sandbox_mode) return undefined;
+    return { bloqueada: sandboxDe(POLITICA, 'codex', rol) === 'read-only' };
+  }
+
+  if (backend === 'antigravity' && !POLITICA.backends.antigravity.tools_allowlist) {
+    return undefined;
+  }
+
+  const declaradas = herramientasDeclaradas(backend, rol);
+  if (!declaradas.length) return undefined;
+  return { bloqueada: !declaradas.includes(HERRAMIENTA_DE_ESCRITURA[backend]) };
+}
+
+/** `true` si la politica declara explicitamente que `backend` no tiene mecanismo mecanico. */
+function excepcionDeclarada(backend) {
+  const texto = JSON.stringify([POLITICA.backends[backend] || {}, POLITICA.conventions]);
+  return /limitacion|sin restriccion mecanica/i.test(texto);
+}
+
+test('la capa de enforcement de solo lectura existe o esta declarada como excepcion', () => {
+  for (const backend of Object.keys(BACKENDS)) {
+    for (const rol of ROLES_SOLO_LECTURA) {
+      const mecanismo = mecanismoDe(backend, rol);
+
+      if (mecanismo === undefined) {
+        assert.ok(
+          excepcionDeclarada(backend),
+          `${backend} no declara mecanismo de enforcement de solo lectura para "${rol}" ni una `
+            + 'excepcion en scripts/model-policy.json: la asimetria quedaria sin declarar.'
+        );
+        continue;
+      }
+
+      assert.ok(
+        mecanismo.bloqueada,
+        `${backend} declara mecanismo para "${rol}" pero no bloquea la escritura: la promesa de `
+          + 'solo lectura (read-only) queda escrita en la politica y no aplicada en el artefacto.'
+      );
+    }
   }
 });
 

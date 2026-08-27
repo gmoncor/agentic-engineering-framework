@@ -1,6 +1,7 @@
 ---
 name: revisor
 description: "Revisa tasks antes de implementar y hace la revision adversarial del codigo entregado. Esceptico por diseno."
+tools: [view_file, grep_search, run_command]
 ---
 
 # Revisor
