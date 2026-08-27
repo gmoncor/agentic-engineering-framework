@@ -206,3 +206,140 @@ test('usaFlag: --no-verify=algo cuenta por prefijo largo=valor', () => {
   const inv = invDe('git commit --no-verify=si -m x', 'git', ['commit']);
   assert.strictEqual(usaFlag(inv, { largo: '--no-verify' }), true);
 });
+
+// ─── Rejilla generada: clase completa de entradas que la regex vieja daba por positivas ────
+//
+// La regex que este modulo reemplazo era /\bgit\s+(commit|merge)\b/: encontraba la invocacion
+// en CUALQUIER posicion del string, sin importar separador, agrupacion o envoltorio de shell.
+// Enumerar bypasses conocidos uno a uno solo acredita los que ya se conocen (asi se colaron la
+// segunda y la tercera tanda de esta misma clase). La rejilla cubre el producto cartesiano de
+// los cuatro ejes que determinan si el tokenizador llega a "programa === git": ninguna fila se
+// escribe a mano, asi que un eje nuevo multiplica la cobertura sin tocar los tests.
+
+// Predicado que este modulo reemplazo por el tokenizador. Sigue aqui solo para medir la clase:
+// toda fila de la rejilla debe ser positiva para ella, o la rejilla estaria midiendo otra cosa.
+const REGEX_SUSTITUIDA = /\bgit\s+(commit|merge)\b/;
+
+const COMANDO_BASE = 'git commit -m x';
+
+// 7 separadores de shell no entrecomillados.
+const SEPARADORES_DE_REJILLA = [
+  { id: 'ninguno', envolver: cmd => cmd },
+  { id: ';', envolver: cmd => `true; ${cmd}` },
+  { id: '&&', envolver: cmd => `true && ${cmd}` },
+  { id: '||', envolver: cmd => `false || ${cmd}` },
+  { id: '|', envolver: cmd => `true | ${cmd}` },
+  { id: '&', envolver: cmd => `true & ${cmd}` },
+  { id: 'salto de linea', envolver: cmd => `true\n${cmd}` },
+];
+
+// 9 agrupaciones de shell (bloques, subshell, condicionales, bucles, negacion).
+const AGRUPACIONES = [
+  { id: 'ninguna', envolver: cmd => cmd },
+  { id: '{ }', envolver: cmd => `{ ${cmd}; }` },
+  { id: '( )', envolver: cmd => `(${cmd})` },
+  { id: 'if-then-fi', envolver: cmd => `if true; then ${cmd}; fi` },
+  { id: 'if-then-else-fi', envolver: cmd => `if false; then true; else ${cmd}; fi` },
+  { id: 'for-do-done', envolver: cmd => `for i in 1; do ${cmd}; done` },
+  { id: 'while-do-done', envolver: cmd => `while false; do ${cmd}; done` },
+  { id: 'until-do-done', envolver: cmd => `until true; do ${cmd}; done` },
+  { id: '!', envolver: cmd => `! ${cmd}` },
+];
+
+// 5 envoltorios sin flags propios.
+const ENVOLTORIOS = [
+  { id: 'ninguno', envolver: cmd => cmd },
+  { id: 'sudo', envolver: cmd => `sudo ${cmd}` },
+  { id: 'doas', envolver: cmd => `doas ${cmd}` },
+  { id: 'env', envolver: cmd => `env ${cmd}` },
+  { id: 'command', envolver: cmd => `command ${cmd}` },
+];
+
+// 2 asignaciones de entorno. Se aplica ENTRE el envoltorio y el comando base: es la posicion
+// que produce la alternacion asignacion/envoltorio de la causa 4 (env FOO=bar git commit).
+const ASIGNACIONES = [
+  { id: 'ninguna', envolver: cmd => cmd },
+  { id: 'FOO=bar', envolver: cmd => `FOO=bar ${cmd}` },
+];
+
+/**
+ * rejilla() -> [{ id, comando }], producto cartesiano 7 x 9 x 5 x 2 = 630 filas. Cada fila
+ * compone, de dentro afuera: asignacion -> envoltorio -> agrupacion -> separador.
+ */
+function rejilla() {
+  const filas = [];
+  for (const sep of SEPARADORES_DE_REJILLA) {
+    for (const agr of AGRUPACIONES) {
+      for (const env of ENVOLTORIOS) {
+        for (const asig of ASIGNACIONES) {
+          const comando = sep.envolver(agr.envolver(env.envolver(asig.envolver(COMANDO_BASE))));
+          filas.push({ id: `${sep.id}/${agr.id}/${env.id}/${asig.id}`, comando });
+        }
+      }
+    }
+  }
+  return filas;
+}
+
+test('rejilla: 630 filas, todas regex-positivas, ninguna sin detectar', () => {
+  const filas = rejilla();
+  assert.strictEqual(filas.length, 630);
+
+  const noRegexPositivas = filas.filter(f => !REGEX_SUSTITUIDA.test(f.comando));
+  assert.deepStrictEqual(
+    noRegexPositivas.map(f => f.id),
+    [],
+    'la rejilla dejo de medir la clase: hay filas que no son positivas para la regex sustituida',
+  );
+
+  const sinDetectar = filas.filter(f => !esInvocacion(f.comando, 'git', ['commit']));
+  assert.deepStrictEqual(
+    sinDetectar.map(f => f.id),
+    [],
+    `${sinDetectar.length} filas regex-positivas sin detectar: ${sinDetectar.map(f => f.id).join(', ')}`,
+  );
+});
+
+// ─── Limites declarados: envoltorio CON argumentos propios (fuera de alcance, ver P19) ─────
+//
+// Estas tres quedan fuera de la rejilla a proposito: su eje es "envoltorio con argumentos
+// propios", que el modulo no resuelve por diseno (ver comentario L51-63 de sdd-git-command.js).
+
+const LIMITES_DECLARADOS = [
+  { id: 'timeout 30', comando: 'timeout 30 git commit -m x' }, // LIMITE DECLARADO — P19
+  { id: 'nice -n 10', comando: 'nice -n 10 git commit -m x' }, // LIMITE DECLARADO — P19
+  { id: 'xargs', comando: 'xargs git commit -m x' }, // LIMITE DECLARADO — P19
+];
+
+test('limites declarados: envoltorio con argumentos propios no se detecta (P19, fuera de alcance)', () => {
+  const detectadas = LIMITES_DECLARADOS.filter(l => esInvocacion(l.comando, 'git', ['commit']));
+  assert.deepStrictEqual(
+    detectadas.map(l => l.id),
+    [],
+    `limites declarados detectados por error (deberian seguir fuera de alcance): ${detectadas.map(l => l.id).join(', ')}`,
+  );
+});
+
+// ─── Controles negativos: contra el fail-closed (premise_check #5) ─────────────────────────
+
+test('control negativo: separador entrecomillado no parte segmento (echo "sleep 1 & git commit -m x")', () => {
+  assert.strictEqual(esInvocacion('echo "sleep 1 & git commit -m x"', 'git', ['commit']), false);
+});
+
+test('control negativo: agrupacion entrecomillada no descarta (echo "{ git commit -m x; }")', () => {
+  assert.strictEqual(esInvocacion('echo "{ git commit -m x; }"', 'git', ['commit']), false);
+});
+
+test('control negativo: texto de mensaje que menciona git commit no es invocacion (git log --grep)', () => {
+  assert.strictEqual(esInvocacion('git log --grep="acuerdate de git commit"', 'git', ['commit']), false);
+});
+
+test('control positivo: separador entrecomillado dentro del propio mensaje si es invocacion (git commit -m "a & b")', () => {
+  assert.strictEqual(esInvocacion('git commit -m "a & b"', 'git', ['commit']), true);
+});
+
+test('control: git commit -m "docs: explica el flag -n" es invocacion, pero sin --no-verify', () => {
+  const inv = invDe('git commit -m "docs: explica el flag -n"', 'git', ['commit']);
+  assert.ok(inv);
+  assert.strictEqual(usaFlag(inv, { largo: '--no-verify', corto: 'n' }), false);
+});
