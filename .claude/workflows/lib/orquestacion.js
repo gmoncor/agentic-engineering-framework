@@ -140,26 +140,48 @@ function computeNiveles(tasks, raiz) {
  * Un contrato es algo que una task produce (API, tipo, export) y otra consume.
  * El consumidor debe depender del productor: si no, puede arrancar antes de que
  * lo que consume exista.
+ *
+ * Los productores se agrupan por nombre ANTES de resolver consumidores: un mapa
+ * de ultima-escritura-gana perderia a todos los productores salvo el ultimo, y
+ * un consumidor que si depende del suyo se denunciaria contra el que sobrevivio
+ * por azar de orden. Un contrato con mas de un productor es un error de plan en
+ * si mismo (que copia gana en tiempo de ejecucion), asi que se nombra aparte y
+ * no se acusa a ningun consumidor mientras la duplicidad no se resuelva.
  */
 function verificarContratos(tasks) {
-  const productores = new Map();
+  const productoresPorNombre = new Map();
   for (const t of tasks) {
     for (const c of (t.contratos || [])) {
       // Se indexa por la clave traducida: es la que despues se contrasta con las dependencias.
-      if (c.tipo === 'produce') productores.set(c.nombre, clave(t));
+      if (c.tipo !== 'produce') continue;
+      if (!productoresPorNombre.has(c.nombre)) productoresPorNombre.set(c.nombre, []);
+      productoresPorNombre.get(c.nombre).push(clave(t));
     }
   }
 
   const problemas = [];
   const conocidas = new Set(tasks.map(clave));
 
+  for (const [nombre, productores] of productoresPorNombre) {
+    if (productores.length > 1) {
+      problemas.push('el contrato "' + nombre + '" tiene mas de un productor: ' + productores.join(', '));
+    }
+  }
+
   for (const t of tasks) {
     for (const c of (t.contratos || [])) {
       if (c.tipo !== 'consume') continue;
-      const productor = productores.get(c.nombre);
-      if (!productor) {
+      const productores = productoresPorNombre.get(c.nombre) || [];
+      if (productores.length === 0) {
         problemas.push(t.path + ' consume el contrato "' + c.nombre + '" que ninguna task produce');
-      } else if (productor !== clave(t) && !depsInternas(t, conocidas).includes(productor)) {
+        continue;
+      }
+      // Con mas de un productor el problema real ya quedo nombrado arriba: acusar
+      // ademas a un consumidor cuya dependencia SI apunta a uno de ellos seria un
+      // segundo falso positivo sobre la misma causa.
+      if (productores.length > 1) continue;
+      const productor = productores[0];
+      if (productor !== clave(t) && !depsInternas(t, conocidas).includes(productor)) {
         problemas.push(t.path + ' consume "' + c.nombre + '" pero no depende de su productor ' + productor);
       }
     }
@@ -386,12 +408,21 @@ function falloDeGit(resultado, mensaje, log) {
  * codigo de salida: una lectura que no corrio devuelve cadena vacia igual que un
  * working tree limpio, y confundirlas registraba la constancia de revision de un
  * diff vacio.
+ *
+ * `ambito`, si llega con al menos un elemento, se pasa como pathspec a `add` y a
+ * `diff --cached`: en modo concurrente todas las tasks del nivel comparten arbol
+ * e indice, y sin acotar, `add -A` prepara tambien el trabajo sin commitear de
+ * una hermana en curso (F1) — el commit de una absorbe el de otra, en el camino
+ * feliz, sin que nadie falle. Sin `ambito` (modo secuencial, donde no hay
+ * hermanas que contaminen el indice) el comportamiento es el de siempre.
  */
-async function diffPreparado(spawn) {
-  const preparado = await gitVerificado(['add', '-A'], spawn);
+async function diffPreparado(spawn, ambito) {
+  const pathspec = (Array.isArray(ambito) && ambito.length > 0) ? ['--'].concat(ambito) : [];
+
+  const preparado = await gitVerificado(['add', '-A'].concat(pathspec), spawn);
   if (!preparado.ok) return { ok: false, error: preparado.error };
 
-  const lectura = await gitVerificado(['diff', '--cached'], spawn);
+  const lectura = await gitVerificado(['diff', '--cached'].concat(pathspec), spawn);
   if (!lectura.ok) return { ok: false, error: lectura.error };
 
   return { ok: true, diff: lectura.out };
@@ -422,19 +453,45 @@ async function comitearAprobada(task, resultado, contexto, deps) {
  * reflejado.
  *
  * `deps`: `spawnGit` (ejecuta git), `revisar`, `corregir`, `emitirSenal`,
- * `descartar` (deshace el trabajo sin commitear), `log`.
+ * `descartar` (deshace el trabajo sin commitear), `log`, `ambito` (opcional:
+ * ficheros declarados de la task; se calcula una vez por task, antes de esta
+ * llamada, no por cada comando de git).
  */
 async function revisarYComitear(task, resultado, deps) {
   const d = deps || {};
   const log = registrar(d);
+  const ambito = d.ambito;
 
-  const primera = await diffPreparado(d.spawnGit);
+  // Ambito presente pero vacio: la task no tiene tabla "Archivos afectados"
+  // legible. Acotar a una lista vacia equivaldria a no commitear nunca, asi que
+  // se conserva el comportamiento sin acotar (F1) y solo se deja constancia del
+  // motivo: quien lea el resultado sabe que este commit, si lo hay, no se acoto.
+  if (Array.isArray(ambito) && ambito.length === 0) {
+    resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
+      + '(ambito vacio: task sin tabla "Archivos afectados" legible, no se acota el commit)';
+  }
+
+  const primera = await diffPreparado(d.spawnGit, ambito);
   if (!primera.ok) return falloDeGit(resultado, primera.error, log);
   let diff = primera.diff;
 
-  // Task sin cambios en el working tree: git corrio y no hay nada preparado (el
-  // vacio es real, no el residuo de un comando que fallo).
+  // Task sin cambios en el working tree: git corrio y no hay nada preparado. Dos
+  // situaciones opuestas llegan aqui con el mismo diff vacio: la task que de
+  // verdad no tenia nada que hacer (sin ficheros declarados: el vacio es
+  // legitimo), y aquella cuyo trabajo YA NO ESTA -absorbido por una hermana o
+  // borrado por el descarte de otra- pese a declarar ficheros modificados. Solo
+  // la primera se reporta como exito: la segunda pasaria a las tasks
+  // posteriores como si su contrato existiera.
   if (!diff.trim()) {
+    if ((resultado.archivos_modificados || []).length > 0) {
+      log('Task ' + task.titulo + ': FALLIDA (trabajo declarado pero diff vacio) — probablemente '
+        + 'absorbido o descartado por una hermana concurrente, no se commitea');
+      resultado.resultado = 'FALLIDA';
+      resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
+        + '(trabajo declarado pero no queda nada que commitear: probablemente absorbido por el '
+        + 'commit de una hermana o borrado por su descarte)';
+      return resultado;
+    }
     resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
       + '(sin cambios en el working tree: no se commitea)';
     return resultado;
@@ -448,7 +505,7 @@ async function revisarYComitear(task, resultado, deps) {
     log('Revision de ' + task.titulo + ': ' + veredicto + ' — una pasada de correccion');
     await d.corregir(task, revision || { problemas_criticos: [], problemas_menores: [] });
 
-    const segunda = await diffPreparado(d.spawnGit);
+    const segunda = await diffPreparado(d.spawnGit, ambito);
     if (!segunda.ok) return falloDeGit(resultado, segunda.error, log);
     diff = segunda.diff;
 
@@ -477,11 +534,19 @@ async function revisarYComitear(task, resultado, deps) {
  * Dependencias de la task que quedaron FALLIDAS entre los resultados ya
  * acumulados. Una task cuyo pre-requisito no se completo no se implementa: se
  * reporta bloqueada.
+ *
+ * La comparacion se hace sobre la ruta traducida en los dos lados, igual que
+ * depsInternas: una dependencia escrita con separadores de Windows denota la
+ * misma task que su `task_path` nativo en `resultadosPrevios`, y compararlas
+ * crudas dejaria el bloqueo sin efecto para esa forma de la ruta.
  */
 function depsFallidas(task, resultadosPrevios) {
   const previos = resultadosPrevios || [];
   return (task.dependencias || []).filter(function (d) {
-    return previos.some(function (r) { return r && r.task_path === d && r.resultado === 'FALLIDA'; });
+    const dep = rutaNativa(d);
+    return previos.some(function (r) {
+      return r && rutaNativa(r.task_path) === dep && r.resultado === 'FALLIDA';
+    });
   });
 }
 
@@ -589,16 +654,22 @@ async function ejecutarTask(task, resultadosPrevios, deps) {
  * FRONTERA DEL MODO CONCURRENTE. Lo que el framework hace: lanza las tasks de un
  * nivel a la vez y reporta el resultado de cada una (politica best-effort: el
  * fallo de una no cancela a las demas, y el resumen final distingue cual paso y
- * cual fallo, no solo la primera excepcion). Lo que NO hace: no hay
- * single-writer por fichero, no detecta colisiones entre tasks que tocan el
- * mismo archivo y no particiona el trabajo por ellas. Todas las tasks de un
- * mismo nivel comparten el mismo working tree mientras se implementan; si el
- * gate de tests de una falla, el descarte de su trabajo (`reset --hard` +
- * `clean -fd`) se lleva TODO cambio sin commitear en ese momento, incluido el de
- * las hermanas aun en curso. Evitar que dos tasks se pisen (mismo fichero, o
- * exposicion al descarte de otra) es responsabilidad de quien pide el modo
- * concurrente, no del framework. Las puertas de calidad (gate de tests,
- * revision del diff) se aplican por task en los dos modos.
+ * cual fallo, no solo la primera excepcion). El commit de cada task se acota a
+ * sus propios ficheros declarados (F1: `diffPreparado` con `ambito`), asi que ya
+ * no absorbe en silencio el trabajo sin commitear de una hermana en curso; y una
+ * task cuyo trabajo desaparecio del working tree -absorbido por otra o borrado
+ * por su descarte- ya no se reporta COMPLETADA (F2: `revisarYComitear` distingue
+ * el diff vacio legitimo del inesperado por `archivos_modificados`). Lo que
+ * SIGUE sin hacer: no hay single-writer por fichero, no detecta colisiones entre
+ * tasks que tocan el mismo archivo y no particiona el trabajo por ellas ni aisla
+ * arboles de trabajo. Todas las tasks de un mismo nivel comparten el mismo
+ * working tree e indice mientras se implementan; si el gate de tests de una
+ * falla, el descarte de su trabajo (`reset --hard` + `clean -fd`) se lleva TODO
+ * cambio sin commitear en ese momento, incluido el de las hermanas aun en curso
+ * -lo que cambia es que esa hermana ya no se reporta como completada-. Evitar
+ * que dos tasks se pisen (mismo fichero) sigue siendo responsabilidad de quien
+ * pide el modo concurrente, no del framework. Las puertas de calidad (gate de
+ * tests, revision del diff) se aplican por task en los dos modos.
  */
 async function recorrerNiveles(niveles, ejecutar, opciones) {
   const modoParalelo = !!(opciones && opciones.modoParalelo);
