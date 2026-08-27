@@ -16,7 +16,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { readPayload, warn, deny, loadConfig, purgeExpired } = require('../sdd-hook-utils');
+const { readPayload, warn, deny, loadConfig, purgeExpired, sessionStatePath } = require('../sdd-hook-utils');
 
 const originalStdin = process.stdin;
 
@@ -284,6 +284,30 @@ test('purgeExpired: diff === ttlMs exacto -> NO se purga (solo estrictamente sup
     Date.now = originalNow;
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// sessionStatePath(dir, prefix, sessionId, extension): nombre del fichero de
+// estado por sesion, compartido por sdd-turn-budget.js y sdd-read-tracker.js
+// (unica fuente de la sanitizacion del identificador de sesion; ver task
+// s12/06). Sustituye la sanitizacion duplicada en cada hook.
+test('sessionStatePath: identificador ya seguro conserva el nombre de hoy', () => {
+  const ruta = sessionStatePath('/tmp', 'sdd-reads-', 'sesion-actual', '.jsonl');
+  assert.strictEqual(ruta, path.join('/tmp', 'sdd-reads-sesion-actual.jsonl'));
+});
+
+test('sessionStatePath: identificadores que solo difieren en el separador producen rutas distintas', () => {
+  const a = sessionStatePath('/tmp', 'sdd-reads-', 'abc def', '.jsonl');
+  const b = sessionStatePath('/tmp', 'sdd-reads-', 'abc.def', '.jsonl');
+  const c = sessionStatePath('/tmp', 'sdd-reads-', 'abc/def', '.jsonl');
+  assert.notStrictEqual(a, b);
+  assert.notStrictEqual(b, c);
+  assert.notStrictEqual(a, c);
+});
+
+test('sessionStatePath: el mismo identificador produce siempre la misma ruta', () => {
+  const uno = sessionStatePath('/tmp', 'sdd-reads-', 'abc def', '.jsonl');
+  const dos = sessionStatePath('/tmp', 'sdd-reads-', 'abc def', '.jsonl');
+  assert.strictEqual(uno, dos);
 });
 
 test('purgeExpired: diff === ttlMs + 1ms -> SI se purga', () => {
