@@ -121,6 +121,34 @@ test('esInvocacion: ruta absoluta al binario se normaliza al nombre base', () =>
   assert.strictEqual(esInvocacion('/usr/bin/git commit --no-verify -m x', 'git', ['commit']), true);
 });
 
+// Regresion: un script anidado con comillas DOBLES escapadas dentro (`\"`) es la forma real que
+// produce, por ejemplo, un mensaje de commit citado -- `bash -lc "git commit -m \"x\""`. Sin
+// desescapar, la primera `\"` se leia como el cierre real del string exterior, partiendo el
+// script a mitad de camino: el resto ("x\"") dejaba de tokenizarse como parte de la invocacion
+// de git, y el conjunto volvia a evadir el bloqueo que este mismo tokenizador dice cerrar.
+test('esInvocacion: script anidado con comillas dobles escapadas dentro sigue reconociendo git', () => {
+  assert.strictEqual(
+    esInvocacion('bash -lc "git commit -m \\"mensaje\\""', 'git', ['commit']),
+    true,
+  );
+  assert.strictEqual(
+    esInvocacion('bash -c "git commit --amend -m \\"x\\""', 'git', ['commit']),
+    true,
+  );
+});
+
+test('esInvocacion: script anidado dos veces, cada nivel con sus propias comillas escapadas', () => {
+  assert.strictEqual(
+    esInvocacion('bash -lc "bash -c \\"git commit -m x\\""', 'git', ['commit']),
+    true,
+  );
+});
+
+test('tokenizar: comillas simples no procesan escapes (backslash literal, a diferencia de las dobles)', () => {
+  const toks = tokenizar("echo 'a\\\\b'");
+  assert.deepStrictEqual(toks[1], { valor: 'a\\\\b', entrecomillado: true });
+});
+
 test('invocaciones: descarta asignaciones de entorno iniciales', () => {
   const inv = invocaciones('FOO=bar git commit -m x');
   assert.strictEqual(inv.length, 1);

@@ -51,9 +51,16 @@ function esFlagDeScript(programa, flag) {
 // Envoltorios que anteponen su propio nombre al programa real sin cambiar la invocacion que
 // git/gh reciben: `env git commit`, `/usr/bin/git commit` y `command git commit` invocan git
 // igual que `git commit` a secas. Se saltan (por su nombre base, para tolerar rutas absolutas)
-// antes de fijar `programa`, siempre que no lleven flags propios -- un envoltorio CON flags
-// (`env -i FOO=bar git commit`, `nice -n 10 git commit`) no se resuelve: es el mismo limite
-// declarado arriba para sustitucion de comandos, no una regresion sobre lo que ya se detectaba.
+// antes de fijar `programa`, siempre que no lleven flags propios.
+//
+// LIMITE REAL, no cosmetico: un envoltorio CON flags/argumentos (`nice -n 10 git commit`,
+// `timeout 30 git commit`, `xargs git commit -m x`) no se resuelve -- el modulo no intenta
+// aprender la gramatica de flags de cada programa externo posible. Para los consumidores que
+// reemplazan una regex de subcadena cruda (sdd-turn-budget.js, sdd-review-gate.js), esto ES UNA
+// REDUCCION real de lo que se detectaba antes: la regex vieja encontraba "git commit" en
+// cualquier posicion del string, envoltorio con flags incluido. Si un caso asi importa en la
+// practica, resolverlo exige una lista de flags por envoltorio (como OPCIONES_GLOBALES_CON_VALOR
+// para git/gh), no extender este Set.
 const ENVOLTORIOS_SIN_FLAGS = new Set(['env', 'command', 'nohup', 'stdbuf', 'nice', 'time']);
 
 // Letras cortas de `git commit` que consumen un valor. Una vez alcanzada una de estas dentro de
@@ -128,10 +135,33 @@ function tokenizar(cmd) {
     if (ch === '|' && fuente[i + 1] === '|') { tokens.push({ valor: '||', entrecomillado: false }); i += 2; continue; }
     if (ES_SEPARADOR_UN_CHAR(ch)) { tokens.push({ valor: ch, entrecomillado: false }); i += 1; continue; }
 
-    if (ch === '"' || ch === "'") {
+    // Comillas simples: literal hasta el cierre, sin procesar escapes (asi las trata la shell).
+    if (ch === "'") {
       let j = i + 1;
       while (j < n && fuente[j] !== ch) j += 1;
       tokens.push({ valor: fuente.slice(i + 1, j), entrecomillado: true });
+      i = j < n ? j + 1 : n;
+      continue;
+    }
+
+    // Comillas dobles: `\"` y `\\` son escapes reales dentro de un string entrecomillado (asi los
+    // resuelve la shell antes de que el programa reciba el argumento). Sin desescaparlos, la
+    // PRIMERA comilla escapada de un script anidado (`bash -lc "git commit -m \"x\""`) se lee como
+    // el cierre real, partiendo el script a mitad de camino -- el resto deja de tokenizarse como
+    // la invocacion de git que es.
+    if (ch === '"') {
+      let j = i + 1;
+      let valor = '';
+      while (j < n && fuente[j] !== '"') {
+        if (fuente[j] === '\\' && j + 1 < n && (fuente[j + 1] === '"' || fuente[j + 1] === '\\')) {
+          valor += fuente[j + 1];
+          j += 2;
+        } else {
+          valor += fuente[j];
+          j += 1;
+        }
+      }
+      tokens.push({ valor, entrecomillado: true });
       i = j < n ? j + 1 : n;
       continue;
     }
