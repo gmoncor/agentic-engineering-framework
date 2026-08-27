@@ -10,7 +10,7 @@ Muestra el estado actual del proyecto SDD.
 1. Lee todos los archivos en `ai_docs/tasks/`
 2. Clasifica cada archivo:
    - **Specs:** archivos con prefijo `spec_` — indica estado (BORRADOR / APROBADA)
-   - **Tasks:** archivos con prefijo numerico `NNN_` — indica estado y spec madre. Las tasks `NNN_convergencia_<spec>.md` (generadas por la garantia de convergencia al cerrar una spec) se clasifican igual; para el resumen, cuenta cuantas tienen estado PENDIENTE
+   - **Tasks:** archivos con prefijo numerico `NNN_` — indica estado, spec madre y el contenido de su campo **Dependencias:** (celda vacia si la task no lo declara). Las tasks `NNN_convergencia_<spec>.md` (generadas por la garantia de convergencia al cerrar una spec) se clasifican igual; para el resumen, cuenta cuantas tienen estado PENDIENTE
 3. Presenta un resumen con este formato:
 
 ```
@@ -22,18 +22,17 @@ Muestra el estado actual del proyecto SDD.
 | ... | ... | ... |
 
 ### Tasks
-| # | Titulo | Spec madre | Estado | Independiente |
-|---|--------|------------|--------|---------------|
+| # | Titulo | Spec madre | Estado | Dependencias |
+|---|--------|------------|--------|--------------|
 | ... | ... | ... | ... | ... |
 
 ### Resumen
 - Specs activas: N
 - Tasks pendientes: N
-- Tasks completadas: N
-- Tasks en progreso: N
 - Tasks de convergencia pendientes: N
+- Progreso real: el campo `Estado` de una task se escribe al crearla y ningun paso posterior lo actualiza (no se reescribe tras implementar ni revisar), asi que este comando no cuenta cuantas quedan resueltas o a medias; el progreso se lee del estado de la spec (BORRADOR / APROBADA) y de los commits del proyecto
 ```
 
 4. Si `ai_docs/tasks/` esta vacio, indica que no hay specs ni tasks creadas y sugiere empezar con la skill `planificar` (o la skill `spec` si solo necesita crear una spec individual)
 5. Si hay specs aprobadas sin tasks, sugiere usar la skill `tareas` para derivarlas
-6. Si hay tasks completadas sin revision, sugiere usar la skill `revision`
+6. Si hay specs aprobadas con tasks pendientes, sugiere revisar los commits del proyecto para saber cuales estan implementadas
