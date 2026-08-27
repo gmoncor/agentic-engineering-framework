@@ -146,7 +146,7 @@ test('la lectura persiste en el rastreador por sesion, no en el mensaje de commi
   const e = entorno(CONFIG_ON);
   runHook(HOOK, claudeRead(e.existente, SESSION), e.env);
 
-  const tracker = path.join(e.dir, 'sdd-reads-' + SESSION + '.json');
-  const rutas = JSON.parse(fs.readFileSync(tracker, 'utf8'));
+  const tracker = path.join(e.dir, 'sdd-reads-' + SESSION + '.jsonl');
+  const rutas = fs.readFileSync(tracker, 'utf8').trim().split('\n').map((linea) => JSON.parse(linea));
   assert.ok(rutas.includes(path.resolve(e.existente)), 'la ruta leida consta en el rastreador');
 });

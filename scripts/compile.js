@@ -140,19 +140,18 @@ function resumirDiff(esperado, enDisco) {
 }
 
 /**
- * Procesa un unico output de una entrada ya transformada. Devuelve
- * `{ path, estado, detalle?, diff? }`. `estado` segun el modo:
- *   check:    'ok' | 'drift'
- *   dry-run:  'sin-cambios' | 'cambiaria'
- *   write:    'escrito'
+ * Procesa un unico output de una entrada ya transformada. En `check` y
+ * `dry-run` compara con disco y devuelve `{ path, estado, detalle?, diff? }`.
+ * En `write` NO toca disco: calcula y devuelve `{ path, rutaAbsoluta,
+ * contenido }` para que `aplicarEscritura` escriba todas las salidas de la
+ * entrada juntas, una vez calculadas todas — asi un fallo de disco en una
+ * salida no deja a sus hermanas ya escritas.
  */
 function procesarOutput(raiz, outputContent, salida, modo) {
   const rutaAbsoluta = path.join(raiz, salida.path);
 
   if (modo === 'write') {
-    fs.mkdirSync(path.dirname(rutaAbsoluta), { recursive: true });
-    fs.writeFileSync(rutaAbsoluta, outputContent);
-    return { path: salida.path, estado: 'escrito' };
+    return { path: salida.path, rutaAbsoluta, contenido: outputContent };
   }
 
   const existe = fs.existsSync(rutaAbsoluta);
@@ -169,6 +168,66 @@ function procesarOutput(raiz, outputContent, salida, modo) {
   if (!existe) return { path: salida.path, estado: 'drift', detalle: 'OUTPUT_MISSING' };
   if (coincide) return { path: salida.path, estado: 'ok' };
   return { path: salida.path, estado: 'drift', detalle: 'contenido difiere', diff: resumirDiff(outputContent, enDisco) };
+}
+
+/**
+ * Nombre de fichero temporal, hermano del destino declarado. El sufijo es
+ * reconocible y no colisiona con ninguna salida gestionada: si un proceso se
+ * interrumpe antes de renombrar, el residuo no se confunde con un artefacto ni
+ * el `--check` siguiente lo cuenta como deriva.
+ */
+function rutaTemporal(rutaAbsoluta) {
+  return `${rutaAbsoluta}.compile-tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/**
+ * Aplica en disco las salidas ya calculadas de una entrada, en tres pasos:
+ * crea los directorios padre de todas, escribe cada contenido en un temporal
+ * hermano de su destino y renombra cada temporal a su destino. Es la unidad de
+ * consistencia que el manifiesto declara: o se aplican todas las salidas de la
+ * entrada, o ninguna.
+ *
+ * Un fallo en los dos primeros pasos no deja ninguna salida aplicada: los
+ * temporales ya creados se retiran y el error original se propaga tal cual. El
+ * renombrado es la operacion con menos formas de fallar, pero si aun asi una
+ * falla a mitad, el mensaje nombra las salidas que ya quedaron aplicadas para
+ * que quien lo lea sepa que el arbol quedo a medias y hay que reejecutar.
+ */
+function aplicarEscritura(calculados) {
+  const pendientes = calculados.map(c => ({ ...c, temporal: rutaTemporal(c.rutaAbsoluta) }));
+  // Limpieza best-effort: un temporal cuyo padre nunca llego a existir (el
+  // mismo motivo por el que el paso anterior fallo) hace que `rmSync` lance
+  // ENOTDIR incluso con `force`, que solo absorbe ENOENT. Esa excepcion de
+  // limpieza no puede sustituir al error real que se esta propagando.
+  const retirarTemporales = () => pendientes.forEach(p => {
+    try {
+      fs.rmSync(p.temporal, { force: true });
+    } catch {
+      // Residuo aceptado: ver "Riesgos aceptados" sobre temporales tras interrupcion.
+    }
+  });
+
+  try {
+    pendientes.forEach(p => fs.mkdirSync(path.dirname(p.rutaAbsoluta), { recursive: true }));
+    pendientes.forEach(p => fs.writeFileSync(p.temporal, p.contenido));
+  } catch (err) {
+    retirarTemporales();
+    throw err;
+  }
+
+  const aplicadas = [];
+  try {
+    for (const p of pendientes) {
+      fs.renameSync(p.temporal, p.rutaAbsoluta);
+      aplicadas.push(p.path);
+    }
+  } catch (err) {
+    retirarTemporales();
+    const nombres = aplicadas.length ? aplicadas.join(', ') : 'ninguna';
+    throw new Error(`${err.message} (salidas ya aplicadas antes del fallo: ${nombres})`);
+  }
+
+  return pendientes.map(p => ({ path: p.path, estado: 'escrito', source: p.source }));
 }
 
 /** Contenido del `fragment` declarado por la entrada, o `null` si no declara ninguno. */
@@ -189,6 +248,11 @@ function leerFragmento(raiz, entry) {
  * source ausente, un fragmento declarado y ausente, un transform no registrado
  * o un transform que lanza devuelven `error` sin propagar, para que el llamador
  * pueda seguir con el resto de entradas.
+ *
+ * En modo escritura, `procesarOutput` solo calcula: ningun output llega a
+ * disco hasta que todos los de la entrada estan calculados, momento en que
+ * `aplicarEscritura` los escribe juntos. Un fallo de disco a mitad de ese paso
+ * tambien se reporta como `error` de la entrada, igual que un fallo de calculo.
  */
 function procesarEntrada(raiz, entry, modo, politica, variables = {}) {
   const transformFn = TRANSFORMS[entry.transform];
@@ -208,11 +272,12 @@ function procesarEntrada(raiz, entry, modo, politica, variables = {}) {
 
   const sourceContent = fs.readFileSync(sourcePath, 'utf8');
   try {
-    const resultados = (entry.outputs || []).map(salida => {
+    const calculados = (entry.outputs || []).map(salida => {
       const contexto = { ...entry, output: salida, fragmentContent: fragmento.contenido, variables };
       const resultado = procesarOutput(raiz, transformFn(sourceContent, contexto, politica), salida, modo);
       return { ...resultado, source: entry.source };
     });
+    const resultados = modo === 'write' ? aplicarEscritura(calculados) : calculados;
     return { entryId: entry.id, resultados, error: null };
   } catch (err) {
     return { entryId: entry.id, resultados: [], error: err.message };

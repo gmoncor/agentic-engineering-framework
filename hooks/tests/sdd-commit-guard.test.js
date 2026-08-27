@@ -46,6 +46,32 @@ test('usesNoVerify: grupo de flags sin -n (-am) no se detecta (falso positivo)',
   assert.strictEqual(usesNoVerify('git commit -am -m "x"'), false);
 });
 
+test('git -c core.hooksPath=/tmp commit --no-verify: deny (opcion global ya no evade el bloqueo)', () => {
+  const r = runHook(HOOK, bash('git -c core.hooksPath=/tmp commit --no-verify -m x'));
+
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.code, 2);
+  assert.match(r.decision.reason, /--no-verify/);
+});
+
+test('git commit -uno -m x: no deniega (--untracked-files=no, la n es valor de -u)', () => {
+  const r = runHook(HOOK, bash('git commit -uno -m x'));
+
+  assert.notStrictEqual(r.code, 2);
+});
+
+test('git commit -m "docs: explain the -n flag": no deniega (texto del mensaje, no un flag)', () => {
+  const r = runHook(HOOK, bash('git commit -m "docs: explain the -n flag"'));
+
+  assert.notStrictEqual(r.code, 2);
+});
+
+test('git commit -m "docs: --no-verify esta prohibido": no deniega (texto del mensaje, no un flag)', () => {
+  const r = runHook(HOOK, bash('git commit -m "docs: --no-verify esta prohibido"'));
+
+  assert.notStrictEqual(r.code, 2);
+});
+
 test('git push --no-verify: deny', () => {
   const r = runHook(HOOK, bash('git push --no-verify origin main'));
 

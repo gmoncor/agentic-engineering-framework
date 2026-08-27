@@ -208,6 +208,37 @@ function purgeExpired(dir, prefix, currentFile, ttlMs) {
 }
 
 /**
+ * Ruta del fichero de estado por sesion, compartida por los hooks que llevan
+ * un registro por sesion (sdd-turn-budget.js, sdd-read-tracker.js). Sustituye
+ * la sanitizacion que cada uno duplicaba: `[^a-zA-Z0-9_-]` colapsa a '_'
+ * cualquier caracter fuera de ese conjunto, asi que sin mas, identificadores
+ * distintos que solo difieren en un separador ('abc.def', 'abc/def', 'abc
+ * def') producen el mismo nombre de fichero y terminan compartiendo estado:
+ * el aviso de una sesion se calcularia con los datos de otra. El nombre debe
+ * ser inyectivo (identificadores distintos -> ficheros distintos) para que
+ * eso no ocurra.
+ *
+ * Si la sanitizacion no cambio nada, el resultado es el nombre de siempre:
+ * necesario para que `purgeExpired` -- que reconoce los ficheros por
+ * `prefix`, no por el nombre completo -- siga purgando con normalidad los
+ * ficheros de sesiones ya en curso. Si la sanitizacion SI cambio el
+ * identificador, se añade un sufijo corto derivado del identificador CRUDO
+ * para que dos identificadores que colapsen al mismo `safe` no colisionen. El
+ * sufijo se añade DESPUES de `safe`, nunca lo sustituye: el fichero sigue
+ * empezando por `prefix`, que es lo unico de lo que depende la purga.
+ */
+function sessionStatePath(dir, prefix, sessionId, extension) {
+  const raw = String(sessionId);
+  const safe = raw.replace(/[^a-zA-Z0-9_-]/g, '_');
+  if (safe === raw) return path.join(dir, prefix + safe + extension);
+  // crypto es perezoso: este modulo lo carga cada hook en cada llamada a
+  // herramienta, y solo el caso raro (identificador con caracteres fuera del
+  // conjunto seguro) necesita el hash.
+  const hash = require('crypto').createHash('sha1').update(raw).digest('hex').slice(0, 8);
+  return path.join(dir, prefix + safe + '-' + hash + extension);
+}
+
+/**
  * Punto de entrada comun de los hooks: fail-open por clase de error.
  *
  * Separa las dos cosas que un exit distinto de 0 confundia:
@@ -252,6 +283,7 @@ module.exports = {
   warn,
   deny,
   purgeExpired,
+  sessionStatePath,
   runWithFailOpen,
   SKIP_ENV,
 };

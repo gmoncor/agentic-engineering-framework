@@ -144,6 +144,48 @@ async function raizDelProyecto() {
   return path.dirname(path.dirname(await resolverEnProyecto('.claude/workflows')))
 }
 
+// ── Ambito de la task: acota su commit a sus propios ficheros en modo concurrente ──
+// En modo concurrente todas las tasks de un nivel comparten arbol e indice: sin acotar, `git add
+// -A` prepara tambien el trabajo sin commitear de una hermana en curso (F1 de orquestacion.js). El
+// ambito es la lista de ficheros que la TASK DECLARA en su propia tabla "Archivos afectados"
+// (parser SSOT hooks/sdd-task-files.js, el mismo que usa el guard de pipeline), no el auto-reporte
+// del implementador: con el guard activo coinciden por construccion.
+//
+// Mismo patron de carga que emitirSenalRevision: resolverEnProyecto + comprobacion de existencia +
+// cargarModulo. Si el proyecto no tiene el parser instalado, o la task no tiene una tabla legible,
+// el ambito degrada a una lista vacia con el motivo registrado — orquestacion.js decide entonces
+// que hacer con un ambito vacio (conserva `add -A` sin acotar, ver diffPreparado).
+//
+// Se calcula una sola vez por task (no en cada llamada a git): el resultado se cachea por su path.
+const ambitoCache = new Map()
+async function ambitoTask(task) {
+  if (ambitoCache.has(task.path)) return ambitoCache.get(task.path)
+
+  const resultado = await calcularAmbitoTask(task)
+  ambitoCache.set(task.path, resultado)
+  return resultado
+}
+
+async function calcularAmbitoTask(task) {
+  const fs = await import('node:fs')
+  const ruta = await resolverEnProyecto('hooks/sdd-task-files.js')
+
+  if (!fs.existsSync(ruta)) {
+    log('Ambito de ' + task.titulo + ' vacio: el proyecto no tiene hooks/sdd-task-files.js instalado, '
+      + 'asi que no hay tabla "Archivos afectados" que parsear. No se acota el commit.')
+    return []
+  }
+
+  try {
+    const parser = await cargarModulo('hooks/sdd-task-files.js')
+    const contenido = fs.readFileSync(await resolverEnProyecto(task.path), 'utf8')
+    return parser.parseAffectedFiles(contenido)
+  } catch (e) {
+    log('Ambito de ' + task.titulo + ' vacio: ' + e.message + '. No se acota el commit.')
+    return []
+  }
+}
+
 // ── Git del working tree ──────────────────────────────────────────────────────
 // El workflow controla el commit de cada task (el implementador ya no commitea):
 // primero se revisa el diff, y solo si la revision aprueba se emite la senal y se
@@ -186,12 +228,18 @@ async function ejecutarTests(comando) {
 
 // Descubre y ejecuta el comando de test, y devuelve el veredicto del gate. Los
 // archivos se leen del diff staged (cambios reales), no del auto-reporte: asi la
-// exencion docs/config se decide sobre lo que de verdad se toco.
+// exencion docs/config se decide sobre lo que de verdad se toco. En modo
+// concurrente ese listado es justo el dato que F1 contamina: sin acotarlo al
+// ambito de la task, este gate leeria tambien los ficheros que una hermana dejo
+// preparados en el mismo indice compartido.
 async function gateTests(task) {
-  const preparado = await orq.gitVerificado(['add', '-A'], git)
+  const ambito = modoParalelo ? await ambitoTask(task) : undefined
+  const pathspec = (ambito && ambito.length > 0) ? ['--'].concat(ambito) : []
+
+  const preparado = await orq.gitVerificado(['add', '-A'].concat(pathspec), git)
   if (!preparado.ok) return { estado: 'FALLIDA', infraestructura: true, nota: preparado.error }
 
-  const listado = await orq.gitVerificado(['diff', '--cached', '--name-only'], git)
+  const listado = await orq.gitVerificado(['diff', '--cached', '--name-only'].concat(pathspec), git)
   // Sin listado fiable no se puede decidir la exencion de docs/config: una lista vacia por fallo
   // de git eximiria a una task que si toca codigo.
   if (!listado.ok) return { estado: 'FALLIDA', infraestructura: true, nota: listado.error }
@@ -413,9 +461,12 @@ REGLAS:\n\
 
 // Revisa el diff de la task y, si aprueba, emite la senal atada al diff y commitea.
 // El criterio (que diff se revisa, cuando se descarta el trabajo, como se lee cada
-// comando de git) vive en orquestacion.js, donde se prueba con dobles; aqui solo se
-// cablean las piezas que hablan con el mundo exterior.
+// comando de git, y como se acota el ambito del commit en modo concurrente) vive
+// en orquestacion.js, donde se prueba con dobles; aqui solo se cablean las piezas
+// que hablan con el mundo exterior. El ambito solo se calcula (y se pasa) en modo
+// concurrente: en secuencial no hay hermanas que contaminen el indice compartido.
 async function revisarYComitear(task, resultado) {
+  const ambito = modoParalelo ? await ambitoTask(task) : undefined
   return orq.revisarYComitear(task, resultado, {
     spawnGit: git,
     log: registro,
@@ -423,6 +474,7 @@ async function revisarYComitear(task, resultado) {
     corregir: corregirTask,
     emitirSenal: emitirSenalRevision,
     descartar: descartarTrabajo,
+    ambito: ambito,
   })
 }
 

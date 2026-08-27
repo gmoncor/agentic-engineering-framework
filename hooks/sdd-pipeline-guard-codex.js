@@ -10,8 +10,10 @@
  * backends.
  *
  * Diferencia con los otros backends: aqui la edicion llega como un parche (apply_patch), no como una
- * herramienta con `file_path`. El parche puede tocar VARIOS archivos; se deniega si alguno de ellos
- * no esta declarado.
+ * herramienta con `file_path`. El parche puede tocar VARIOS archivos, incluso de paquetes distintos
+ * en un mismo monorepo: cada ruta se contrasta contra el directorio de tasks que le corresponde por
+ * su propia posicion en el arbol, y se deniega si alguna de ellas no esta declarada en su plan. El
+ * veredicto no depende del orden en que el backend enumere las rutas del parche.
  *
  * Limite conocido: el payload de apply_patch no tiene un esquema publico estable. La extraccion de
  * rutas es best-effort (campos habituales + cabeceras del formato de parche). Si no se puede extraer
@@ -66,20 +68,29 @@ async function main() {
     .filter(resolved => !isInsideAiDocs(resolved));
   if (targets.length === 0) process.exit(0);
 
-  // Proyecto sin pipeline SDD: nada que enforcar.
-  const tasksDir = findTasksDir(targets[0]);
-  if (!tasksDir) process.exit(0);
-
-  const reason = firstDenial(tasksDir, targets);
+  const reason = firstDenial(targets);
   if (!reason) process.exit(0);
 
   if (skipRequested()) warn(ADVISORY_FIRMA + reason + ' [SDD_GUARD_SKIP=1: se permite la escritura]');
   deny(BLOCK_FIRMA + reason);
 }
 
-/** Un solo archivo no declarado invalida el parche entero: no se aplican parches a medias. */
-function firstDenial(tasksDir, targets) {
+/**
+ * Un solo archivo no declarado invalida el parche entero: no se aplican parches a medias.
+ *
+ * Cada ruta se contrasta contra SU PROPIO directorio de tasks, resuelto por su propia posicion
+ * en el arbol: en un parche de monorepo, dos rutas pueden pertenecer a paquetes distintos con
+ * planes distintos (o sin plan alguno). El veredicto no depende del orden en que el backend
+ * enumere las rutas del parche.
+ *
+ * Una ruta sin directorio de tasks alcanzable (proyecto sin pipeline SDD) se descarta de la
+ * comprobacion, no del parche: no invalida a las demas ni provoca denegacion por si misma.
+ */
+function firstDenial(targets) {
   for (const resolved of targets) {
+    const tasksDir = findTasksDir(resolved);
+    if (!tasksDir) continue;
+
     const reason = denialReason(tasksDir, resolved);
     if (reason) return reason;
   }

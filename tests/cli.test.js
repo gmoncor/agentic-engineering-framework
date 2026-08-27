@@ -16,7 +16,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
-const { spawnSync } = require('node:child_process');
+const { spawnSync, spawn } = require('node:child_process');
 
 const RAIZ = path.join(__dirname, '..');
 const CLI = path.join(RAIZ, 'bin', 'cli.js');
@@ -55,6 +55,25 @@ function ejecutar(args, opts = {}) {
     stdout: resultado.stdout || '',
     stderr: resultado.stderr || '',
   };
+}
+
+/**
+ * Como `ejecutar`, pero asincrona (spawn en vez de spawnSync): necesaria para
+ * lanzar dos procesos que corran de verdad en paralelo (F3), algo que
+ * spawnSync no permite porque bloquea hasta que el proceso termina.
+ */
+function ejecutarAsync(args, opts = {}) {
+  return new Promise(resolve => {
+    const proceso = spawn('node', [CLI, ...args], {
+      cwd: opts.cwd,
+      env: Object.assign({}, process.env, opts.env),
+    });
+    let stdout = '';
+    let stderr = '';
+    proceso.stdout.on('data', chunk => { stdout += chunk; });
+    proceso.stderr.on('data', chunk => { stderr += chunk; });
+    proceso.on('close', codigo => resolve({ codigo, stdout, stderr }));
+  });
 }
 
 test('existe, es ejecutable y usa shebang node', () => {
@@ -1668,7 +1687,7 @@ test('install exitoso no deja .sdd-install-in-progress en disco', () => {
   );
 });
 
-test('install con lockfile preexistente de una instalacion interrumpida avisa por stderr y continua', () => {
+test('install con lockfile preexistente de una instalacion interrumpida aborta sin copiar', () => {
   const paquete = crearPaqueteFixture(
     { common: [], claude: ['CLAUDE.md'] },
     { 'CLAUDE.md': 'contexto' },
@@ -1683,16 +1702,19 @@ test('install con lockfile preexistente de una instalacion interrumpida avisa po
     cwd: proyecto,
     env: { SDD_FRAMEWORK_ROOT: paquete },
   });
-  assert.strictEqual(codigo, 0);
-  assert.match(stderr, /interrumpida/i);
+  assert.strictEqual(codigo, 1);
+  assert.match(stderr, /ya existe/i);
   assert.match(stderr, /2026-01-01/);
+  assert.match(stderr, /instalacion en curso/i);
+  assert.match(stderr, /interrumpida/i);
+  assert.ok(!fs.existsSync(path.join(proyecto, 'CLAUDE.md')), 'un lock existente no debe dejar copiar nada');
   assert.ok(
-    !fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
-    'el lockfile debe desaparecer tras completar la instalacion que lo encontro',
+    fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
+    'el lockfile encontrado no es propio de esta ejecucion: abortar no debe tocarlo',
   );
 });
 
-test('install con lockfile de un backend distinto avisa mencionando el backend anterior', () => {
+test('install con lockfile de un backend distinto menciona el backend anterior y el solicitado', () => {
   const paquete = crearPaqueteFixture(
     { common: [], claude: ['CLAUDE.md'] },
     { 'CLAUDE.md': 'contexto' },
@@ -1707,12 +1729,12 @@ test('install con lockfile de un backend distinto avisa mencionando el backend a
     cwd: proyecto,
     env: { SDD_FRAMEWORK_ROOT: paquete },
   });
-  assert.strictEqual(codigo, 0);
+  assert.strictEqual(codigo, 1);
   assert.match(stderr, /gemini/);
   assert.match(stderr, /claude/);
 });
 
-test('install con lockfile de JSON invalido avisa de forma generica sin crash', () => {
+test('install con lockfile de JSON invalido aborta de forma generica sin crash', () => {
   const paquete = crearPaqueteFixture(
     { common: [], claude: ['CLAUDE.md'] },
     { 'CLAUDE.md': 'contexto' },
@@ -1723,8 +1745,10 @@ test('install con lockfile de JSON invalido avisa de forma generica sin crash', 
     cwd: proyecto,
     env: { SDD_FRAMEWORK_ROOT: paquete },
   });
-  assert.strictEqual(codigo, 0);
-  assert.match(stderr, /posiblemente interrumpida/i);
+  assert.strictEqual(codigo, 1);
+  assert.match(stderr, /ya existe/i);
+  assert.match(stderr, /desconocido/i);
+  assert.ok(!fs.existsSync(path.join(proyecto, 'CLAUDE.md')), 'no debe copiar nada con un lock ilegible');
 });
 
 test('install --dry-run no crea .sdd-install-in-progress', () => {
@@ -1744,7 +1768,7 @@ test('install --dry-run no crea .sdd-install-in-progress', () => {
   );
 });
 
-test('install con fallo durante la copia deja .sdd-install-in-progress en disco', () => {
+test('install con fallo durante la copia retira igualmente .sdd-install-in-progress', () => {
   const paquete = crearPaqueteFixture(
     { common: ['archivo.md'], claude: [] },
     { 'archivo.md': 'contenido' },
@@ -1762,8 +1786,8 @@ test('install con fallo durante la copia deja .sdd-install-in-progress en disco'
   assert.match(stderr, /Rutas que fallaron al copiar/);
   assert.match(stderr, /archivo\.md/);
   assert.ok(
-    fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
-    'el lockfile debe permanecer tras un fallo de copia',
+    !fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
+    'el lockfile debe retirarse tambien en la ruta de fallo, para no dejar un huerfano que bloquee el siguiente intento',
   );
 });
 
@@ -2076,4 +2100,171 @@ test('install --dry-run reporta el inventario sin escribirlo', () => {
   assert.strictEqual(codigo, 0);
   assert.match(stdout, /\[DRY-RUN\] escribiria ai_docs\/_meta\/ecosystem\.json/);
   assert.ok(!fs.existsSync(path.join(proyecto, 'ai_docs')), 'dry-run no debe crear ai_docs/_meta/');
+});
+
+// Rutas que existen pero no son lo esperado: "existe" no es lo mismo que
+// "esta bien". Los cinco casos de abajo reproducen destinos malformados o
+// compartidos, que es el estado en el que la suite del camino feliz nunca
+// entra y por eso no los detectaba.
+
+test('F1: ai_docs/core creado como fichero se detecta y la instalacion no declara exito', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  fs.mkdirSync(path.join(proyecto, 'ai_docs'), { recursive: true });
+  fs.writeFileSync(path.join(proyecto, 'ai_docs', 'core'), '');
+
+  const { codigo, stdout, stderr } = ejecutar(['install', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.notStrictEqual(codigo, 0, 'un directorio del proyecto malformado no puede terminar con exito');
+  assert.match(stderr, /ai_docs\/core/);
+  assert.match(stderr, /no es un directorio/i);
+  assert.doesNotMatch(stdout, /Framework instalado/);
+  assert.ok(
+    fs.statSync(path.join(proyecto, 'ai_docs', 'core')).isFile(),
+    'la ruta malformada no debe convertirse en directorio a la fuerza',
+  );
+});
+
+test('F2: CLAUDE.md como directorio durante install no revienta y nombra el fichero', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['CLAUDE.md'], claude: [] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  fs.mkdirSync(path.join(proyecto, 'CLAUDE.md'));
+
+  const { stderr } = ejecutar(['install', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.doesNotMatch(stderr, /Error inesperado/);
+  assert.match(stderr, /CLAUDE\.md/);
+  assert.match(stderr, /no se pudo leer/i);
+});
+
+test('F2: CLAUDE.md como directorio durante update no revienta y nombra el fichero', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['CLAUDE.md'], claude: [] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  fs.mkdirSync(path.join(proyecto, 'CLAUDE.md'));
+
+  const { stderr } = ejecutar(['update', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.doesNotMatch(stderr, /Error inesperado/);
+  assert.match(stderr, /CLAUDE\.md/);
+  assert.match(stderr, /no se pudo leer/i);
+});
+
+test('F2: GEMINI.md como directorio no revienta el aviso de layout antiguo', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: [], gemini: ['GEMINI.md'] },
+    { 'GEMINI.md': 'contexto gemini' },
+  );
+  const proyecto = dirTemporal();
+  fs.mkdirSync(path.join(proyecto, 'GEMINI.md'));
+
+  const { stderr } = ejecutar(['install', '--backend', 'gemini', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.doesNotMatch(stderr, /Error inesperado/);
+  assert.match(stderr, /GEMINI\.md/);
+  assert.match(stderr, /no se pudo leer/i);
+});
+
+test('F3: dos instalaciones concurrentes sobre el mismo destino, una completa y la otra aborta sin corromper el resultado', async () => {
+  // El manifiesto lleva un directorio con muchos archivos (en vez de un par
+  // sueltos) a proposito: la copia y el hash-sidecar necesitan tiempo
+  // suficiente para que el segundo proceso, lanzado casi al mismo instante,
+  // llegue a intentar su propio lock MIENTRAS el primero todavia lo tiene
+  // puesto. Con un manifiesto minimo la copia termina antes de que el
+  // arranque del segundo proceso lo alcance, y la carrera deja de reproducirse.
+  const archivosBulk = {};
+  for (let i = 0; i < 400; i += 1) {
+    archivosBulk[`.claude/bulk/archivo-${i}.md`] = `contenido de prueba numero ${i} `.repeat(20);
+  }
+  const paquete = crearPaqueteFixture(
+    {
+      common: ['CLAUDE.md'],
+      claude: ['.claude'],
+      gemini: ['GEMINI.md'],
+      codex: ['AGENTS.md'],
+      antigravity: [],
+    },
+    {
+      'CLAUDE.md': 'contexto',
+      '.claude/agents/planificador.md': 'agente',
+      'GEMINI.md': 'contexto gemini',
+      'AGENTS.md': 'contexto agents',
+      ...archivosBulk,
+    },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+
+  const [a, b] = await Promise.all([
+    ejecutarAsync(['install', '--backend', 'all', '--force'], opts),
+    ejecutarAsync(['install', '--backend', 'all', '--force'], opts),
+  ]);
+
+  const codigos = [a.codigo, b.codigo].sort();
+  assert.deepStrictEqual(codigos, [0, 1], 'una ejecucion debe completar con exito y la otra debe abortar');
+
+  const ganadora = a.codigo === 0 ? a : b;
+  const abortada = a.codigo === 0 ? b : a;
+  assert.match(ganadora.stdout, /Framework instalado/);
+  assert.match(abortada.stderr, /instalacion en curso/i);
+
+  const totalEEXIST = [a.stdout, a.stderr, b.stdout, b.stderr]
+    .map(texto => (texto.match(/EEXIST/g) || []).length)
+    .reduce((suma, n) => suma + n, 0);
+  assert.strictEqual(totalEEXIST, 0, 'ninguna ejecucion debe fallar por colision EEXIST al crear rutas del destino');
+});
+
+test('F4: con al menos una ruta fallida, el mensaje final no declara exito', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['.claude/workflows', 'CLAUDE.md'] },
+    { '.claude/workflows/flujo.md': 'workflow', 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  fs.mkdirSync(path.join(proyecto, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(proyecto, '.claude', 'workflows'), '');
+
+  const { codigo, stdout, stderr } = ejecutar(['install', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 1);
+  const salidaCompleta = stdout + stderr;
+  assert.strictEqual((salidaCompleta.match(/Rutas que fallaron/g) || []).length, 1);
+  assert.strictEqual((salidaCompleta.match(/Framework instalado/g) || []).length, 0);
+});
+
+test('F5: package.json como directorio se reporta sin afirmar que el JSON es invalido', () => {
+  const paquete = crearPaqueteFixture({ common: [], claude: [] });
+  const proyecto = dirTemporal();
+  fs.mkdirSync(path.join(proyecto, 'package.json'));
+
+  const { stderr } = ejecutar(['install', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.doesNotMatch(stderr, /JSON invalido/i);
+  assert.match(stderr, /No se pudo leer o interpretar package\.json/);
+  assert.match(stderr, /EISDIR/);
 });

@@ -12,6 +12,7 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { resolveRepoPath } = require('./sdd-plan-state');
+const { invocacionesDe, usaFlag } = require('./sdd-git-command');
 
 const VALID_TYPES = ['feat', 'fix', 'update', 'refactor', 'create', 'optimize', 'remove', 'rename', 'docs', 'test', 'style', 'chore'];
 const SUBJECT_MAX_LEN = 72;
@@ -34,31 +35,29 @@ const FORBIDDEN_COAUTHOR_RE = /co-authored-by:\s*.*(?:claude|anthropic|gemini|go
 const BLOCK_FIRMA = '[SDD_COMMIT_BLOCK] ';
 const ADVISORY_FIRMA = '[SDD_COMMIT_ADVISORY] ';
 
-// git commit y git push con --no-verify saltan los ganchos de calidad del repositorio.
-// En commit, -n es el alias corto de --no-verify. Git tambien acepta flags cortos combinados en
-// un solo grupo (-na, -an, -nam...), asi que -n cuenta igual si aparece en cualquier posicion
-// dentro del grupo. En push, -n es --dry-run: inofensivo, sin variante corta que vigilar.
-const NO_VERIFY_RE = /\bgit\s+(?:commit|push)\b[^\n]*\s--no-verify\b/;
-const COMMIT_SHORT_NO_VERIFY_RE = /\bgit\s+commit\b[^\n]*\s-[a-zA-Z]*n[a-zA-Z]*(?:\s|$)/;
-
-// Sin anclar al inicio: el comando puede venir envuelto ("cd x && git commit ...") o como argv.
-const GIT_COMMIT_RE = /\bgit\s+commit\b/;
-const GH_PR_RE = /\bgh\s+pr\s+(create|edit)\b/;
-
 const NO_VERIFY_REASON = BLOCK_FIRMA + 'SDD: --no-verify salta los ganchos de calidad del '
   + 'repositorio. Si un gancho falla, corrige la causa; no lo esquives. '
   + 'Escape puntual de emergencia: SDD_GUARD_SKIP=1.';
 
+// git commit y git push con --no-verify saltan los ganchos de calidad del repositorio. En
+// commit, -n es el alias corto de --no-verify (git tambien acepta flags cortos combinados en un
+// solo grupo: -na, -an...); en push, -n es --dry-run, inofensivo, sin variante corta que vigilar.
+// El criterio de que es una invocacion real de git y que flags pasa vive en sdd-git-command.js.
 function usesNoVerify(cmd) {
-  return NO_VERIFY_RE.test(cmd) || COMMIT_SHORT_NO_VERIFY_RE.test(cmd);
+  const commitConNoVerify = invocacionesDe(cmd, 'git', ['commit'])
+    .some(inv => usaFlag(inv, { largo: '--no-verify', corto: 'n' }));
+  if (commitConNoVerify) return true;
+
+  return invocacionesDe(cmd, 'git', ['push']).some(inv => usaFlag(inv, { largo: '--no-verify' }));
 }
 
 function isGitCommit(cmd) {
-  return GIT_COMMIT_RE.test(cmd);
+  return invocacionesDe(cmd, 'git', ['commit']).length > 0;
 }
 
 function isGhPr(cmd) {
-  return GH_PR_RE.test(cmd);
+  return invocacionesDe(cmd, 'gh', ['pr', 'create']).length > 0
+    || invocacionesDe(cmd, 'gh', ['pr', 'edit']).length > 0;
 }
 
 /**

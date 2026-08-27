@@ -39,6 +39,14 @@ test('git push -n (dry-run, no es bypass): allow', () => {
   assert.strictEqual(r.decision, null);
 });
 
+test('git -c core.hooksPath=/tmp commit --no-verify: deny (la correccion viaja al backend de Codex)', () => {
+  const r = runHook(HOOK, shell('git -c core.hooksPath=/tmp commit --no-verify -m x'));
+
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.code, 2);
+  assert.match(r.decision.reason, /--no-verify/);
+});
+
 test('comando como argv: deny igual que como string', () => {
   const r = runHook(HOOK, {
     tool_name: 'shell',
