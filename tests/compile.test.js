@@ -276,6 +276,57 @@ test('caso limite: --write crea el directorio padre del output si no existe', ()
   assert.strictEqual(leerArchivo(raiz, '.gemini/skills/nueva/SKILL.md'), 'skill nueva');
 });
 
+/** Manifiesto de una entrada con dos salidas identity, para los tests de atomicidad de --write. */
+function manifiestoDeDosSalidas() {
+  return {
+    transforms_registry: { identity: 'copia literal' },
+    artifacts: [
+      {
+        id: 'skill-pr',
+        source: '.claude/skills/pr/SKILL.md',
+        transform: 'identity',
+        mode: 'managed',
+        outputs: [
+          { backend: 'gemini', path: 'out/primero.md' },
+          { backend: 'gemini', path: 'bloqueador/anidado/segundo.md' },
+        ],
+      },
+    ],
+  };
+}
+
+test('atomic: --write con fallo real de disco (ENOTDIR) a mitad de la entrada no deja ninguna salida aplicada', () => {
+  const raiz = dirTemporal();
+  escribirArchivo(raiz, '.claude/skills/pr/SKILL.md', 'contenido pr');
+  escribirArchivo(raiz, 'bloqueador', 'soy fichero\n');
+
+  const { resultados, errores } = compilar(manifiestoDeDosSalidas(), raiz, 'write');
+
+  assert.deepStrictEqual(resultados, []);
+  assert.strictEqual(errores.length, 1);
+  assert.match(errores[0].mensaje, /ENOTDIR/);
+  assert.strictEqual(
+    fs.existsSync(path.join(raiz, 'out/primero.md')),
+    false,
+    'la primera salida no puede quedar escrita cuando la entrada entera fallo'
+  );
+});
+
+test('atomic: caso de control -- sin el fichero bloqueador, --write aplica las dos salidas de la entrada', () => {
+  const raiz = dirTemporal();
+  escribirArchivo(raiz, '.claude/skills/pr/SKILL.md', 'contenido pr');
+
+  const { resultados, errores } = compilar(manifiestoDeDosSalidas(), raiz, 'write');
+
+  assert.deepStrictEqual(errores, []);
+  assert.strictEqual(leerArchivo(raiz, 'out/primero.md'), 'contenido pr');
+  assert.strictEqual(leerArchivo(raiz, 'bloqueador/anidado/segundo.md'), 'contenido pr');
+  assert.deepStrictEqual(
+    resultados[0].resultados.map(r => r.estado),
+    ['escrito', 'escrito']
+  );
+});
+
 test('caso limite: --check sobre un output que aun no existe reporta drift OUTPUT_MISSING sin crash', () => {
   const raiz = dirTemporal();
   escribirArchivo(raiz, '.claude/skills/nueva/SKILL.md', 'skill nueva');
