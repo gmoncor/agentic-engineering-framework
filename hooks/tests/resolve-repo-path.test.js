@@ -21,6 +21,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { tempDir, writeFile } = require('./helpers');
 const {
@@ -96,11 +97,29 @@ test('control positivo: sin traducir, una ruta de Windows resuelta en Unix queda
   assert.strictEqual(nueva.split('/').length, 5);
 });
 
-test('control positivo: sin traducir, ai_docs/ deja de reconocerse en una ruta de Windows', () => {
+test('control positivo: sin traducir ni resolver, ai_docs/ deja de reconocerse en una ruta de Windows', () => {
+  // isInsideAiDocs busca raiz con findRepoRoot(path.dirname(resolved)) antes de decidir por
+  // tramos (ver hooks/sdd-plan-state.js). Sin al menos una barra normal, path.dirname en un
+  // sistema tipo Unix no reconoce ningun directorio padre y degrada a '.': el caso de una ruta
+  // de Windows compuesta solo por barras invertidas ('C:\\proyecto\\...') queda fuera de esta
+  // prueba porque ya no es un input que isInsideAiDocs reciba en produccion sin pasar antes por
+  // resolveRepoPath (ver el siguiente test); aqui se cubre la ruta absoluta MIXTA, que si trae
+  // una barra normal y por tanto un directorio padre resoluble.
   assert.strictEqual('/proyecto/ai_docs\\tasks\\spec.md'.split('/').includes('ai_docs'), false);
   assert.strictEqual(isInsideAiDocs('/proyecto/ai_docs\\tasks\\spec.md'), true);
-  assert.strictEqual(isInsideAiDocs('C:\\proyecto\\ai_docs\\tasks\\spec.md'), true);
   assert.strictEqual(isInsideAiDocs('/proyecto/src/login.js'), false);
+});
+
+test('separadores de Windows en una ruta ya situada contra la raiz del repo siguen reconociendose', () => {
+  // isInsideAiDocs recibe siempre el resultado de resolveRepoPath (ver los tres callers reales en
+  // hooks/sdd-pipeline-guard*.js): una ruta absoluta ya en separadores nativos. El caso anterior
+  // acredita la robustez de isInsideAiDocs ante una ruta MIXTA que no paso por ese camino; este
+  // acredita el camino real, con un repositorio de verdad de por medio.
+  const root = tempDir('sdd-ai-docs-win-');
+  fs.mkdirSync(path.join(root, '.git'), { recursive: true });
+
+  assert.strictEqual(isInsideAiDocs(resolveRepoPath('ai_docs\\tasks\\spec.md', root)), true);
+  assert.strictEqual(isInsideAiDocs(resolveRepoPath('src\\login.js', root)), false);
 });
 
 // ─── findRepoRoot / repoRoot ─────────────────────────────────────────────────
@@ -124,6 +143,24 @@ test('findRepoRoot: en un arbol de trabajo enlazado la raiz es la suya, no la de
   fs.mkdirSync(sub, { recursive: true });
 
   assert.strictEqual(findRepoRoot(sub), worktree);
+});
+
+test('findRepoRoot: no traspasa el techo temporal, igual que su gemelo findTasksDir', () => {
+  // El comentario de TMP_ROOT (hooks/sdd-plan-state.js) explica por que findTasksDir no debe
+  // ascender por encima del directorio temporal: un .git residual ahi colapsaria a la misma raiz
+  // a dos sesiones de test que trabajan en subdirectorios temporales distintos. findRepoRoot
+  // aplica el mismo techo.
+  const TMP_ROOT = path.resolve(os.tmpdir());
+  const gitResidual = path.join(TMP_ROOT, '.git');
+  const yaExistia = fs.existsSync(gitResidual);
+  if (!yaExistia) fs.mkdirSync(gitResidual);
+
+  try {
+    const sub = tempDir('sdd-techo-temporal-');
+    assert.strictEqual(findRepoRoot(sub), null);
+  } finally {
+    if (!yaExistia) fs.rmSync(gitResidual, { recursive: true, force: true });
+  }
 });
 
 test('findRepoRoot: sin repositorio devuelve null y el ancla degrada al directorio dado', () => {

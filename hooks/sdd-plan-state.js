@@ -22,9 +22,10 @@ const { parseAffectedFiles } = require('./sdd-task-files');
 
 // Directorio temporal del sistema: nunca es la raiz de un proyecto, sino un espacio
 // compartido por procesos ajenos entre si. Sirve de techo para el ascenso de
-// findTasksDir: sin el, un ai_docs/tasks/ que quede residual ahi (o en cualquier
-// directorio por encima) se "prestaria" a cualquier archivo que se este escribiendo
-// dentro de /tmp, como si perteneciera a su proyecto.
+// findTasksDir Y findRepoRoot: sin el, un ai_docs/tasks/ o un .git que quede residual
+// ahi (o en cualquier directorio por encima) se "prestaria" a cualquier archivo que se
+// este escribiendo dentro de /tmp, como si perteneciera a su proyecto, y colapsaria a
+// una misma raiz a dos sesiones de test que trabajan en subdirectorios temporales distintos.
 const TMP_ROOT = path.resolve(os.tmpdir());
 
 // Niveles maximos de ascenso al buscar un ancla (la raiz del repositorio, ai_docs/tasks/) desde
@@ -89,6 +90,7 @@ function toNativePath(raw, api) {
 function findRepoRoot(startDir) {
   let dir = path.resolve(toNativePath(startDir) || process.cwd());
   for (let i = 0; i < MAX_ASCENT; i++) {
+    if (dir === TMP_ROOT) break;
     if (fs.existsSync(path.join(dir, '.git'))) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) return null;
@@ -142,9 +144,22 @@ function isInside(root, target) {
   return rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel);
 }
 
-/** Escribir documentacion ES planificar: ai_docs/ nunca se bloquea. */
+/**
+ * Escribir documentacion ES planificar: ai_docs/ nunca se bloquea.
+ *
+ * Decide sobre el PRIMER tramo relativo a la raiz del repositorio, no sobre la ruta absoluta
+ * completa: un proyecto instalado bajo un ancestro que se llame literalmente "ai_docs" (el patron
+ * de instalacion "ai_docs/frameworks/<framework>") no debe leer como documentacion cualquier
+ * escritura en cualquier fichero solo porque ese nombre aparece mas arriba en la ruta.
+ *
+ * Sin raiz que resolver (proyecto sin git) se conserva el criterio anterior: sin ancla no hay
+ * "primer tramo" que aislar, y una escritura de documentacion no debe bloquearse por eso.
+ */
 function isInsideAiDocs(resolved) {
-  return String(resolved).split(/[\\/]/).includes('ai_docs');
+  const ruta = String(resolved);
+  const raiz = findRepoRoot(path.dirname(ruta));
+  if (!raiz) return ruta.split(/[\\/]/).includes('ai_docs');
+  return path.relative(raiz, ruta).split(path.sep)[0] === 'ai_docs';
 }
 
 /** Sube desde el directorio del archivo buscando ai_docs/tasks/. null = proyecto sin pipeline SDD. */
@@ -181,17 +196,39 @@ function denialReason(tasksDir, resolved) {
   if (findDeclaredFiles(tasksDir).has(resolved)) return null;
 
   return 'SDD: el archivo ' + resolved + ' no esta declarado en ninguna task de la spec activa. '
-    + 'Anadelo a la tabla "Archivos afectados" de la task correspondiente '
-    + '(| `ruta/al/archivo` | CREAR/MODIFICAR/ELIMINAR | descripcion |), '
+    + 'Puede ser porque ninguna task lo declara en su tabla, o porque la task que lo declara no '
+    + 'cita "Spec madre". Anadelo a la tabla "Archivos afectados" de la task correspondiente '
+    + '(| `ruta/al/archivo` | CREAR/MODIFICAR/ELIMINAR | descripcion |) y declara '
+    + '"Spec madre: spec_X.md" en esa task, '
     + 'o usa SDD_GUARD_SKIP=1 como escape puntual de emergencia.';
 }
 
-/** Specs spec_*.md con "Estado: APROBADA". Retorna paths absolutos. */
+/**
+ * Valores del campo de cabecera `nombre` en cada linea propia que lo declara (con o sin negrita
+ * markdown), en orden de aparicion. Un unico recorrido de lineas sirve a los dos predicados que
+ * leen cabeceras: el estado vigente de una spec se queda con el ULTIMO valor devuelto; la cita a
+ * la spec madre de una task busca en TODOS los valores devueltos.
+ *
+ * Anclado a inicio de linea: una mencion incrustada en otra frase (una entrada de historial como
+ * "2026-01-01: Estado: APROBADA") no empieza por el nombre del campo y no cuenta.
+ */
+function headerFieldValues(texto, nombre) {
+  const patron = new RegExp('^\\s*\\*{0,2}' + nombre + ':\\*{0,2}\\s*(.+?)\\s*$', 'gim');
+  return Array.from(texto.matchAll(patron), m => m[1]);
+}
+
+/** Estado vigente de una spec: el valor del ULTIMO campo `Estado` en linea propia, o null si no hay. */
+function estadoVigente(texto) {
+  const valores = headerFieldValues(texto, 'Estado');
+  return valores.length ? valores[valores.length - 1] : null;
+}
+
+/** Specs spec_*.md cuyo Estado VIGENTE es APROBADA. Retorna paths absolutos. */
 function findApprovedSpecs(tasksDir) {
   return listFiles(tasksDir)
     .filter(f => f.startsWith('spec_') && f.endsWith('.md'))
     .map(f => path.join(tasksDir, f))
-    .filter(p => /\*?\*?Estado:\*?\*?\s*APROBADA/.test(readText(p)));
+    .filter(p => estadoVigente(readText(p)) === 'APROBADA');
 }
 
 /** Tasks NNN_*.md. Retorna paths absolutos. */
@@ -224,15 +261,17 @@ function escapeRegex(s) {
 }
 
 /**
- * Tasks que pertenecen a alguna spec APROBADA, es decir, que la citan.
+ * Tasks que pertenecen a alguna spec APROBADA, es decir, que la citan en su campo `Spec madre`.
  *
  * Acotar a la spec activa es lo que mantiene util al guard: la union de TODAS las tasks del
  * directorio crece con el historial del proyecto, y con ella el permiso de escritura. Al cabo de
  * unos meses el guard autorizaria cualquier archivo que alguna task vieja declarase alguna vez.
  *
- * La cita debe respetar limites de palabra: sin ellos, una task que solo MENCIONA el descriptor
- * de la spec en texto libre (p.ej. "auth" dentro de "authentication") quedaria vinculada a esa
- * spec y sus archivos declarados pasarian a autorizarse como si fueran de la spec activa.
+ * La vinculacion exige el campo, no basta una mencion en prosa: una task que solo MENCIONA el
+ * descriptor de la spec en texto libre (p.ej. "requiere auth para el panel") no dice de que spec
+ * deriva, y sin ese dato no puede prestar autorizacion de escritura a los archivos que declare.
+ * Dentro del campo se conservan los limites de palabra ya existentes: "auth" sigue sin casar con
+ * "authentication".
  */
 function findActiveTaskFiles(tasksDir) {
   const identificadores = findApprovedSpecs(tasksDir).flatMap(specIdentifiers);
@@ -241,8 +280,8 @@ function findActiveTaskFiles(tasksDir) {
   const patrones = identificadores.map(id => new RegExp('\\b' + escapeRegex(id) + '\\b'));
 
   return findTaskFiles(tasksDir).filter(taskPath => {
-    const texto = readText(taskPath).toLowerCase();
-    return patrones.some(patron => patron.test(texto));
+    const citas = headerFieldValues(readText(taskPath), 'Spec\\s+madre').join('\n').toLowerCase();
+    return citas !== '' && patrones.some(patron => patron.test(citas));
   });
 }
 
