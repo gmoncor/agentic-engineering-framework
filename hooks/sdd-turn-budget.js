@@ -57,6 +57,7 @@ const os = require('os');
 const path = require('path');
 const {
   readPayload, readToolCall, warn, deny, skipRequested, loadConfig, purgeExpired, runWithFailOpen,
+  sessionStatePath,
 } = require('./sdd-hook-utils');
 const { esInvocacion } = require('./sdd-git-command');
 
@@ -75,8 +76,7 @@ function turnsDir() {
 }
 
 function turnsPath(sessionId) {
-  const safe = String(sessionId).replace(/[^a-zA-Z0-9_-]/g, '_');
-  return path.join(turnsDir(), 'sdd-turns-' + safe + '.log');
+  return sessionStatePath(turnsDir(), 'sdd-turns-', sessionId, '.log');
 }
 
 // Contador actual de la sesion: numero de lineas del registro. 0 si no hay
