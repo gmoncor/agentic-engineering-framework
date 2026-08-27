@@ -68,9 +68,11 @@ function origenDe(ruta) {
   return path.join(PACKAGE_ROOT, ORIGEN_RENOMBRADO[ruta] || ruta);
 }
 
-// Lockfile de instalacion en curso: se crea al empezar a copiar y se borra al
-// terminar con exito. Si el proceso muere a mitad (kill, Ctrl-C, OOM), queda
-// en disco como senal de que la instalacion anterior no completo.
+// Lockfile de instalacion en curso: se crea con creacion exclusiva ('wx')
+// antes de empezar a copiar y se borra al terminar, con exito o con fallo.
+// Una segunda ejecucion concurrente que lo encuentra aborta en vez de copiar
+// sobre el mismo destino (ver crearLockfileInstalacion). Solo sobrevive a un
+// proceso que muere a mitad (kill, Ctrl-C, OOM) sin llegar a borrarlo.
 const LOCKFILE_INSTALACION = '.sdd-install-in-progress';
 
 // Comando para correr los tests de los hooks instalados. Se ofrece via
@@ -218,9 +220,16 @@ function advertirSiSkipNoAplica(backend, skip) {
 function advertirSiBackendEquivocado(backend) {
   if (backend === 'all') return;
   const archivoElegido = ARCHIVO_CONTEXTO_POR_BACKEND[backend];
-  if (fs.existsSync(path.join(DEST, archivoElegido))) {
-    const contenido = fs.readFileSync(path.join(DEST, archivoElegido), 'utf8');
-    if (contenido.includes('<!-- sdd-framework:')) return;
+  const rutaElegida = path.join(DEST, archivoElegido);
+  if (fs.existsSync(rutaElegida)) {
+    try {
+      if (fs.readFileSync(rutaElegida, 'utf8').includes('<!-- sdd-framework:')) return;
+    } catch (err) {
+      process.stderr.write(
+        `${archivoElegido} existe pero no se pudo leer, se omite la comprobacion de backend: ${err.message}\n`,
+      );
+      return;
+    }
   }
 
   for (const [otroBackend, archivo] of Object.entries(ARCHIVO_CONTEXTO_POR_BACKEND)) {
@@ -256,7 +265,16 @@ function advertirSiGeminiLayoutAntiguo(backend) {
   if (backend !== 'gemini' && backend !== 'all') return;
   const contextoGemini = path.join(DEST, ARCHIVO_CONTEXTO_POR_BACKEND.gemini);
   if (!fs.existsSync(contextoGemini)) return;
-  if (!fs.readFileSync(contextoGemini, 'utf8').includes('<!-- sdd-framework:')) return;
+  let contenidoGemini;
+  try {
+    contenidoGemini = fs.readFileSync(contextoGemini, 'utf8');
+  } catch (err) {
+    process.stderr.write(
+      `${ARCHIVO_CONTEXTO_POR_BACKEND.gemini} existe pero no se pudo leer, se omite la comprobacion de layout antiguo: ${err.message}\n`,
+    );
+    return;
+  }
+  if (!contenidoGemini.includes('<!-- sdd-framework:')) return;
 
   const layoutAntiguo = RUTAS_GEMINI_LAYOUT_ANTIGUO.filter(ruta => fs.existsSync(path.join(DEST, ruta)));
   if (!layoutAntiguo.length) return;
@@ -305,55 +323,50 @@ function saveInstalledHashes(dest, hashes) {
 }
 
 /**
- * Crea el lockfile de instalacion en curso antes de copiar. Si no se puede
- * escribir (p.ej. disco lleno), aborta con un mensaje claro en lugar de
- * continuar la copia sin marca de progreso.
+ * Crea el lockfile de instalacion en curso con creacion exclusiva ('wx')
+ * antes de copiar. Si ya existe, es la senal de que otra instalacion esta en
+ * curso sobre este mismo destino, o de que una instalacion anterior se
+ * interrumpio (kill, Ctrl-C, OOM) sin llegar a retirarlo: no hay forma
+ * portable de comprobar si el proceso dueno sigue vivo (ver Riesgos
+ * aceptados), asi que el mensaje nombra ambas posibilidades y da la accion
+ * concreta para el caso huerfano -- borrar el lockfile a mano -- en vez de
+ * dejar que una segunda ejecucion concurrente corrompa el resultado. Otros
+ * fallos de escritura (p.ej. disco lleno) abortan con su propio mensaje.
  */
 function crearLockfileInstalacion(backend) {
+  const lockfilePath = path.join(DEST, LOCKFILE_INSTALACION);
   const contenido = JSON.stringify({ timestamp: new Date().toISOString(), backend });
   try {
-    fs.writeFileSync(path.join(DEST, LOCKFILE_INSTALACION), contenido);
+    fs.writeFileSync(lockfilePath, contenido, { flag: 'wx' });
+    return;
   } catch (err) {
-    process.stderr.write(`No se pudo crear ${LOCKFILE_INSTALACION}, instalacion abortada: ${err.message}\n`);
-    process.exit(1);
+    if (err.code !== 'EEXIST') {
+      process.stderr.write(`No se pudo crear ${LOCKFILE_INSTALACION}, instalacion abortada: ${err.message}\n`);
+      process.exit(1);
+    }
   }
-}
 
-/** Elimina el lockfile tras completar la copia con exito. Ausente => no-op. */
-function eliminarLockfileInstalacion() {
-  const lockfilePath = path.join(DEST, LOCKFILE_INSTALACION);
-  if (fs.existsSync(lockfilePath)) fs.unlinkSync(lockfilePath);
-}
-
-/**
- * Avisa por stderr si detecta el lockfile de una instalacion anterior que no
- * completo. No bloquea: el usuario ya eligio instalar/actualizar ahora, asi
- * que la ejecucion continua y el lockfile se sobrescribe al empezar a copiar.
- * JSON invalido (corrupcion a mitad de escritura) => aviso generico sin
- * crash.
- */
-function advertirSiInstalacionInterrumpida(backend) {
-  const lockfilePath = path.join(DEST, LOCKFILE_INSTALACION);
-  if (!fs.existsSync(lockfilePath)) return;
-
-  let previo;
+  let previo = null;
   try {
     previo = JSON.parse(fs.readFileSync(lockfilePath, 'utf8'));
   } catch {
-    process.stderr.write(
-      `Instalacion previa posiblemente interrumpida (${LOCKFILE_INSTALACION} con formato invalido). Continuando.\n`,
-    );
-    return;
+    // Lock huerfano de una escritura interrumpida a mitad: JSON no parseable.
+    // El mensaje generico de abajo sigue aplicando sin el detalle previo.
   }
-
   const backendPrevio = previo && previo.backend ? previo.backend : 'desconocido';
   const timestampPrevio = previo && previo.timestamp ? previo.timestamp : 'desconocido';
-  const avisoBackend = backendPrevio !== backend
-    ? `backend anterior: ${backendPrevio}, ahora: ${backend}`
-    : `backend: ${backendPrevio}`;
   process.stderr.write(
-    `Instalacion previa interrumpida detectada (${timestampPrevio}, ${avisoBackend}). Continuando.\n`,
+    `${LOCKFILE_INSTALACION} ya existe (creado ${timestampPrevio}, backend ${backendPrevio}; solicitado ahora: ${backend}): `
+      + 'puede haber otra instalacion en curso sobre este destino, o ser un lock huerfano de una instalacion '
+      + `anterior interrumpida. Si no hay otra instalacion en curso, borra ${LOCKFILE_INSTALACION} y reintenta.\n`,
   );
+  process.exit(1);
+}
+
+/** Elimina el lockfile al terminar de copiar, con exito o con fallo. Ausente => no-op. */
+function eliminarLockfileInstalacion() {
+  const lockfilePath = path.join(DEST, LOCKFILE_INSTALACION);
+  if (fs.existsSync(lockfilePath)) fs.unlinkSync(lockfilePath);
 }
 
 /**
@@ -366,7 +379,15 @@ function hayInstalacionPrevia() {
   if (fs.existsSync(path.join(DEST, ARCHIVO_SIDECAR_HASHES))) return true;
   return Object.values(ARCHIVO_CONTEXTO_POR_BACKEND).some(archivo => {
     const rutaAbsoluta = path.join(DEST, archivo);
-    return fs.existsSync(rutaAbsoluta) && fs.readFileSync(rutaAbsoluta, 'utf8').includes('<!-- sdd-framework:');
+    if (!fs.existsSync(rutaAbsoluta)) return false;
+    try {
+      return fs.readFileSync(rutaAbsoluta, 'utf8').includes('<!-- sdd-framework:');
+    } catch (err) {
+      process.stderr.write(
+        `${archivo} existe pero no se pudo leer, no se puede confirmar si hay una instalacion previa: ${err.message}\n`,
+      );
+      return false;
+    }
   });
 }
 
@@ -572,7 +593,7 @@ function mergeScriptsTest(dryRun) {
     try {
       pkg = JSON.parse(fs.readFileSync(destino, 'utf8'));
     } catch (err) {
-      process.stderr.write(`No se pudo leer package.json (JSON invalido), se omite: ${err.message}\n`);
+      process.stderr.write(`No se pudo leer o interpretar package.json, se omite: ${err.message}\n`);
       return false;
     }
   }
@@ -591,16 +612,40 @@ function mergeScriptsTest(dryRun) {
   return true;
 }
 
+/**
+ * Responde la pregunta que `existsSync` por si solo no contesta: no basta con
+ * "existe", hace falta saber si es del tipo esperado. 'ausente' (no existe),
+ * 'ok' (existe y es del tipo esperado) o 'tipo-incorrecto' (existe pero es el
+ * otro tipo, p.ej. un archivo donde se espera un directorio).
+ */
+function estadoDeRuta(rutaAbsoluta, tipoEsperado) {
+  if (!fs.existsSync(rutaAbsoluta)) return 'ausente';
+  const tipoReal = fs.statSync(rutaAbsoluta).isDirectory() ? 'directory' : 'file';
+  return tipoReal === tipoEsperado ? 'ok' : 'tipo-incorrecto';
+}
+
+/**
+ * Crea los directorios base del proyecto (ai_docs/core, ai_docs/tasks,
+ * ai_docs/refs) si no existen. Si alguno ya existe pero no es un directorio
+ * (p.ej. un archivo con ese nombre), no se acepta en silencio: se avisa por
+ * stderr nombrando la ruta y se reporta como fallo, para que la ejecucion no
+ * pueda declararse exitosa con un destino asi de malformado.
+ */
 function crearDirectoriosDelProyecto() {
   const creados = [];
+  const fallidos = [];
   for (const dir of DIRS_DEL_PROYECTO) {
     const destino = path.join(DEST, dir);
-    if (!fs.existsSync(destino)) {
+    const estado = estadoDeRuta(destino, 'directory');
+    if (estado === 'ausente') {
       fs.mkdirSync(destino, { recursive: true });
       creados.push(dir);
+    } else if (estado === 'tipo-incorrecto') {
+      process.stderr.write(`${dir} existe pero no es un directorio: no se puede usar como carpeta del proyecto.\n`);
+      fallidos.push(dir);
     }
   }
-  return creados;
+  return { creados, fallidos };
 }
 
 /**
@@ -744,20 +789,23 @@ function copiarRutasFramework(backend, skip, opciones = {}) {
   const saltadas = resultados
     .filter(r => !r.copiada && !saltadasPorEdicion.includes(r.ruta))
     .map(r => r.ruta);
-  const creados = opciones.crearDirsUsuario && !opciones.dryRun ? crearDirectoriosDelProyecto() : [];
+  const { creados, fallidos: dirsFallidos } = opciones.crearDirsUsuario && !opciones.dryRun
+    ? crearDirectoriosDelProyecto()
+    : { creados: [], fallidos: [] };
 
   if (!opciones.dryRun) {
     // Solo las rutas copiadas con exito entran al sidecar: una ruta fallida
     // no debe registrar un hash de un archivo que nunca llego a escribirse.
     actualizarHashesInstalados(hashesInstalados, copiadas, saltadasPorEdicion);
-    // El lockfile solo se borra si TODO se copio sin fallos. Con fallidas,
-    // queda en disco como senal de estado parcial para la proxima ejecucion.
-    if (fallidas.length === 0) eliminarLockfileInstalacion();
+    // El lockfile se borra siempre al terminar, con exito o con fallo: dejarlo
+    // huerfano tras un fallo bloquearia el siguiente intento legitimo con el
+    // mismo aborto que protege contra la ejecucion concurrente.
+    eliminarLockfileInstalacion();
   }
 
   if (fallidas.length) reportarRutasFallidas(fallidas);
 
-  return { copiadas, saltadas, creados, saltadasPorEdicion, fallidas };
+  return { copiadas, saltadas, creados, saltadasPorEdicion, fallidas, dirsFallidos };
 }
 
 /** Sustituye el marcador de version en `archivo` por `version`. Retorna true si hubo cambio. */
@@ -806,7 +854,13 @@ function reportarArchivosProtegidos(saltadasPorEdicion) {
   saltadasPorEdicion.forEach(ruta => console.log(`  - ${ruta}`));
 }
 
-function reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, scriptsTestMergeado, backend) {
+/**
+ * Reporta el resultado de install. El mensaje final depende de `huboFallos`:
+ * con fallos (rutas de copia o directorios del proyecto malformados), el
+ * texto declara la instalacion incompleta en vez de exitosa, para que
+ * concuerde con el codigo de salida distinto de cero que ya emite `cmdInstall`.
+ */
+function reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, scriptsTestMergeado, backend, huboFallos) {
   if (copiadas.length) {
     console.log('Rutas copiadas:');
     copiadas.forEach(ruta => console.log(`  - ${ruta}`));
@@ -826,10 +880,15 @@ function reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, sc
   if (backend === 'claude' || backend === 'all') {
     console.log('Nota: .claude/settings.json configura claude-opus-4-8 como modelo de sesion (tier capaz, precio alto). Cambialo con /model o editando settings.json.');
   }
+  if (huboFallos) {
+    console.log('Instalacion incompleta: revisa los errores anteriores antes de continuar.');
+    return;
+  }
   console.log("Framework instalado. Configura ai_docs/core/ con las plantillas de ai_docs/core_templates/. Ejecuta 'npm test' para verificar los hooks.");
 }
 
-function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version, scriptsTestMergeado) {
+/** Reporta el resultado de update. Mismo criterio que reportarInstalacion: `huboFallos` decide el mensaje final. */
+function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version, scriptsTestMergeado, huboFallos) {
   if (copiadas.length) {
     console.log('Rutas actualizadas:');
     copiadas.forEach(ruta => console.log(`  - ${ruta}`));
@@ -842,6 +901,10 @@ function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version, 
   if (scriptsTestMergeado) {
     console.log('Anadido scripts.test a package.json para correr los tests de los hooks.');
   }
+  if (huboFallos) {
+    console.log('Actualizacion incompleta: revisa los errores anteriores antes de continuar.');
+    return;
+  }
   console.log(`Framework actualizado a la version ${version}. Rutas del proyecto (ai_docs/core/, ai_docs/tasks/, ai_docs/refs/) no se han tocado. Ejecuta 'npm test' para verificar los hooks.`);
 }
 
@@ -852,17 +915,17 @@ async function cmdInstall(args) {
   const force = args.includes('--force');
   advertirSiBackendEquivocado(backend);
   advertirSiGeminiLayoutAntiguo(backend);
-  advertirSiInstalacionInterrumpida(backend);
   await ejecutarPreflight(backend, skip, dryRun, force);
-  const { copiadas, saltadas, creados, saltadasPorEdicion, fallidas } = copiarRutasFramework(backend, skip, {
+  const { copiadas, saltadas, creados, saltadasPorEdicion, fallidas, dirsFallidos } = copiarRutasFramework(backend, skip, {
     crearDirsUsuario: true,
     dryRun,
   });
   const scriptsTestMergeado = mergeScriptsTest(dryRun);
   if (!dryRun) sincronizarMarcadores(backend, copiadas, obtenerVersion());
-  reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, scriptsTestMergeado, backend);
+  const huboFallos = fallidas.length > 0 || dirsFallidos.length > 0;
+  reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, scriptsTestMergeado, backend, huboFallos);
   escribirEcosistema(backend, dryRun);
-  if (fallidas.length) process.exit(1);
+  if (huboFallos) process.exit(1);
 }
 
 async function cmdUpdate(args) {
@@ -874,9 +937,8 @@ async function cmdUpdate(args) {
   const force = args.includes('--force');
   advertirSiBackendEquivocado(backend);
   advertirSiGeminiLayoutAntiguo(backend);
-  advertirSiInstalacionInterrumpida(backend);
   await ejecutarPreflight(backend, skip, dryRun, force);
-  const { copiadas, saltadas, saltadasPorEdicion, fallidas } = copiarRutasFramework(backend, skip, {
+  const { copiadas, saltadas, saltadasPorEdicion, fallidas, dirsFallidos } = copiarRutasFramework(backend, skip, {
     crearDirsUsuario: false,
     resetProtected,
     dryRun,
@@ -885,9 +947,10 @@ async function cmdUpdate(args) {
   const scriptsTestMergeado = mergeScriptsTest(dryRun);
   const version = obtenerVersion();
   if (!dryRun) sincronizarMarcadores(backend, copiadas, version);
-  reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version, scriptsTestMergeado);
+  const huboFallos = fallidas.length > 0 || dirsFallidos.length > 0;
+  reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version, scriptsTestMergeado, huboFallos);
   escribirEcosistema(backend, dryRun);
-  if (fallidas.length) process.exit(1);
+  if (huboFallos) process.exit(1);
 }
 
 /** Delega en el compilador de `scripts/compile.js`. Aislado en su propio modulo: `bin/cli.js` solo enruta. */
