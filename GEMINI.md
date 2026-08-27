@@ -142,7 +142,6 @@ Configurados en `hooks/hooks.json`. Las rutas se resuelven desde la raiz del pro
 - Las tasks se derivan solo de specs con estado APROBADA
 - Revision adversarial (paso 5) antes de mergear
 - Cada task toca maximo 6 archivos — si supera, dividir
-- Auditoria cruzada obligatoria cuando hay 3+ tasks
 - Evaluar alternativas antes de decidir la solucion
 
 <!-- sdd-framework: 4.0.0 -->

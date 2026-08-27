@@ -44,18 +44,14 @@ entre. Tambien puedes nombrarla explicitamente.
 | `commit` | — | Crea un commit limpio con mensaje descriptivo |
 | `pr` | — | Crea o revisa una Pull Request |
 
-## Agentes
-
-| Agente | Rol | Cuando se activa |
-|--------|-----|------------------|
-| `planificador` | Crea specs, deriva tasks | Paso 2 |
-| `revisor` | Revisa tasks y hace revision adversarial (esceptico) | Pasos 2 y 5 |
-| `implementador` | Ejecuta UNA task (codigo + tests + commit) | Paso 4 |
-| `asesor` | Analiza problemas, evalua opciones, recomienda (solo lectura) | Cualquier momento |
+<!-- nucleo: agentes -->
 
 Definidos en `.codex/agents/*.toml` (Codex) y en `.agents/plugins/sdd/agents/*.md` (Antigravity
 CLI). El asesor corre en modo solo lectura; los demas pueden escribir dentro del espacio de
 trabajo.
+
+En estos backends el `implementador` tambien commitea (codigo + tests + commit); el nucleo solo
+declara codigo + tests.
 
 ## Defecto lineal y modo paralelo a peticion
 
@@ -82,16 +78,18 @@ depende de como el orquestador escribe sus llamadas. El comportamiento que aplic
 Describe siempre la dependencia real (que necesita el resultado de que): es lo que decide que
 puede ir a la vez y que no.
 
-## Specs y tasks
+<!-- nucleo: estructura -->
 
-- Specs: `ai_docs/tasks/spec_<descriptor>.md`. Estado: BORRADOR -> APROBADA.
-- Tasks: `ai_docs/tasks/NNN_descriptor.md`. Cada task referencia su spec madre y declara sus
-  archivos en la tabla "Archivos afectados" (`| ruta | CREAR/MODIFICAR/ELIMINAR | descripcion |`).
-- Los formatos viven en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
-- Las plantillas operativas de `ai_docs/dev_templates/` son la fuente unica de cada proceso:
-  las skills y los agentes las siguen paso a paso, no las reescriben.
-- `ai_docs/dev_templates/actualizar_framework.md` documenta como traer los cambios del framework
-  a un proyecto ya instalado, sin tocar tus specs ni tus tasks.
+<!-- nucleo: specs-y-tasks -->
+
+Cada task declara ademas sus archivos en la tabla "Archivos afectados"
+(`| ruta | CREAR/MODIFICAR/ELIMINAR | descripcion |`).
+
+Las plantillas operativas de `ai_docs/dev_templates/` son la fuente unica de cada proceso: las
+skills y los agentes las siguen paso a paso, no las reescriben. `ai_docs/dev_templates/actualizar_framework.md`
+documenta como traer los cambios del framework a un proyecto ya instalado, sin tocar tus specs ni tus tasks.
+
+<!-- nucleo: plantillas -->
 
 ## Reglas clave
 
@@ -100,7 +98,7 @@ puede ir a la vez y que no.
 3. Una task, un cambio acotado, un commit. Maximo 6 archivos por task; si supera, dividir.
 4. Solo se tocan archivos declarados en la task. Lo que aparezca fuera de alcance se anota, no se
    corrige sobre la marcha.
-5. Auditoria cruzada obligatoria cuando hay 3 o mas tasks.
+5. Auditoria cruzada obligatoria en la planificacion.
 6. Revision adversarial del codigo antes de entregar. El revisor busca problemas, no confirma que
    todo esta bien.
 7. El roadmap global vive en `ai_docs/core/` y guia cada planificacion.
@@ -195,14 +193,32 @@ presupuesto.
   dejalo bajo para el trabajo mecanico.
 - **Antigravity:** la CLI usa el modelo que tengas seleccionado; el framework no lo fija.
 
-## Estilo
+<!-- nucleo: estilo -->
 
-- Idioma del proyecto: espanol. La prosa nueva se escribe con ortografia correcta, acentos
-  incluidos. El corpus antiguo esta sin acentuar y se corrige a medida que se toca cada fichero.
-- Nombres de archivo y de rama: solo ASCII, sin acentos. Los ficheros, ademas, en snake_case y
-  descriptivos.
-- Comunicacion: clara, directa, sin hedging. Nada de adular ni de rellenar.
-- Commits: `<tipo>: <descripcion>` (tipos: feat, fix, update, refactor, create, optimize, remove,
-  rename, docs, test, style, chore). Sin coautoria de IA en el mensaje.
+- Nada de adular ni de rellenar.
+- Sin coautoria de IA en el mensaje.
+
+<!-- nucleo: limites -->
 
 <!-- nucleo: marca-version -->
+
+<!-- hueco: arbol-backend -->
+├── .codex/
+│   ├── agents/         # planificador, revisor, implementador, asesor (*.toml)
+│   ├── config.toml     # modelo por defecto
+│   ├── hooks.json      # 3 hooks (pipeline-guard-codex + commit-guard-codex + session-start)
+│   └── rules/          # sdd-enforcement.rules (refuerzo de politica de ejecucion)
+├── .agents/
+│   ├── skills/         # 18 skills (auto-activacion)
+│   ├── plugins/sdd/    # agentes (asesor, implementador, planificador, revisor) + manifiesto del bundle
+│   └── hooks.json      # 4 hooks (pipeline-guard + commit-guard + read-before-edit + turn-budget)
+├── hooks/              # hooks compartidos por los dos backends (variantes -codex incluidas)
+<!-- /hueco -->
+
+<!-- hueco: arbol-raiz -->
+└── AGENTS.md           # este archivo
+<!-- /hueco -->
+
+<!-- hueco: limite-lineal -->
+- Implementacion lineal por defecto — una task tras otra en orden de dependencias; el modo paralelo se activa solo si se pide de forma explicita
+<!-- /hueco -->

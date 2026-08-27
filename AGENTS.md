@@ -47,15 +47,18 @@ entre. Tambien puedes nombrarla explicitamente.
 ## Agentes
 
 | Agente | Rol | Cuando se activa |
-|--------|-----|------------------|
-| `planificador` | Crea specs, deriva tasks | Paso 2 |
-| `revisor` | Revisa tasks y hace revision adversarial (esceptico) | Pasos 2 y 5 |
-| `implementador` | Ejecuta UNA task (codigo + tests + commit) | Paso 4 |
-| `asesor` | Analiza problemas, evalua opciones, recomienda (solo lectura) | Cualquier momento |
+|--------|-----|-----------------|
+| `planificador` | Crea specs, deriva tasks | Pasos 1-2 |
+| `revisor` | Revisa tasks y hace revision adversarial (esceptico) | Pasos 2, 5 |
+| `implementador` | Ejecuta UNA task individual (codigo + tests) | Paso 4 |
+| `asesor` | Analiza problemas, evalua opciones, recomienda (read-only) | Cualquier momento |
 
 Definidos en `.codex/agents/*.toml` (Codex) y en `.agents/plugins/sdd/agents/*.md` (Antigravity
 CLI). El asesor corre en modo solo lectura; los demas pueden escribir dentro del espacio de
 trabajo.
+
+En estos backends el `implementador` tambien commitea (codigo + tests + commit); el nucleo solo
+declara codigo + tests.
 
 ## Defecto lineal y modo paralelo a peticion
 
@@ -82,16 +85,60 @@ depende de como el orquestador escribe sus llamadas. El comportamiento que aplic
 Describe siempre la dependencia real (que necesita el resultado de que): es lo que decide que
 puede ir a la vez y que no.
 
-## Specs y tasks
+## Estructura de archivos
 
-- Specs: `ai_docs/tasks/spec_<descriptor>.md`. Estado: BORRADOR -> APROBADA.
-- Tasks: `ai_docs/tasks/NNN_descriptor.md`. Cada task referencia su spec madre y declara sus
-  archivos en la tabla "Archivos afectados" (`| ruta | CREAR/MODIFICAR/ELIMINAR | descripcion |`).
-- Los formatos viven en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
-- Las plantillas operativas de `ai_docs/dev_templates/` son la fuente unica de cada proceso:
-  las skills y los agentes las siguen paso a paso, no las reescriben.
-- `ai_docs/dev_templates/actualizar_framework.md` documenta como traer los cambios del framework
-  a un proyecto ya instalado, sin tocar tus specs ni tus tasks.
+```
+proyecto/
+├── .codex/
+│   ├── agents/         # planificador, revisor, implementador, asesor (*.toml)
+│   ├── config.toml     # modelo por defecto
+│   ├── hooks.json      # 3 hooks (pipeline-guard-codex + commit-guard-codex + session-start)
+│   └── rules/          # sdd-enforcement.rules (refuerzo de politica de ejecucion)
+├── .agents/
+│   ├── skills/         # 18 skills (auto-activacion)
+│   ├── plugins/sdd/    # agentes (asesor, implementador, planificador, revisor) + manifiesto del bundle
+│   └── hooks.json      # 4 hooks (pipeline-guard + commit-guard + read-before-edit + turn-budget)
+├── hooks/              # hooks compartidos por los dos backends (variantes -codex incluidas)
+├── ai_docs/
+│   ├── core/           # vision, planificacion, roadmap
+│   ├── core_templates/ # 4 plantillas de planificacion inicial (01-04)
+│   ├── dev_templates/  # 13 plantillas SSOT
+│   ├── tasks/          # specs + tasks (NNN_descriptor.md)
+│   └── refs/           # documentacion externa
+├── docs/               # extension-config-schema.md: la configuracion propia del proyecto
+└── AGENTS.md           # este archivo
+```
+
+## Specs y Tasks
+
+Specs: `ai_docs/tasks/spec_<descriptor>.md`. Estado: BORRADOR → APROBADA.
+Tasks: `ai_docs/tasks/NNN_descriptor.md`. Cada task referencia su spec madre.
+Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
+
+Cada task declara ademas sus archivos en la tabla "Archivos afectados"
+(`| ruta | CREAR/MODIFICAR/ELIMINAR | descripcion |`).
+
+Las plantillas operativas de `ai_docs/dev_templates/` son la fuente unica de cada proceso: las
+skills y los agentes las siguen paso a paso, no las reescriben. `ai_docs/dev_templates/actualizar_framework.md`
+documenta como traer los cambios del framework a un proyecto ya instalado, sin tocar tus specs ni tus tasks.
+
+## Plantillas de referencia
+
+| Plantilla | Proposito |
+|-----------|-----------|
+| `spec.md` | Formato de specs |
+| `tareas.md` | Derivacion de tasks |
+| `revisar_tarea.md` | Revision pre-implementacion |
+| `auditar_spec.md` | Auditoria spec + tasks |
+| `implementar.md` | Implementacion con TDD |
+| `revision_adversarial.md` | Revision adversarial post-impl |
+| `correccion_de_bugs.md` | Diagnostico y correccion |
+| `limpieza_de_codigo.md` | Revision de calidad |
+| `testing_basico.md` | Escritura de tests |
+| `hacer_commit.md` | Proceso de commit |
+| `revision_pr.md` | Creacion de PRs |
+| `resolver_problema.md` | Analisis de problemas y recomendaciones |
+| `actualizar_framework.md` | Actualizar un proyecto ya instalado a una version mas reciente |
 
 ## Reglas clave
 
@@ -100,7 +147,7 @@ puede ir a la vez y que no.
 3. Una task, un cambio acotado, un commit. Maximo 6 archivos por task; si supera, dividir.
 4. Solo se tocan archivos declarados en la task. Lo que aparezca fuera de alcance se anota, no se
    corrige sobre la marcha.
-5. Auditoria cruzada obligatoria cuando hay 3 o mas tasks.
+5. Auditoria cruzada obligatoria en la planificacion.
 6. Revision adversarial del codigo antes de entregar. El revisor busca problemas, no confirma que
    todo esta bien.
 7. El roadmap global vive en `ai_docs/core/` y guia cada planificacion.
@@ -197,12 +244,21 @@ presupuesto.
 
 ## Estilo
 
-- Idioma del proyecto: espanol. La prosa nueva se escribe con ortografia correcta, acentos
-  incluidos. El corpus antiguo esta sin acentuar y se corrige a medida que se toca cada fichero.
-- Nombres de archivo y de rama: solo ASCII, sin acentos. Los ficheros, ademas, en snake_case y
-  descriptivos.
-- Comunicacion: clara, directa, sin hedging. Nada de adular ni de rellenar.
-- Commits: `<tipo>: <descripcion>` (tipos: feat, fix, update, refactor, create, optimize, remove,
-  rename, docs, test, style, chore). Sin coautoria de IA en el mensaje.
+- Idioma del proyecto: espanol. La prosa nueva se escribe con ortografia correcta, acentos incluidos. El corpus antiguo esta sin acentuar y se corrige a medida que se toca cada fichero
+- Nombres de archivos y de ramas: solo ASCII, sin acentos. Los ficheros, ademas, en snake_case y descriptivos
+- Comunicacion: clara, directa, sin hedging
+- Commits: `<tipo>: <descripcion>` (tipos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore)
+
+- Nada de adular ni de rellenar.
+- Sin coautoria de IA en el mensaje.
+
+## Limites del framework
+
+- Planificacion completa (spec + tasks + revision + auditoria) antes de implementar
+- Implementacion lineal por defecto — una task tras otra en orden de dependencias; el modo paralelo se activa solo si se pide de forma explicita
+- Las tasks se derivan solo de specs con estado APROBADA
+- Revision adversarial (paso 5) antes de mergear
+- Cada task toca maximo 6 archivos — si supera, dividir
+- Evaluar alternativas antes de decidir la solucion
 
 <!-- sdd-framework: 4.0.0 -->

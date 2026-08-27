@@ -102,7 +102,6 @@ Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
 - Las tasks se derivan solo de specs con estado APROBADA
 - Revision adversarial (paso 5) antes de mergear
 - Cada task toca maximo 6 archivos — si supera, dividir
-- Auditoria cruzada obligatoria cuando hay 3+ tasks
 - Evaluar alternativas antes de decidir la solucion
 
 <!-- nucleo: marca-version -->
