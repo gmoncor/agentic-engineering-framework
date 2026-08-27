@@ -58,6 +58,47 @@ function parche(root, ...relPaths) {
 
 const conSpec = () => proyecto({ 'spec_autenticacion.md': SPEC_APROBADA }, { '001_login.md': TASK_CON_ARCHIVOS });
 
+const SPEC_PAGOS = [
+  '# Spec: Pagos',
+  '',
+  '**Estado:** APROBADA',
+  '',
+  '## Criterios de aceptacion',
+  '- El pago se registra correctamente',
+  '',
+].join('\n');
+
+const TASK_PAGOS = [
+  '# Task 001: Procesar pagos',
+  '',
+  'Spec madre: ai_docs/tasks/spec_pagos.md',
+  '',
+  '## Archivos afectados',
+  '',
+  '| Archivo | Accion | Descripcion del cambio |',
+  '|---------|--------|----------------------|',
+  '| `src/declarado.js` | CREAR | Modulo declarado |',
+  '',
+].join('\n');
+
+/**
+ * Dos paquetes hermanos en el mismo arbol: pkgA sin ai_docs/tasks (sin pipeline SDD), pkgB con
+ * spec aprobada y una task que declara src/declarado.js (y NO declara src/secreto.js).
+ */
+function monorepo() {
+  const root = tempDir('sdd-codex-monorepo-');
+  writeFile(path.join(root, 'pkgB', 'ai_docs', 'tasks', 'spec_pagos.md'), SPEC_PAGOS);
+  writeFile(path.join(root, 'pkgB', 'ai_docs', 'tasks', '001_pagos.md'), TASK_PAGOS);
+  return root;
+}
+
+/** Parche via mapa `changes`, con las rutas en el orden exacto que se pasa. */
+function parcheChanges(paths) {
+  const changes = {};
+  for (const p of paths) changes[p] = {};
+  return { tool_name: 'apply_patch', tool_input: { changes } };
+}
+
 test('sin spec aprobada: deny', () => {
   const root = proyecto({}, {});
   const r = runHook(HOOK, parche(root, 'src/auth/login.js'));
@@ -90,6 +131,32 @@ test('parche con varios archivos y uno no declarado: deny (no se aplican parches
 
   assert.strictEqual(r.decision.decision, 'deny');
   assert.match(r.decision.reason, /checkout\.js/);
+});
+
+test('monorepo con dos paquetes: deniega en los dos ordenes de las claves de changes', () => {
+  const root = monorepo();
+  const pkgARandom = path.join(root, 'pkgA', 'random.js');
+  const pkgBSecreto = path.join(root, 'pkgB', 'src', 'secreto.js');
+
+  const r1 = runHook(HOOK, parcheChanges([pkgARandom, pkgBSecreto]));
+  const r2 = runHook(HOOK, parcheChanges([pkgBSecreto, pkgARandom]));
+
+  assert.strictEqual(r1.decision.decision, 'deny');
+  assert.strictEqual(r2.decision.decision, 'deny');
+  assert.match(r1.decision.reason, /secreto\.js/);
+  assert.match(r2.decision.reason, /secreto\.js/);
+});
+
+test('monorepo con dos paquetes: el paquete sin pipeline no deniega por si mismo, en los dos ordenes', () => {
+  const root = monorepo();
+  const pkgARandom = path.join(root, 'pkgA', 'random.js');
+  const pkgBDeclarado = path.join(root, 'pkgB', 'src', 'declarado.js');
+
+  const r1 = runHook(HOOK, parcheChanges([pkgARandom, pkgBDeclarado]));
+  const r2 = runHook(HOOK, parcheChanges([pkgBDeclarado, pkgARandom]));
+
+  assert.strictEqual(r1.code, 0);
+  assert.strictEqual(r2.code, 0);
 });
 
 test('payload con file_path directo: se evalua igual que el parche', () => {
