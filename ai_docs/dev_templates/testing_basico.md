@@ -205,6 +205,15 @@ Esto garantiza que:
 - La correccion realmente lo soluciona (paso 2)
 - El bug no volvera en el futuro (paso 3)
 
+### Caso especial: el fix sustituye un predicado o detector completo
+
+Si el fix no repara un caso puntual sino que **reemplaza la logica que decide** (una regex por un parser, una lista de casos por una funcion), RED-GREEN no basta: solo prueba el caso que motivo el cambio. El predicado nuevo puede perder cobertura que el viejo si tenia, y ese hueco no lo detecta un test que solo repite el bug reportado — puede volver a fallar en produccion con una entrada distinta a la que motivo el fix.
+
+Antes de dar el fix por cerrado:
+1. Identifica que conjunto de entradas clasificaba como positivas el predicado VIEJO (no solo el caso reportado).
+2. Verifica con un test que el predicado NUEVO sigue clasificando ese conjunto igual.
+3. Si el conjunto es combinatorio (variantes que se combinan entre si), generalo por codigo — parametrizacion, producto cartesiano de las variantes conocidas — en vez de escribirlo a mano: una lista de ejemplos hereda el punto ciego de quien la escribio, y por eso solo cubre lo que ya se penso en probar.
+
 ---
 
 ## Anti-patrones de testing
@@ -221,6 +230,7 @@ Esto garantiza que:
 | Mock excesivo (mockear todo menos lo que se testea) | No prueba nada real | Solo mockear dependencias externas (APIs, BD), no logica interna |
 | Test acoplado a la implementacion | Se rompe al refactorizar aunque el comportamiento no cambie | Testear QUE hace, no COMO lo hace |
 | Test que testea el framework | `expect(useState).toBeDefined()` no aporta valor | Solo testear TU codigo |
+| Test de un recurso con ciclo de vida (adquirir→liberar) que solo cubre los escenarios de fallo ya conocidos | Cualquier otro punto de fallo del mismo recurso queda sin instrumento — un lock, un fichero temporal o una conexion pueden quedar huerfanos por una via de salida que nadie penso en probar | Anadir un caso que fuerce el fallo en un punto arbitrario del ciclo de vida (un seam de test, no un fallo de disco real) y verifique que el recurso se libera igual |
 
 ---
 
