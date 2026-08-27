@@ -73,9 +73,9 @@ function loadReads(sessionId) {
 }
 
 // Registra una lectura anexando una linea; no lee el estado previo, asi que
-// no hay nada que pisar bajo lecturas concurrentes de la misma sesion. El
-// lector (loadReads) colapsa duplicados en un Set, asi que no hace falta
-// comprobar aqui si la ruta ya constaba.
+// dos lecturas de la misma sesion que lleguen a la vez escriben cada una su
+// propia linea sin pisarse. El lector (loadReads) colapsa duplicados en un
+// Set, asi que no hace falta comprobar aqui si la ruta ya constaba.
 function trackRead(sessionId, filePath, fromDir) {
   if (!sessionId || !filePath) return;
   const resolved = resolveRepoPath(filePath, fromDir);
