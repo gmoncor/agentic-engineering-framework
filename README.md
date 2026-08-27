@@ -413,7 +413,16 @@ Implementando: Cliente HTTP
 ...
 ```
 
-El flag se reconoce en cualquier posicion y se retira de los argumentos antes de resolver el path de la spec, asi que `--parallel ai_docs/tasks/spec_registro.md` es equivalente. Tambien puedes pedirlo en lenguaje natural ("implementa la spec en paralelo") para que el asistente lo pase al workflow. Solo el backend de Claude Code tiene motor de workflows; en los demas, el orquestador implementa las tasks en orden y no hay flag que lo cambie.
+El flag se reconoce en cualquier posicion y se retira de los argumentos antes de resolver el path de la spec, asi que `--parallel ai_docs/tasks/spec_registro.md` es equivalente. Tambien puedes pedirlo en lenguaje natural ("implementa la spec en paralelo") para que el asistente lo pase al workflow. El flag es exclusivo de Claude Code, el unico backend con un motor de workflows que lo parsea; en Codex, Antigravity y Gemini el modo concurrente se pide igual, en lenguaje natural, y lo ejecuta el orquestador siguiendo su fichero de instrucciones raiz.
+
+| Backend | Como se pide el modo concurrente | Quien lo ejecuta |
+|---|---|---|
+| Claude Code | flag `--parallel` en `/implementar-spec`, o peticion en lenguaje natural que el asistente traslada al workflow | el motor de workflows |
+| Codex | peticion en lenguaje natural («implementa la spec en paralelo») | el orquestador, siguiendo `AGENTS.md` |
+| Antigravity CLI | peticion en lenguaje natural | el orquestador, siguiendo `AGENTS.md` |
+| Gemini CLI | peticion en lenguaje natural | el orquestador, siguiendo `GEMINI.md` |
+
+El flag `--parallel` no existe fuera de Claude Code. El defecto es lineal en los cuatro backends, y en los otros tres el modo concurrente se pide siempre en lenguaje natural.
 
 ### Puertas de calidad: las mismas en ambos modos
 

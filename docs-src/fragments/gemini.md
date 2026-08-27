@@ -20,6 +20,17 @@
 
 <!-- nucleo: reglas-clave -->
 
+## Defecto lineal y modo paralelo a peticion
+
+- **Lineal por defecto.** Una task tras otra en orden de dependencias; cada una se implementa,
+  se revisa y se commitea antes de la siguiente. Una task, un commit.
+- **Modo paralelo a peticion.** Si el usuario lo pide de forma explicita ("implementa la spec en
+  paralelo"), lanzar a la vez las tasks que no dependen entre si. El orden de dependencias sigue
+  mandando.
+- **Aqui no hay flag.** Sin motor de workflows que parsee argumentos: la peticion es en lenguaje
+  natural y la atiende el orquestador. Un flag visto en la documentacion general pertenece a otro
+  backend.
+
 <!-- nucleo: estructura -->
 
 <!-- nucleo: specs-y-tasks -->

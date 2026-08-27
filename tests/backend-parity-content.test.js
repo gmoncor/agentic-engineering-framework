@@ -69,6 +69,44 @@ test('CLAUDE.md tiene un puntero de una linea a "Ahorro de tokens" (sin duplicar
   );
 });
 
+// ── Seccion "Modos de ejecucion": paridad de invocacion entre backends ──────
+//
+// README.md niega en un solo punto que Codex/Antigravity/Gemini paralelicen,
+// pero AGENTS.md documenta el modo paralelo a peticion para ambos. Este
+// canario protege que el punto de entrada no vuelva a comunicar esa
+// imposibilidad categorica, ni literal ni parafraseada, y que la tabla que
+// reconcilia los 4 backends no pierda ninguno.
+
+test('README.md "Modos de ejecucion" no niega el modo paralelo fuera de Claude Code y lista los 4 backends', () => {
+  const contenido = leer('README.md');
+  const inicioModos = contenido.indexOf('## Modos de ejecucion');
+  const inicioCarpetas = contenido.indexOf('## Que hay en cada carpeta');
+
+  assert.ok(inicioModos !== -1, 'README.md debe tener la seccion "Modos de ejecucion"');
+  assert.ok(inicioCarpetas !== -1, 'README.md debe tener la seccion "Que hay en cada carpeta"');
+
+  const seccion = contenido.slice(inicioModos, inicioCarpetas);
+
+  assert.ok(
+    !contenido.includes('no hay flag que lo cambie'),
+    'README.md no debe afirmar que fuera de Claude Code no hay flag que cambie el modo de ejecucion'
+  );
+  for (const backend of ['Claude Code', 'Codex', 'Antigravity', 'Gemini']) {
+    assert.ok(seccion.includes(backend), `La seccion "Modos de ejecucion" debe nombrar el backend "${backend}"`);
+  }
+  assert.ok(seccion.includes('--parallel'), 'La seccion debe seguir documentando el flag "--parallel" de Claude Code');
+
+  const negacionCategorica = /no (hay|existe|se puede|es posible)[^.]{0,80}(paralel|concurren)/i;
+  assert.ok(
+    negacionCategorica.test('no se puede paralelizar en los demas backends'),
+    'control positivo: la regex debe detectar el fixture de negacion categorica conocido'
+  );
+  assert.ok(
+    !negacionCategorica.test(seccion),
+    'La seccion no debe negar de forma categorica -ni parafraseada- que los demas backends paralelicen'
+  );
+});
+
 // ── Igualdad de cuerpo de agentes identicos-por-diseno ──────────────────────
 //
 // Los agentes de Codex (TOML) y Antigravity (Markdown+frontmatter) comparten
