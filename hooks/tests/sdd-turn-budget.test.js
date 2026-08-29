@@ -373,3 +373,44 @@ test('F4: 20 llamadas concurrentes sobre la misma sesion no pierden incrementos'
   assert.strictEqual(r.decision.code, 'TURN_BUDGET_HARD_STOP');
   assert.match(r.decision.reason, /llevas 21 acciones sin commit/, 'las 20 llamadas concurrentes mas esta deben sumar 21, sin perdida');
 });
+
+// --- s13/03: `git add` en enforce con el presupuesto superado ---
+// El unico checkpoint (commit) exige un fichero ya staged; sin esta exencion,
+// stagearlo con el presupuesto superado queda bloqueado por la misma tool
+// call que hace falta para llegar al commit, y el ciclo no tiene salida.
+
+test('enforce + presupuesto superado: git add se avisa, no se deniega', () => {
+  const e = entorno(CONFIG_ENFORCE);
+  const previo = repetir(4, e.env); // hard_stop_at = 4: estado de partida bloqueado
+  assert.strictEqual(previo.decision.decision, 'deny', 'control: el estado de partida esta bloqueado');
+
+  const r = runHook(HOOK, shell(SESSION, 'git add nuevo.js'), e.env);
+  assert.strictEqual(r.decision.decision, 'warn', 'git add se avisa, no se deniega, con el presupuesto superado');
+  assert.strictEqual(r.code, 0);
+  assert.match(r.decision.reason, /INTERRUMPE y espera/, 'el aviso del presupuesto se mantiene: git add no es un punto ciego');
+});
+
+test('enforce: git add no reinicia el contador -- la siguiente accion se sigue denegando', () => {
+  const e = entorno(CONFIG_ENFORCE);
+  repetir(4, e.env);
+  runHook(HOOK, shell(SESSION, 'git add nuevo.js'), e.env);
+
+  const siguiente = runHook(HOOK, accion(SESSION), e.env);
+  assert.strictEqual(siguiente.decision.decision, 'deny', 'git add no debe comportarse como un reset encubierto');
+  assert.strictEqual(siguiente.code, 2);
+});
+
+test('enforce: con el presupuesto superado una accion ordinaria se sigue denegando (control de no-regresion)', () => {
+  const e = entorno(CONFIG_ENFORCE);
+  const r = repetir(4, e.env);
+  assert.strictEqual(r.decision.decision, 'deny', 'sin este control, el caso de git add pasaria igual con el guard entero desactivado');
+  assert.strictEqual(r.code, 2);
+});
+
+test('enforce: una mencion textual de "git add" (grep) no es invocacion real y se sigue denegando', () => {
+  const e = entorno(CONFIG_ENFORCE);
+  repetir(4, e.env);
+  const mencion = runHook(HOOK, shell(SESSION, 'grep -r "git add" README.md'), e.env);
+  assert.strictEqual(mencion.decision.decision, 'deny', 'la exencion cuelga de esInvocacion, no de una subcadena');
+  assert.strictEqual(mencion.code, 2);
+});

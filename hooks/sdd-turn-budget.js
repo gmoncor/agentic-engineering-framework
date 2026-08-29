@@ -181,9 +181,13 @@ async function main() {
 
   const call = readToolCall(data);
 
-  // El commit es el checkpoint que el budget vigila: reinicia la cuenta. El
-  // comando llega como `command` (Claude Code, Gemini CLI, Codex) o como
-  // `CommandLine` (Antigravity CLI); la invocacion real de `git commit` (frente
+  // El commit es el checkpoint que el budget vigila: reinicia la cuenta. `git
+  // add` es el unico paso previo que no se deniega (mas abajo): sin la
+  // exencion, prepararlo con el presupuesto superado queda bloqueado por la
+  // misma tool call que hace falta para poder commitear, y el ciclo no tiene
+  // salida legitima. `git add` no resetea la cuenta -- solo el commit es
+  // checkpoint. El comando llega como `command` (Claude Code, Gemini CLI,
+  // Codex) o como `CommandLine` (Antigravity CLI); la invocacion real (frente
   // a una mencion textual) se decide con el criterio compartido.
   const cmd = String(call.input.command || call.input.CommandLine || '');
   if (SHELL_TOOLS.has(call.name) && esInvocacion(cmd, 'git', ['commit'])) {
@@ -194,7 +198,8 @@ async function main() {
   appendAction(sessionId);
   const count = countActions(sessionId);
 
-  const enforce = cfg.mode === 'enforce';
+  const exento = SHELL_TOOLS.has(call.name) && esInvocacion(cmd, 'git', ['add']);
+  const enforce = cfg.mode === 'enforce' && !exento;
   const subagent = isSubagentCall(data);
 
   if (count >= threshold(cfg, 'hard_stop_at')) {
