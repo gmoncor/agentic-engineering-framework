@@ -3,10 +3,10 @@
      aqui el procedimiento va escrito paso a paso dentro del prompt. Es el
      unico sitio donde se edita esa version; el .toml se genera desde aqui. -->
 ---
-description: "Implementa TODAS las tasks de una spec en orden secuencial: una task tras otra, revision adversarial de cada una antes de commitear"
+description: "Implementa TODAS las tasks de una spec en orden de dependencias, revision adversarial de cada una antes de commitear"
 ---
 
-Implementa TODAS las tasks de una spec, una tras otra, en orden de dependencias.
+Implementa TODAS las tasks de una spec, en orden de dependencias.
 
 ANTES de implementar, verifica:
 
@@ -25,7 +25,7 @@ Si las dependencias forman un ciclo, DETENTE: nombra las tasks del ciclo y pide 
 Ordena las tasks topologicamente: cada task va despues de todas sus dependencias.
 Muestra al usuario el orden de ejecucion antes de continuar.
 
-PASO 2 — IMPLEMENTACION (una task tras otra)
+PASO 2 — IMPLEMENTACION (orden de dependencias)
 Recorre las tasks en el orden del PASO 1. Para cada task, en este orden:
 a. Lee ai_docs/dev_templates/implementar.md y sigue su proceso completo
 b. Lee ai_docs/core/ para el contexto del proyecto

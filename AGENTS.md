@@ -60,31 +60,6 @@ trabajo.
 En estos backends el `implementador` tambien commitea (codigo + tests + commit); el nucleo solo
 declara codigo + tests.
 
-## Defecto lineal y modo paralelo a peticion
-
-Este framework NO tiene motor de workflows declarativo en estos backends: la secuenciacion
-depende de como el orquestador escribe sus llamadas. El comportamiento que aplicar:
-
-1. **Lineal por defecto.** Mientras no se pida otra cosa, implementa las tasks una tras otra,
-   en orden de dependencias: una task no arranca hasta que las tasks de las que depende estan
-   hechas. Cada task se implementa, se revisa y se commitea antes de pasar a la siguiente. Una
-   task, un commit.
-2. **Modo paralelo a peticion.** Si el usuario lo pide de forma explicita ("implementa la spec
-   en paralelo"), lanza a la vez las tasks que no dependen entre si. El orden de dependencias
-   sigue mandando: un grupo no arranca hasta que termina el grupo del que depende.
-3. **Un gate de revision por task.** En ambos modos, antes de commitear cada task hay UN punto
-   cuyo veredicto se necesita para continuar: la revision adversarial de esa task. Ahi se
-   espera. Aqui ese gate lo sostiene la disciplina, no un hook: ningun hook cableado en estos
-   backends bloquea un commit por falta de revision. El hook `sdd-review-gate.js` existe en el
-   repositorio, pero se cablea solo en el backend de Claude Code: la senal que lo silencia la
-   emite su motor de workflows, que estos backends no tienen. Ver «Enforcement mecanico y su
-   limite»: ahi, escribir un archivo no declarado y `--no-verify` estan denegados; el commit sin
-   revision, no. En planificacion el gate equivalente es la auditoria cruzada, que si corre en
-   paralelo sobre las tasks del plan.
-
-Describe siempre la dependencia real (que necesita el resultado de que): es lo que decide que
-puede ir a la vez y que no.
-
 ## Estructura de archivos
 
 ```
@@ -177,6 +152,12 @@ deliberado; no sustituyen a la revision humana ni a los controles del repositori
 rama, CI). Si necesitas una frontera dura, ponla en CI. El commit sin revision no esta entre esos
 bloqueos: aqui lo sostiene la disciplina, no un hook.
 
+**El gate de revision por task.** Antes de commitear cada task hay un punto cuyo veredicto se
+necesita para continuar: la revision adversarial de esa task. El hook `sdd-review-gate.js` existe
+en el repositorio, pero se cablea solo en el backend de Claude Code: la senal que lo silencia la
+emite su motor de workflows, que estos backends no tienen. En planificacion el gate equivalente es
+la auditoria cruzada.
+
 **Escape de emergencia:** `SDD_GUARD_SKIP=1` degrada los bloqueos a aviso. Es para desbloquear una
 situacion puntual, no para dejarlo fijo en el shell: con el activo el pipeline no enforcea nada.
 
@@ -255,7 +236,6 @@ presupuesto.
 ## Limites del framework
 
 - Planificacion completa (spec + tasks + revision + auditoria) antes de implementar
-- Implementacion lineal por defecto — una task tras otra en orden de dependencias; el modo paralelo se activa solo si se pide de forma explicita
 - Las tasks se derivan solo de specs con estado APROBADA
 - Revision adversarial (paso 5) antes de mergear
 - Cada task toca maximo 6 archivos — si supera, dividir

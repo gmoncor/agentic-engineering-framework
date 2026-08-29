@@ -30,7 +30,7 @@ El resultado: menos errores, mejor codigo, y tu entiendes cada decision que se t
 
 ## Metodologia SDD (Spec-Driven Development)
 
-El flujo SDD encadena pasos: cada uno produce un artefacto que alimenta al siguiente. La planificacion va en orden; la implementacion es lineal: las tasks se implementan una tras otra, en orden de dependencias.
+El flujo SDD encadena pasos: cada uno produce un artefacto que alimenta al siguiente. La planificacion va en orden; las tasks se implementan en orden de dependencias.
 
 ```
 Solicitud del usuario
@@ -49,8 +49,8 @@ Solicitud del usuario
     |                          Verifica coherencia spec + tasks
     v
 [6. IMPLEMENTACION]  ────────  implementar.md
-    |                          /implementar-spec ordena las tasks por dependencias
-    |                          y las implementa una tras otra
+    |                          /implementar-spec implementa las tasks en orden
+    |                          de dependencias
     |                          Cada task: implementar + tests + commit
     |
     v
@@ -157,7 +157,7 @@ Las plantillas core estan en la carpeta `core_templates/`. Consulta su README pa
 5. AUDITORIA       -->  auditar_spec.md
    Verificar cobertura, overlaps, huecos, coherencia.
 
-6. IMPLEMENTAR     -->  implementar.md (una tras otra, en orden de dependencias)
+6. IMPLEMENTAR     -->  implementar.md (en orden de dependencias)
    Implementar + tests + limpieza + commit por task.
 
 7. REVISION ADVERSARIAL  -->  revision_adversarial.md

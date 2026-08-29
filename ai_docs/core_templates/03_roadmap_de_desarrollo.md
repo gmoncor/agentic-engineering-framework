@@ -97,7 +97,7 @@ Fase 2: [Nombre descriptivo]
   - Spec D: [descripcion] — Depende de Spec B (Fase 1)
 ```
 
-**Marcar specs independientes dentro de cada fase** — se pueden ejecutar en paralelo si el equipo lo permite (reparto de trabajo humano entre specs; la implementacion de cada spec sigue siendo lineal, tarea tras tarea).
+**Marcar specs independientes dentro de cada fase** — se pueden ejecutar en paralelo si el equipo lo permite (reparto de trabajo humano entre specs).
 
 **Presentar este analisis al usuario y ESPERAR aprobacion antes de generar el roadmap detallado.**
 
@@ -217,7 +217,7 @@ Roadmap (fases + specs)
 1. Crear un documento de spec que detalle el alcance, criterios de aceptacion y restricciones
 2. Derivar tasks atomicas de la spec (cada task = un cambio independiente)
 3. Revisar cada task (alcance minimo, dependencias, edge cases)
-4. Implementar las tasks una tras otra en orden de dependencias
+4. Implementar las tasks en orden de dependencias
 5. Revision adversarial post-implementacion de la spec completa
 
 ---

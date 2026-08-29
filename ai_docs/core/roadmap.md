@@ -9,7 +9,7 @@
 - **Objetivo Final:** Ayudar a desarrolladores a trabajar mejor con asistentes de IA usando plantillas estructuradas
 - **Stack:** Markdown (sin framework, sin runtime)
 - **Equipo:** Desarrollador solo
-- **Modelo de desarrollo:** lineal — las tasks se implementan una task tras otra, en orden de dependencias
+- **Modelo de desarrollo:** las tasks se implementan en orden de dependencias
 
 > Los conteos de componentes que cita este documento (plantillas, comandos, agentes, skills) los verifica el canary de paridad: `node --test tests/backend-parity.test.js`. Si un conteo se queda obsoleto, el test falla.
 

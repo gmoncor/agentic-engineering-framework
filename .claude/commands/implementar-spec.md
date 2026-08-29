@@ -1,5 +1,5 @@
 ---
-description: "Implementa TODAS las tasks de una spec: una task tras otra en orden de dependencias, revision adversarial por task antes de commitear"
+description: "Implementa TODAS las tasks de una spec en orden de dependencias, revision adversarial por task antes de commitear"
 ---
 
 Ejecuta el workflow de implementacion completa de una spec.
@@ -15,7 +15,7 @@ Si todo esta en orden, usa la herramienta Workflow con nombre "implementar-spec"
 
 El workflow:
 1. Descubre las tasks y sus dependencias, y las ordena de forma que cada task va despues de todas las tasks de las que depende
-2. Implementa cada task en ese orden, una tras otra. Para cada task: implementa, ejecuta tests, revision adversarial, y si aprobada, commitea antes de pasar a la siguiente
+2. Implementa cada task en ese orden. Para cada task: implementa, ejecuta tests, revision adversarial, y si aprobada, commitea antes de pasar a la siguiente
 3. Si una task no se aprueba tras corregirla, queda FALLIDA y las que dependan de ella se reportan como bloqueadas, sin implementar
 4. Al terminar, resume el resultado de todas las tasks
 

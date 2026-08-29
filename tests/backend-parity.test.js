@@ -384,6 +384,45 @@ test('todo hook cableado en algun backend aparece en el README', () => {
   }
 });
 
+// El caso anterior comprueba que el HOOK aparezca en el README, no DONDE se
+// cablea: un README que nombrase los hooks sin decir en que fichero de cada
+// backend se activan pasaria igual. El ancla aqui es la ruta `cableado`, no
+// el nombre del hook.
+const CABECERA_HOOKS = '## Hooks (enforcement mecanico)';
+const CIERRE_MODELO_POR_DEFECTO = '**Modelo por defecto';
+
+/**
+ * Seccion "## Hooks (enforcement mecanico)" del README, acotada hasta la
+ * siguiente cabecera `## ` o hasta el parrafo del modelo por defecto, lo que
+ * venga antes. Sin el segundo limite, `.claude/settings.json` sigue nombrado
+ * mas abajo en la nota del modelo y satisface el ancla de Claude Code aunque
+ * el parrafo de wiring se borre entero.
+ */
+function seccionDeHooks(readme) {
+  const inicio = readme.indexOf(CABECERA_HOOKS);
+  assert.notStrictEqual(inicio, -1, `README.md no tiene la cabecera "${CABECERA_HOOKS}".`);
+
+  const limites = [
+    readme.indexOf('\n## ', inicio + 1),
+    readme.indexOf(CIERRE_MODELO_POR_DEFECTO, inicio)
+  ].filter(indice => indice !== -1);
+
+  return readme.slice(inicio, limites.length ? Math.min(...limites) : readme.length);
+}
+
+test('todo backend nombra su fichero de cableado en la seccion de Hooks del README', () => {
+  const seccion = seccionDeHooks(leer('README.md'));
+
+  for (const [backend, { cableado }] of Object.entries(BACKENDS)) {
+    assert.ok(
+      seccion.includes(cableado),
+      `La seccion "${CABECERA_HOOKS}" del README no nombra ${cableado}, el fichero de cableado de `
+        + `${backend}. Sin esa ruta, quien lee la seccion no sabe con que fichero se activa el `
+        + 'enforcement en su backend.'
+    );
+  }
+});
+
 // ── Conteos citados en la documentacion ──────────────────────────────────────
 //
 // La doc cita cuantas plantillas hay. Un conteo escrito a mano envejece en
@@ -421,6 +460,102 @@ test('conteos: la documentacion cita el numero real de plantillas', () => {
     roadmap,
     new RegExp(`${operativas} plantillas operativas`),
     `roadmap.md no cita las ${operativas} plantillas operativas que hay en ai_docs/dev_templates/`
+  );
+});
+
+// ── Tabla "Que se instala": los mismos conteos, declarados por segunda vez ──
+//
+// La seccion "### Que se instala" repite en una tabla los conteos que el
+// resto de este fichero ya calcula desde el disco (agentes, comandos, skills,
+// hooks cableados) mas los de dev_templates/core_templates. Nada ataba esa
+// tabla a esas fuentes: un agente o una skill nuevos actualizaban la paridad
+// de arriba sin tocar la tabla, que quedaba desactualizada en silencio.
+
+function seccionQueSeInstala(readme) {
+  const inicio = readme.indexOf('### Que se instala');
+  assert.notStrictEqual(inicio, -1, 'README.md no tiene la seccion "### Que se instala".');
+  const fin = readme.indexOf('\n---', inicio);
+  return readme.slice(inicio, fin === -1 ? readme.length : fin);
+}
+
+test('conteos: la tabla "Que se instala" del README cita los numeros reales por backend', () => {
+  const seccion = seccionQueSeInstala(leer('README.md'));
+  const nombres = Object.keys(BACKENDS);
+
+  // Comandos: solo Claude y Gemini tienen directorio propio de comandos
+  // (Codex y Antigravity los entregan como skills, sin conteo que citar aqui).
+  for (const backend of ['claude', 'gemini']) {
+    const cuenta = nombresDe(BACKENDS[backend].capacidades[0]).length;
+    assert.match(
+      seccion,
+      new RegExp(`commands/\`\\s*\\(${cuenta}\\)`),
+      `Comandos de ${backend}: la tabla no cita ${cuenta}.`
+    );
+  }
+
+  // Skills: cada backend cita su propio conteo (Codex y Antigravity comparten
+  // fuente, pero cada uno tiene su propia celda en la tabla).
+  const fuenteDeSkills = {
+    claude: BACKENDS.claude.capacidades[1],
+    gemini: BACKENDS.gemini.capacidades[1],
+    codex: BACKENDS.codex.capacidades[0],
+    antigravity: BACKENDS.antigravity.capacidades[0]
+  };
+  for (const backend of nombres) {
+    const cuenta = nombresDe(fuenteDeSkills[backend]).length;
+    assert.match(
+      seccion,
+      new RegExp(`skills/\`\\s*\\(${cuenta}\\)`),
+      `Skills de ${backend}: la tabla no cita ${cuenta}.`
+    );
+  }
+
+  // Agentes: los cuatro backends citan su conteo, con o sin sufijo (Codex
+  // anade ", \`.toml\`" en la misma celda).
+  for (const backend of nombres) {
+    const cuenta = nombresDe(BACKENDS[backend].agentes[0]).length;
+    assert.match(
+      seccion,
+      new RegExp(`agents/\`\\s*\\(${cuenta}(,|\\))`),
+      `Agentes de ${backend}: la tabla no cita ${cuenta}.`
+    );
+  }
+
+  // Hooks: el conteo es el de hooks realmente cableados (hooksCableados), no
+  // el de ficheros en hooks/ — la tabla cita cuantos corren, no cuantos existen.
+  for (const backend of nombres) {
+    const cuenta = hooksCableados(backend).length;
+    assert.match(
+      seccion,
+      new RegExp(`\\(${cuenta}, wired`),
+      `Hooks de ${backend}: la tabla no cita ${cuenta} hooks cableados.`
+    );
+  }
+
+  // Workflows: exclusivo de Claude Code, el unico backend con motor propio.
+  const workflows = fs.readdirSync(path.join(RAIZ, '.claude/workflows')).filter(f => f.endsWith('.js')).length;
+  assert.match(
+    seccion,
+    new RegExp(`workflows/\`\\s*\\(${workflows}\\)`),
+    `Workflows: la tabla no cita ${workflows}.`
+  );
+
+  // Templates y core templates: mismo conteo citado una vez por backend.
+  const operativas = contarPlantillas('ai_docs/dev_templates');
+  const iniciales = contarPlantillas('ai_docs/core_templates');
+
+  const vecesDevTemplates = (seccion.match(new RegExp(`dev_templates/\`\\s*\\(${operativas}\\)`, 'g')) || []).length;
+  assert.strictEqual(
+    vecesDevTemplates,
+    nombres.length,
+    `dev_templates: se esperaban ${nombres.length} menciones de (${operativas}) en la tabla, hay ${vecesDevTemplates}.`
+  );
+
+  const vecesCoreTemplates = (seccion.match(new RegExp(`core_templates/\`\\s*\\(${iniciales}\\)`, 'g')) || []).length;
+  assert.strictEqual(
+    vecesCoreTemplates,
+    nombres.length,
+    `core_templates: se esperaban ${nombres.length} menciones de (${iniciales}) en la tabla, hay ${vecesCoreTemplates}.`
   );
 });
 

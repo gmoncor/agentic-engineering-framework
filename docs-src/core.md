@@ -38,7 +38,7 @@
 
 1. **Toda solicitud empieza con planificacion** — /planificar antes de /implementar
 2. **Planificacion exhaustiva** — cada task revisada, spec auditada, huecos detectados ANTES de codigo
-3. **Implementacion lineal por defecto** — una task tras otra en orden de dependencias; revision adversarial antes de cada commit. Una task, un commit. La ejecucion concurrente existe y se pide de forma explicita
+3. **El orden de dependencias manda** — la independencia entre tasks informa el orden del plan; secuencial o concurrente lo decide quien ejecuta. Revision adversarial antes de cada commit. Una task, un commit
 4. **Revision adversarial obligatoria** — el paso 5 verifica la implementacion completa antes de mergear
 5. **Tasks atomicas** — una task, un cambio acotado, un commit
 6. **Roadmap global** — el plan de trabajo vive en `ai_docs/core/` y guia cada planificacion
@@ -98,7 +98,6 @@ Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
 ## Limites del framework
 
 - Planificacion completa (spec + tasks + revision + auditoria) antes de implementar
-<!-- hueco: limite-lineal -->
 - Las tasks se derivan solo de specs con estado APROBADA
 - Revision adversarial (paso 5) antes de mergear
 - Cada task toca maximo 6 archivos — si supera, dividir

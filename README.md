@@ -6,7 +6,7 @@
 
 ## Que es esto?
 
-Un sistema de plantillas que estructura como trabaja tu asistente de IA. En lugar de pedirle "haz esto" y esperar lo mejor, el framework impone un flujo: **planificacion exhaustiva** (spec + tasks + revision paralela + auditoria cruzada) antes de tocar codigo, seguida de **implementacion lineal** por defecto (una task tras otra en orden de dependencias, revision adversarial por task antes del commit).
+Un sistema de plantillas que estructura como trabaja tu asistente de IA. En lugar de pedirle "haz esto" y esperar lo mejor, el framework impone un flujo: **planificacion exhaustiva** (spec + tasks + revision paralela + auditoria cruzada) antes de tocar codigo, seguida de **implementacion en orden de dependencias** (revision adversarial por task antes del commit).
 
 Compatible con cualquier LLM via copy-paste. Integracion nativa con cuatro CLIs: Claude Code (workflows + comandos + agentes + skills), Gemini CLI (extension instalable), Codex y Antigravity (agentes + skills + hooks). Los cuatro exponen el mismo flujo; un test de paridad lo verifica (`npm test`).
 
@@ -28,7 +28,7 @@ Las plantillas guian al asistente de IA, pero la calidad del resultado depende d
 
 ## El flujo SDD
 
-El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tasks, revision, auditoria cruzada y, solo entonces, implementacion: por defecto lineal, una task tras otra en orden de dependencias (ver "Modos de ejecucion").
+El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tasks, revision, auditoria cruzada y, solo entonces, implementacion: en orden de dependencias (ver "Modos de ejecucion").
 
 ```
   [1] Solicitud
@@ -59,7 +59,6 @@ El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tas
 Principios del flujo:
 
 - **Planificacion exhaustiva.** Cada task revisada y auditada ANTES de tocar codigo
-- **Implementacion lineal por defecto.** Una task tras otra en orden de dependencias, cada una revisada y con su commit. La ejecucion concurrente existe y se pide de forma explicita (ver "Modos de ejecucion")
 - **Tasks atomicas.** Una task = un cambio acotado = un commit
 - **Revision adversarial obligatoria.** Cada task se revisa antes de commitearla
 - **Roadmap global.** El plan de trabajo vive en `ai_docs/core/` y guia cada `/planificar`
@@ -334,7 +333,7 @@ Un vistazo rapido a como se conectan los pasos, desde la solicitud inicial hasta
 
 **4. Auditoria cruzada:** "Cada criterio tiene task asignada, cobertura verificable. APROBADA."
 
-**5. Implementacion (`/implementar-spec`):** ejecuta las tasks en orden de dependencias, una tras otra, con revision adversarial antes de cada commit — dos commits lineales resultan: `feat: add GET /api/health endpoint`, `test: add e2e test for /api/health`.
+**5. Implementacion (`/implementar-spec`):** ejecuta las tasks en orden de dependencias, con revision adversarial antes de cada commit — dos commits resultan: `feat: add GET /api/health endpoint`, `test: add e2e test for /api/health`.
 
 **6. Cierre (`/pr`):** PR abierto con los 2 commits y una descripcion autogenerada a partir de la spec y las tasks implementadas.
 
@@ -350,7 +349,7 @@ El dia a dia sigue el flujo SDD. Usa `/planificar` como punto de entrada princip
 
 **Aprobacion** — Revisa el plan completo. Si es APROBADO, procede. Si necesita ajustes, aplicalos y re-evalua.
 
-**`/implementar-spec`** — Workflow que implementa TODAS las tasks de la spec en orden de dependencias, una tras otra por defecto. Revision adversarial y commit por task. Recomendado para el flujo normal. Para ejecutar a la vez las tasks que no dependen entre si, ver "Modos de ejecucion".
+**`/implementar-spec`** — Workflow que implementa TODAS las tasks de la spec en orden de dependencias. Revision adversarial y commit por task. Recomendado para el flujo normal. Para ejecutar a la vez las tasks que no dependen entre si, ver "Modos de ejecucion".
 
 **`/implementar`** — Implementa UNA task individual. Para cuando necesitas control manual sobre el orden o quieres implementar una task especifica.
 
@@ -363,7 +362,7 @@ El dia a dia sigue el flujo SDD. Usa `/planificar` como punto de entrada princip
 
 ## Modos de ejecucion
 
-Por defecto el framework trabaja **una task a la vez**: se implementa, se revisa y se commitea antes de empezar la siguiente. Ese es el modo secuencial y no necesita ningun flag. La ejecucion concurrente existe, se pide de forma explicita y no es la recomendacion por defecto: la decision es tuya, en el momento de invocar.
+El framework admite dos modos para `/implementar-spec`: uno implementa, revisa y commitea cada task antes de empezar la siguiente, sin necesitar ningun flag; el otro ejecuta a la vez las tasks que no dependen entre si, y se pide de forma explicita con el flag `--parallel` (o en lenguaje natural). La decision es tuya, en el momento de invocar.
 
 `/implementar-spec` agrupa las tasks de la spec en **niveles de dependencia**: el nivel 1 son las tasks sin dependencias, el nivel 2 las que dependen de alguna del nivel 1, y asi sucesivamente. Los niveles se recorren siempre en orden. Lo unico que cambia entre modos es que ocurre DENTRO de un nivel.
 
@@ -375,7 +374,7 @@ Spec de ejemplo para los dos casos — 3 tasks en 2 niveles:
 | 02 Cliente HTTP | `src/lib/http.ts` | -- |
 | 03 Endpoint de registro | `src/routes/register.ts` | 01, 02 |
 
-### Modo secuencial (defecto)
+### Modo task por task
 
 ```
 /implementar-spec ai_docs/tasks/spec_registro.md
@@ -394,7 +393,7 @@ Implementando: Cliente HTTP
 ...
 ```
 
-### Modo concurrente (a peticion)
+### Modo concurrente por nivel
 
 La misma spec con el flag `--parallel` en los argumentos:
 
@@ -422,7 +421,7 @@ El flag se reconoce en cualquier posicion y se retira de los argumentos antes de
 | Antigravity CLI | peticion en lenguaje natural | el orquestador, siguiendo `AGENTS.md` |
 | Gemini CLI | peticion en lenguaje natural | el orquestador, siguiendo `GEMINI.md` |
 
-El flag `--parallel` no existe fuera de Claude Code. El defecto es lineal en los cuatro backends, y en los otros tres el modo concurrente se pide siempre en lenguaje natural.
+El flag `--parallel` no existe fuera de Claude Code. En los otros tres backends el modo concurrente se pide siempre en lenguaje natural.
 
 ### Puertas de calidad: las mismas en ambos modos
 
@@ -564,6 +563,8 @@ Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohibe esos mismos com
 
 **Limite honesto de los hooks de Codex:** son un **guardarrail**, no una frontera completa de enforcement — asi lo declara el propio fabricante. No interceptan todas las llamadas al shell ni todas las rutas de escritura: un proceso hijo lanzado desde un comando permitido puede escapar al matcher, y el payload de `apply_patch` no tiene esquema publico estable (si el guard no puede leer las rutas del parche, avisa en vez de denegar, porque bloquear a ciegas seria arbitrario). Sirven para que el camino correcto sea el camino por defecto y para que desviarse sea deliberado. Si necesitas una frontera dura, ponla en el CI y en las protecciones de rama.
 
+**Antigravity** carga cuatro hooks via `.agents/hooks.json`: `sdd-pipeline-guard.js` (guard de escrituras), `sdd-commit-guard.js` (guard de commits), `sdd-read-before-edit.js` (aviso de lectura previa) y `sdd-turn-budget.js` (contador de acciones sin commit). No carga el registro de sesiones (`sdd-session-start.js`), por la razon ya dada arriba: no consta que su CLI exponga un evento de arranque de sesion equivalente.
+
 **Hay dos bloqueos reales: escrituras y commits sin revision.** `sdd-pipeline-guard.js` impide escribir codigo que nadie planifico: puede comprobarlo mecanicamente, porque el archivo que se va a escribir esta declarado en una task o no lo esta. `sdd-review-gate.js` impide commitear un diff que no consta revisado: la revision adversarial ocurre POR TASK, antes del commit, y su senal guarda el hash del diff revisado; el hook recalcula el hash de `git diff --cached` y lo contrasta. Sin senal, o con un hash que no ata el diff staged, deniega. Cuando no hay diff cacheado computable no bloquea a ciegas: degrada a aviso. Que el codigo entregado se revise lo sostiene el flujo (`/implementar-spec` revisa cada task antes de commitearla) reforzado por el gate. Si necesitas una frontera aun mas dura sobre lo que llega a la rama, ponla en CI y en las protecciones de rama.
 
 **Configuracion (`hooks/config.json`):** `sdd-review-gate.js` viene desactivado. Ponlo en `"enabled": true` para que bloquee cuando vayas a commitear codigo sin constancia de revision. El workflow `/implementar-spec` emite la senal que lo satisface; su contrato vive en `hooks/sdd-review-signal.js`. Solo se cablea en Claude Code: los demas backends no tienen motor de workflows y, por tanto, no tienen emisor de la senal — el gate ahi no podria satisfacerse por ninguna via legitima.
@@ -590,11 +591,11 @@ Tres palancas para reducir el coste de las sesiones:
 
 ## Reglas de Cursor
 
-El directorio `.cursor/rules/` contiene 43 reglas que replican el comportamiento del framework dentro de Cursor. Son opcionales — el framework funciona sin ellas. Si usas Cursor, copia `.cursor/` a tu proyecto.
+El directorio `.cursor/rules/` contiene 43 reglas de convenciones de codigo para Cursor. Son opcionales y **no implementan el flujo SDD** — el framework funciona sin ellas. Si usas Cursor, copia `.cursor/` a tu proyecto.
 
 > **Solo al clonar el repo completo.** `.cursor/` (el del framework, no el tuyo si ya tienes uno) no se incluye en la instalacion via `npx ... install` — el CLI no copia esta carpeta. Para obtenerla, clona el repositorio completo (`git clone`) y copia `.cursor/` desde ahi.
 >
-> **Asumen un stack concreto.** La mayoria de esas reglas (38 de 43) estan escritas para **Next.js 15 + React + Drizzle + PostgreSQL + Python**: dan por hecho ese runtime, esas convenciones y ese ORM. Si tu proyecto usa otro stack, revisalas y adaptalas antes de copiar `.cursor/` — o copia solo las que sean agnosticas. Las reglas del flujo SDD (las que no son de stack) valen para cualquier proyecto.
+> **Asumen un stack concreto.** La mayoria de esas reglas (38 de 43) estan escritas para **Next.js 15 + React + Drizzle + PostgreSQL + Python**: dan por hecho ese runtime, esas convenciones y ese ORM. Si tu proyecto usa otro stack, revisalas y adaptalas antes de copiar `.cursor/` — o copia solo las que sean agnosticas.
 
 ---
 

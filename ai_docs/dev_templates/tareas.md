@@ -167,8 +167,8 @@ Ejemplo:
 - Task B depende de Task A. Task D depende de Task C.
 - Task F depende de Task B.
 
-Un orden valido: `A -> C -> E -> B -> D -> F`. Las tasks se implementan una tras otra
-en ese orden; nunca se empieza una task antes de que sus dependencias esten completas.
+Un orden valido: `A -> C -> E -> B -> D -> F`. Las tasks se implementan en ese orden;
+nunca se empieza una task antes de que sus dependencias esten completas.
 
 **Reglas de dependencia:**
 - Si una task crea algo que otra consume (API, modelo, tipo), la consumidora depende de la productora
@@ -188,7 +188,7 @@ Presenta al usuario un resumen con este formato:
 
 ### Orden de ejecucion
 
-<Task A -> Task C -> Task E -> Task B -> Task D -> Task F  (orden topologico, una tras otra)>
+<Task A -> Task C -> Task E -> Task B -> Task D -> Task F  (orden topologico)>
 
 ### Resumen por task
 

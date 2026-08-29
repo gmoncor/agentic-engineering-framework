@@ -1,6 +1,6 @@
 # SDD (Spec-Driven Development) — Framework de Desarrollo
 
-> Flujo basado en especificaciones. Planificacion exhaustiva antes de implementar. Implementacion lineal por defecto: una task tras otra, en orden de dependencias, dentro de cada spec.
+> Flujo basado en especificaciones. Planificacion exhaustiva antes de implementar. El orden de dependencias manda, dentro de cada spec.
 
 ## Flujo SDD
 
@@ -12,7 +12,7 @@
 5. /pr                — Crea la PR con los cambios
 ```
 
-**Planificacion exhaustiva, implementacion lineal por defecto.** El comando `/planificar` ejecuta el ciclo completo de planificacion. `/implementar-spec` implementa las tasks una tras otra en orden de dependencias, con revision adversarial por task antes del commit.
+**Planificacion exhaustiva; el orden de dependencias manda.** El comando `/planificar` ejecuta el ciclo completo de planificacion. `/implementar-spec` implementa las tasks en orden de dependencias, con revision adversarial por task antes del commit.
 
 ## Comandos disponibles
 
@@ -45,19 +45,14 @@
 
 1. **Toda solicitud empieza con planificacion** — /planificar antes de /implementar
 2. **Planificacion exhaustiva** — cada task revisada, spec auditada, huecos detectados ANTES de codigo
-3. **Implementacion lineal por defecto** — una task tras otra en orden de dependencias; revision adversarial antes de cada commit. Una task, un commit. La ejecucion concurrente existe y se pide de forma explicita
+3. **El orden de dependencias manda** — la independencia entre tasks informa el orden del plan; secuencial o concurrente lo decide quien ejecuta. Revision adversarial antes de cada commit. Una task, un commit
 4. **Revision adversarial obligatoria** — el paso 5 verifica la implementacion completa antes de mergear
 5. **Tasks atomicas** — una task, un cambio acotado, un commit
 6. **Roadmap global** — el plan de trabajo vive en `ai_docs/core/` y guia cada planificacion
 7. **El revisor es esceptico** — su trabajo es encontrar problemas, validar con evidencia
 
-## Defecto lineal y modo paralelo a peticion
+## Ejecucion en este backend
 
-- **Lineal por defecto.** Una task tras otra en orden de dependencias; cada una se implementa,
-  se revisa y se commitea antes de la siguiente. Una task, un commit.
-- **Modo paralelo a peticion.** Si el usuario lo pide de forma explicita ("implementa la spec en
-  paralelo"), lanzar a la vez las tasks que no dependen entre si. El orden de dependencias sigue
-  mandando.
 - **Aqui no hay flag.** Sin motor de workflows que parsee argumentos: la peticion es en lenguaje
   natural y la atiende el orquestador. Un flag visto en la documentacion general pertenece a otro
   backend.
@@ -138,7 +133,6 @@ Configurados en `hooks/hooks.json`. Las rutas se resuelven desde la raiz del pro
 ## Limites del framework
 
 - Planificacion completa (spec + tasks + revision + auditoria) antes de implementar
-- Implementacion lineal por defecto — una task tras otra, en orden de dependencias; la ejecucion concurrente se pide de forma explicita
 - Las tasks se derivan solo de specs con estado APROBADA
 - Revision adversarial (paso 5) antes de mergear
 - Cada task toca maximo 6 archivos — si supera, dividir

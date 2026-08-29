@@ -383,7 +383,6 @@ const DOCUMENTOS_RAIZ = ['CLAUDE.md', 'GEMINI.md', 'AGENTS.md'];
 // Titulos que solo tiene el documento del backend AGENTS.md. Si alguno se
 // renombra, este es el sitio donde se actualiza.
 const SECCIONES_PROPIAS_AGENTS = [
-  '## Defecto lineal y modo paralelo a peticion',
   '## Enforcement mecanico y su limite',
   '## Antigravity CLI (`agy`)',
 ];

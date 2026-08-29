@@ -34,13 +34,11 @@ Lee la plantilla completa y ejecuta todos sus pasos. No condenses ni te saltes p
 - Una spec por funcionalidad independiente. Si la solicitud abarca varias, propon la particion.
 - Cada task declara sus archivos en la tabla "Archivos afectados" y toca 6 como maximo. Si supera,
   divide la task.
-- Implementacion lineal: una task tras otra, en el orden que marcan sus dependencias
-  declaradas. Declara las dependencias reales entre tasks; de ahi sale el orden.
+- Declara las dependencias reales entre tasks; de ahi sale el orden.
 - Una spec solo pasa a Estado: APROBADA cuando el usuario la aprueba.
 
 ## Implementacion
 
-La skill `implementar-spec` implementa cada task en orden de dependencias, una tras
-otra: implementa, ejecuta tests, revision adversarial, y commitea antes de pasar a la
-siguiente. El agente `implementador` sigue disponible para el control manual de una
-task individual.
+La skill `implementar-spec` implementa cada task en orden de dependencias: implementa,
+ejecuta tests, revision adversarial, y commitea antes de pasar a la siguiente. El agente
+`implementador` sigue disponible para el control manual de una task individual.

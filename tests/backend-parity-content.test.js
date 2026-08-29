@@ -69,15 +69,15 @@ test('CLAUDE.md tiene un puntero de una linea a "Ahorro de tokens" (sin duplicar
   );
 });
 
-// ── Seccion "Modos de ejecucion": paridad de invocacion entre backends ──────
+// ── Seccion "Modos de ejecucion": no niega la concurrencia fuera de Claude Code ──
 //
-// README.md niega en un solo punto que Codex/Antigravity/Gemini paralelicen,
-// pero AGENTS.md documenta el modo paralelo a peticion para ambos. Este
-// canario protege que el punto de entrada no vuelva a comunicar esa
-// imposibilidad categorica, ni literal ni parafraseada, y que la tabla que
-// reconcilia los 4 backends no pierda ninguno.
+// README.md niega en un solo punto que Codex/Antigravity/Gemini paralelicen. Este
+// canario protege que el punto de entrada no vuelva a comunicar esa imposibilidad
+// categorica, ni literal ni parafraseada. No es duplicado de
+// tests/vocabulario-concurrencia.test.js: ese canario escanea las rutas de
+// scripts/backend-manifest.json y README.md no esta ahi.
 
-test('README.md "Modos de ejecucion" no niega el modo paralelo fuera de Claude Code y lista los 4 backends', () => {
+test('README.md "Modos de ejecucion" no niega el modo paralelo fuera de Claude Code', () => {
   const contenido = leer('README.md');
   const inicioModos = contenido.indexOf('## Modos de ejecucion');
   const inicioCarpetas = contenido.indexOf('## Que hay en cada carpeta');
@@ -91,10 +91,6 @@ test('README.md "Modos de ejecucion" no niega el modo paralelo fuera de Claude C
     !contenido.includes('no hay flag que lo cambie'),
     'README.md no debe afirmar que fuera de Claude Code no hay flag que cambie el modo de ejecucion'
   );
-  for (const backend of ['Claude Code', 'Codex', 'Antigravity', 'Gemini']) {
-    assert.ok(seccion.includes(backend), `La seccion "Modos de ejecucion" debe nombrar el backend "${backend}"`);
-  }
-  assert.ok(seccion.includes('--parallel'), 'La seccion debe seguir documentando el flag "--parallel" de Claude Code');
 
   const negacionCategorica = /no (hay|existe|se puede|es posible)[^.]{0,80}(paralel|concurren)/i;
   assert.ok(
@@ -132,34 +128,30 @@ function acotarSeccion(contenido, cabecera) {
   return (fin === -1 ? resto : resto.slice(0, fin)).join('\n');
 }
 
-test('AGENTS.md declara en sus dos secciones de origen que el commit sin revision lo sostiene la disciplina, no un hook', () => {
+test('AGENTS.md declara en "Enforcement mecanico y su limite" que el commit sin revision lo sostiene la disciplina, no un hook', () => {
   const contenido = leer('AGENTS.md');
-  const hogares = ['## Defecto lineal y modo paralelo a peticion', '## Enforcement mecanico y su limite'];
+  const seccion = acotarSeccion(contenido, '## Enforcement mecanico y su limite');
 
-  for (const cabecera of hogares) {
-    const seccion = acotarSeccion(contenido, cabecera);
-
-    assert.ok(seccion !== null, `AGENTS.md debe tener la seccion "${cabecera}"`);
-    assert.ok(
-      /disciplina, no un hook/.test(seccion),
-      `La seccion "${cabecera}" debe declarar que el commit sin revision lo sostiene la disciplina, no un hook `
-        + '(una aparicion por seccion de origen: moverla a otra seccion no debe pasar inadvertido)'
-    );
-  }
+  assert.ok(seccion !== null, 'AGENTS.md debe tener la seccion "Enforcement mecanico y su limite"');
+  assert.ok(
+    /disciplina, no un hook/.test(seccion),
+    'La seccion "Enforcement mecanico y su limite" debe declarar que el commit sin revision lo sostiene '
+      + 'la disciplina, no un hook'
+  );
 });
 
-test('GEMINI.md tiene "Defecto lineal y modo paralelo a peticion" como cabecera y declara que aqui no hay flag', () => {
+test('GEMINI.md tiene "Ejecucion en este backend" como cabecera y declara que aqui no hay flag', () => {
   const contenido = leer('GEMINI.md');
   const cabeceras = contenido.split('\n').filter(linea => linea.startsWith('## '));
 
   assert.ok(
-    cabeceras.includes('## Defecto lineal y modo paralelo a peticion'),
-    'GEMINI.md debe tener "Defecto lineal y modo paralelo a peticion" como cabecera de nivel 2'
+    cabeceras.includes('## Ejecucion en este backend'),
+    'GEMINI.md debe tener "Ejecucion en este backend" como cabecera de nivel 2'
   );
 
-  const seccion = acotarSeccion(contenido, '## Defecto lineal y modo paralelo a peticion');
+  const seccion = acotarSeccion(contenido, '## Ejecucion en este backend');
 
-  assert.ok(seccion !== null, 'GEMINI.md debe tener la seccion "Defecto lineal y modo paralelo a peticion"');
+  assert.ok(seccion !== null, 'GEMINI.md debe tener la seccion "Ejecucion en este backend"');
   assert.ok(
     /no hay flag/i.test(seccion),
     'La seccion debe declarar que en este backend el modo paralelo no se pide con un flag'

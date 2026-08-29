@@ -1,6 +1,6 @@
 # SDD (Spec-Driven Development) — Framework de Desarrollo
 
-> Flujo basado en especificaciones. Planificacion exhaustiva antes de implementar. Implementacion lineal por defecto: una task tras otra en orden de dependencias.
+> Flujo basado en especificaciones. Planificacion exhaustiva antes de implementar. El orden de dependencias manda.
 
 ## Flujo SDD
 
@@ -12,7 +12,7 @@
 5. /pr                — Crea la PR con los cambios
 ```
 
-**Planificacion exhaustiva, implementacion lineal por defecto.** El workflow `/planificar` lanza revisores en paralelo y audita cruzadamente. `/implementar-spec` implementa cada task en orden de dependencias, una tras otra: revisa la task y la commitea antes de pasar a la siguiente. Una task, un commit. Para lanzar a la vez las tasks que no dependen entre si, pidelo de forma explicita con `--parallel`.
+**Planificacion exhaustiva; el orden de dependencias manda.** El workflow `/planificar` lanza revisores en paralelo y audita cruzadamente. `/implementar-spec` implementa cada task en orden de dependencias: revisa la task y la commitea antes de pasar a la siguiente. Una task, un commit. Para lanzar a la vez las tasks que no dependen entre si, usa `--parallel`.
 
 <!-- nucleo: comandos -->
 
@@ -86,6 +86,3 @@ Contrato de la senal de revision (emisor `/implementar-spec`, consumidor `sdd-re
 └── CLAUDE.md           # este archivo
 <!-- /hueco -->
 
-<!-- hueco: limite-lineal -->
-- Implementacion lineal por defecto — una task tras otra en orden de dependencias, revision por task antes del commit; la ejecucion concurrente se pide de forma explicita
-<!-- /hueco -->

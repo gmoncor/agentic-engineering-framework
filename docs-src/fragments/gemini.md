@@ -1,6 +1,6 @@
 # SDD (Spec-Driven Development) — Framework de Desarrollo
 
-> Flujo basado en especificaciones. Planificacion exhaustiva antes de implementar. Implementacion lineal por defecto: una task tras otra, en orden de dependencias, dentro de cada spec.
+> Flujo basado en especificaciones. Planificacion exhaustiva antes de implementar. El orden de dependencias manda, dentro de cada spec.
 
 ## Flujo SDD
 
@@ -12,7 +12,7 @@
 5. /pr                — Crea la PR con los cambios
 ```
 
-**Planificacion exhaustiva, implementacion lineal por defecto.** El comando `/planificar` ejecuta el ciclo completo de planificacion. `/implementar-spec` implementa las tasks una tras otra en orden de dependencias, con revision adversarial por task antes del commit.
+**Planificacion exhaustiva; el orden de dependencias manda.** El comando `/planificar` ejecuta el ciclo completo de planificacion. `/implementar-spec` implementa las tasks en orden de dependencias, con revision adversarial por task antes del commit.
 
 <!-- nucleo: comandos -->
 
@@ -20,13 +20,8 @@
 
 <!-- nucleo: reglas-clave -->
 
-## Defecto lineal y modo paralelo a peticion
+## Ejecucion en este backend
 
-- **Lineal por defecto.** Una task tras otra en orden de dependencias; cada una se implementa,
-  se revisa y se commitea antes de la siguiente. Una task, un commit.
-- **Modo paralelo a peticion.** Si el usuario lo pide de forma explicita ("implementa la spec en
-  paralelo"), lanzar a la vez las tasks que no dependen entre si. El orden de dependencias sigue
-  mandando.
 - **Aqui no hay flag.** Sin motor de workflows que parsee argumentos: la peticion es en lenguaje
   natural y la atiende el orquestador. Un flag visto en la documentacion general pertenece a otro
   backend.
@@ -86,6 +81,3 @@ Configurados en `hooks/hooks.json`. Las rutas se resuelven desde la raiz del pro
 └── gemini-extension.json
 <!-- /hueco -->
 
-<!-- hueco: limite-lineal -->
-- Implementacion lineal por defecto — una task tras otra, en orden de dependencias; la ejecucion concurrente se pide de forma explicita
-<!-- /hueco -->

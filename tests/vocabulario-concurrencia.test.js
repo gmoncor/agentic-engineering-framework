@@ -33,10 +33,11 @@
 //   - Cualquier ruta bajo un directorio `tests/`: un fixture cita a proposito la
 //     redaccion prohibida para comprobar que se detecta.
 //
-// QUE NO ES UN HALLAZGO: describir el modo lineal como el modo POR DEFECTO. "una
-// task a la vez", "modo secuencial (defecto)" o "implementacion lineal por
-// defecto" son la descripcion correcta del producto y ninguno de los patrones de
-// abajo los toca.
+// QUE NO ES UN HALLAZGO: describir el orden de ejecucion sin imponerlo como
+// restriccion ni negar la concurrencia. Los patrones de abajo detectan una
+// prohibicion o una ausencia declarada, no una descripcion neutra del orden;
+// `REDACCIONES_LEGITIMAS` fija ese limite con fixtures literales, sin certificar
+// que esa redaccion siga vigente en el resto del producto.
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -86,7 +87,7 @@ const PATRONES = [
       + hueco(40) + '\\b' + PARALELO + '\\b',
       'gi'
     ),
-    arreglo: 'El framework no prohibe la ejecucion concurrente: la ofrece a peticion explicita.',
+    arreglo: 'El orden de dependencias no prohibe la ejecucion concurrente entre tasks independientes.',
   },
   {
     nombre: 'secuencial-impuesto',
@@ -96,7 +97,7 @@ const PATRONES = [
       + '|obligatoriamente\\s+secuencial|forzosamente\\s+secuencial|secuencial\\s+por\\s+obligacion)\\b',
       'gi'
     ),
-    arreglo: 'El trabajo secuencial es el modo por defecto, no una obligacion: escribe "por defecto".',
+    arreglo: 'El orden de dependencias no impone una secuencia estricta: no lo describas como tal.',
   },
   {
     nombre: 'secuencial-asumido',
@@ -111,7 +112,7 @@ const PATRONES = [
       + hueco(40) + '\\b' + CUALQUIER_CONCURRENCIA + '\\b',
       'gi'
     ),
-    arreglo: 'La ejecucion concurrente existe y se pide de forma explicita; no la declares ausente.',
+    arreglo: 'La concurrencia entre tasks independientes existe: no la declares ausente.',
   },
   {
     nombre: 'prohibicion-explicita',
@@ -315,7 +316,7 @@ for (const legitima of REDACCIONES_LEGITIMAS) {
     assert.deepStrictEqual(
       detectar(legitima),
       [],
-      'el detector marco como restriccion una descripcion correcta del modo por defecto'
+      'el detector marco como restriccion una redaccion legitima del orden de trabajo'
     );
   });
 }
@@ -329,21 +330,10 @@ for (const legitima of REDACCIONES_LEGITIMAS) {
 // tiene sitio para el matiz completo), asi que se comprueban aparte.
 
 for (const manifiesto of ['package.json', 'gemini-extension.json']) {
-  test(`${manifiesto} presenta el modo lineal como el modo por defecto`, () => {
+  test(`${manifiesto} no impone el trabajo secuencial`, () => {
     const { description } = JSON.parse(fs.readFileSync(path.join(RAIZ, manifiesto), 'utf8'));
     assert.ok(description, `${manifiesto} no declara description`);
 
-    const normalizada = normalizar(description);
     assert.deepStrictEqual(detectar(description), [], `${manifiesto} impone el trabajo secuencial`);
-
-    if (/\b(lineal|secuencial)\b/.test(normalizada)) {
-      assert.match(
-        normalizada,
-        /\b(lineal|secuencial)\b[^.]{0,20}por\s+defecto/,
-        `${manifiesto} describe el modelo de trabajo como lineal sin calificarlo de "por defecto".`
-          + ' Es la primera frase que lee quien no conoce el producto: la ejecucion concurrente'
-          + ' existe y se pide de forma explicita.'
-      );
-    }
   });
 }

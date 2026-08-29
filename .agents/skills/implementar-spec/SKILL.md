@@ -15,7 +15,7 @@ Implementa TODAS las tasks de una spec APROBADA.
 
 ## Ejecucion
 
-- **Orden lineal:** implementa cada task en orden de dependencias, una tras otra: para cada task,
+- **Orden de dependencias:** implementa cada task en orden de dependencias: para cada task,
   ejecuta un agente `implementador` que sigue `ai_docs/dev_templates/implementar.md`, revisa el
   diff y commitea antes de pasar a la siguiente.
 - **Gate por task:** antes del commit, un agente aparte (contexto limpio) revisa ESE diff. Solo si
