@@ -20,10 +20,17 @@
 //   - la rama concurrente de `recorrerNiveles` sustituida por un bucle de uno en uno;
 //   - `if (false && !escapeActivo(...))` en el gate de tests;
 //   - `gitVerificado` devolviendo `{ ok: true }` sin mirar el codigo de salida;
-//   - `construirResultado` con el campo de convergencia comentado y retorno nulo.
+//   - `construirResultado` con el campo de convergencia comentado y retorno nulo;
+//   - el calculo real del gate de tests (`veredictoPorExitCode`, `descubrirComandoTest`)
+//     se inyectaba como doble en ocho puntos y nunca se ejercitaba: `exitCode === 0`
+//     sustituido por `==`, el `if (!Number.isInteger(exitCode))` invertido, el descarte
+//     del placeholder npm retirado y la prioridad de descubrimiento invertida.
 
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const orq = require('../.claude/workflows/lib/orquestacion');
 
@@ -779,4 +786,146 @@ test('construirResultado: el retorno lleva las cifras del conjunto y el veredict
   assert.strictEqual(r.tasks_fallidas, 1);
   assert.deepStrictEqual(r.convergencia, { veredicto: 'OMITIDA', razon: 'tasks_fallidas' });
   assert.deepStrictEqual(r.implementaciones, implementaciones);
+});
+
+// ── Gate de tests: calculo real del veredicto (sin doble) ────────────────────
+// Los bloques de arriba inyectan `gateTests` como doble: acreditan que
+// `ejecutarTask` respeta el veredicto, no como se calcula. Aqui se llama
+// directo a las funciones exportadas -- `evaluarGateTests`, `descubrirComandoTest`
+// y `veredictoPorExitCode` a traves de ella -- sin ningun doble de por medio.
+
+const COMANDO = { cmd: 'npm', args: ['test'], fuente: 'package.json' };
+
+test('evaluarGateTests: exit 0 es el unico verde', () => {
+  const r = orq.evaluarGateTests({ comando: COMANDO, exitCode: 0 });
+  assert.strictEqual(r.estado, 'PASA');
+  assert.match(r.nota, /exit 0/);
+});
+
+test('evaluarGateTests: exit distinto de cero es rojo', () => {
+  const r = orq.evaluarGateTests({ comando: COMANDO, exitCode: 1 });
+  assert.strictEqual(r.estado, 'FALLIDA');
+});
+
+test('evaluarGateTests: exitCode "0" en cadena no es verde -- exit 0 es EXACTAMENTE el numero 0', () => {
+  const r = orq.evaluarGateTests({ comando: COMANDO, exitCode: '0' });
+  assert.strictEqual(r.estado, 'FALLIDA');
+});
+
+test('evaluarGateTests: sin codigo de salida (null o undefined) es rojo, no un pase, y la nota nombra la causa', () => {
+  for (const exitCode of [null, undefined]) {
+    const r = orq.evaluarGateTests({ comando: COMANDO, exitCode });
+    assert.strictEqual(r.estado, 'FALLIDA', 'exitCode=' + exitCode);
+    assert.match(r.nota, /sin codigo de salida/, 'exitCode=' + exitCode);
+  }
+});
+
+test('evaluarGateTests: exit negativo (-1) es rojo', () => {
+  const r = orq.evaluarGateTests({ comando: COMANDO, exitCode: -1 });
+  assert.strictEqual(r.estado, 'FALLIDA');
+});
+
+test('evaluarGateTests: sin comando y tocando codigo ejecutable bloquea', () => {
+  const r = orq.evaluarGateTests({ comando: null, archivos: ['src/a.js'] });
+  assert.strictEqual(r.estado, 'FALLIDA');
+});
+
+test('evaluarGateTests: sin comando y tocando solo docs/config exime con aviso, no bloquea', () => {
+  const r = orq.evaluarGateTests({ comando: null, archivos: ['README.md', 'config.json'] });
+  assert.strictEqual(r.estado, 'ADVISORY');
+});
+
+test('evaluarGateTests: un archivo sin extension cuenta como no ejecutable', () => {
+  const r = orq.evaluarGateTests({ comando: null, archivos: ['LICENSE', 'Makefile'] });
+  assert.strictEqual(r.estado, 'ADVISORY');
+});
+
+test('evaluarGateTests: entrada vacia no lanza y devuelve el veredicto de la rama sin comando ni archivos', () => {
+  assert.strictEqual(orq.evaluarGateTests().estado, 'ADVISORY');
+  assert.strictEqual(orq.evaluarGateTests({}).estado, 'ADVISORY');
+});
+
+// ── Gate de tests: descubrimiento del comando (fixtures en disco) ────────────
+
+function dirTemporal() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'gate-tests-'));
+}
+
+function escribirArchivo(base, ruta, contenido) {
+  const destino = path.join(base, ruta);
+  fs.mkdirSync(path.dirname(destino), { recursive: true });
+  fs.writeFileSync(destino, contenido);
+}
+
+test('descubrirComandoTest: package.json con scripts.test real -> fuente package.json', () => {
+  const base = dirTemporal();
+  escribirArchivo(base, 'package.json', JSON.stringify({ scripts: { test: 'node --test tests/' } }));
+
+  const r = orq.descubrirComandoTest(base);
+  assert.strictEqual(r.fuente, 'package.json');
+  assert.strictEqual(r.cmd, 'npm');
+});
+
+test('descubrirComandoTest: el comando configurado gana a npm -- par de fixtures, con y sin hooks/config.json', () => {
+  const base = dirTemporal();
+  escribirArchivo(base, 'package.json', JSON.stringify({ scripts: { test: 'node --test tests/' } }));
+
+  const sinConfigurado = orq.descubrirComandoTest(base);
+  assert.strictEqual(sinConfigurado.fuente, 'package.json');
+
+  escribirArchivo(base, 'hooks/config.json', JSON.stringify({ sdd_test_gate: { command: 'pytest -x' } }));
+  const conConfigurado = orq.descubrirComandoTest(base);
+  assert.strictEqual(conConfigurado.fuente, 'hooks/config.json');
+  assert.strictEqual(conConfigurado.cmd, 'pytest');
+  assert.deepStrictEqual(conConfigurado.args, ['-x']);
+});
+
+test('descubrirComandoTest: solo pytest.ini -> fuente pytest.ini', () => {
+  const base = dirTemporal();
+  escribirArchivo(base, 'pytest.ini', '[pytest]\n');
+
+  const r = orq.descubrirComandoTest(base);
+  assert.strictEqual(r.fuente, 'pytest.ini');
+  assert.strictEqual(r.cmd, 'pytest');
+});
+
+test('descubrirComandoTest: el placeholder de npm no cuenta, cae al siguiente candidato', () => {
+  const base = dirTemporal();
+  escribirArchivo(base, 'package.json',
+    JSON.stringify({ scripts: { test: 'echo "Error: no test specified" && exit 1' } }));
+  escribirArchivo(base, 'pytest.ini', '[pytest]\n');
+
+  const r = orq.descubrirComandoTest(base);
+  assert.notStrictEqual(r && r.cmd, 'npm');
+  assert.strictEqual(r.fuente, 'pytest.ini');
+});
+
+test('descubrirComandoTest: setup.cfg sin [tool:pytest] no es runner', () => {
+  const base = dirTemporal();
+  escribirArchivo(base, 'setup.cfg', '[metadata]\nname = paquete\n');
+
+  assert.strictEqual(orq.descubrirComandoTest(base), null);
+});
+
+test('descubrirComandoTest: setup.cfg con [tool:pytest] si es runner', () => {
+  const base = dirTemporal();
+  escribirArchivo(base, 'setup.cfg', '[tool:pytest]\ntestpaths = tests\n');
+
+  const r = orq.descubrirComandoTest(base);
+  assert.strictEqual(r.fuente, 'setup.cfg');
+  assert.strictEqual(r.cmd, 'pytest');
+});
+
+test('descubrirComandoTest: directorio sin ningun candidato -> null', () => {
+  const base = dirTemporal();
+  assert.strictEqual(orq.descubrirComandoTest(base), null);
+});
+
+test('descubrirComandoTest: package.json con JSON corrupto no tumba el descubrimiento, cae al siguiente', () => {
+  const base = dirTemporal();
+  escribirArchivo(base, 'package.json', '{ esto no es json');
+  escribirArchivo(base, 'pytest.ini', '[pytest]\n');
+
+  const r = orq.descubrirComandoTest(base);
+  assert.strictEqual(r.fuente, 'pytest.ini');
 });
