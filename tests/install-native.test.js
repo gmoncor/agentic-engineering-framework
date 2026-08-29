@@ -88,7 +88,7 @@ function instalar(t, backend) {
   const destino = fs.mkdtempSync(path.join(os.tmpdir(), `install-${backend}-`));
   t.after(() => fs.rmSync(destino, { recursive: true, force: true }));
 
-  const resultado = spawnSync('node', [CLI, 'install', '--backend', backend], {
+  const resultado = spawnSync(process.execPath, [CLI, 'install', '--backend', backend], {
     cwd: destino,
     encoding: 'utf8',
   });

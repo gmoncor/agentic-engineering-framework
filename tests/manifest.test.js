@@ -2,19 +2,24 @@
 
 // Verifica scripts/artifact-manifest.json y su validador (scripts/validate-manifest.js).
 //
-// Dos capas: (1) el manifiesto real contra el disco real del repo, para que un artefacto
+// Tres capas: (1) el manifiesto real contra el disco real del repo, para que un artefacto
 // nuevo sin mapear o un output borrado rompan el test; (2) casos limite con fixtures
 // aislados en un directorio temporal, para que las reglas del validador (source ausente,
 // huerfano, output duplicado, preserve con transform invalido) no dependan del estado
-// real del arbol, que otros cambios pueden mover.
+// real del arbol, que otros cambios pueden mover; (3) el validador como subproceso real
+// (node scripts/validate-manifest.js), para que main() traduzca la lista de errores a un
+// codigo de salida y no solo a un valor de retorno que nadie ejercita fuera del CLI.
 
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 
 const { cargarManifiesto, validarManifiesto, RAIZ, MANIFEST_PATH } = require('../scripts/validate-manifest');
+
+const VALIDADOR_CLI = path.join(RAIZ, 'scripts', 'validate-manifest.js');
 
 function dirTemporal() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'artifact-manifest-'));
@@ -54,6 +59,42 @@ test('el manifiesto real declara transforms_registry con al menos un transform u
 test('MANIFEST_PATH apunta al fichero real del repo', () => {
   assert.strictEqual(MANIFEST_PATH, path.join(RAIZ, 'scripts', 'artifact-manifest.json'));
   assert.ok(fs.existsSync(MANIFEST_PATH));
+});
+
+// main() nunca se invocaba como subproceso: los tests de arriba prueban validarManifiesto()
+// importada, no la traduccion a codigo de salida que hace main(). MANIFEST_PATH se resuelve
+// con __dirname (no con cwd ni con una variable de entorno), asi que el unico fixture roto
+// que el subproceso real puede leer es una copia sin modificar del script junto a un
+// artifact-manifest.json invalido en el mismo directorio temporal.
+test('subproceso real: un manifiesto roto en un fixture aislado hace salir el validador con codigo distinto de cero', () => {
+  const raiz = dirTemporal();
+  escribirArchivo(raiz, 'scripts/validate-manifest.js', fs.readFileSync(VALIDADOR_CLI, 'utf8'));
+  escribirArchivo(raiz, 'scripts/artifact-manifest.json', JSON.stringify({
+    transforms_registry: { none: 'sin transformacion' },
+    artifacts: [
+      { id: 'fantasma', source: '.claude/agents/fantasma.md', transform: 'none', mode: 'managed', outputs: [] }
+    ]
+  }));
+
+  const ejecucion = spawnSync(process.execPath, [path.join(raiz, 'scripts', 'validate-manifest.js')], {
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+
+  assert.notStrictEqual(ejecucion.status, 0, ejecucion.stdout + ejecucion.stderr);
+  assert.match(ejecucion.stderr, /SOURCE_NOT_FOUND/);
+  assert.match(ejecucion.stderr, /fantasma/);
+});
+
+test('subproceso real: el manifiesto valido del repositorio hace salir el validador con 0', () => {
+  const ejecucion = spawnSync(process.execPath, [VALIDADOR_CLI], {
+    cwd: RAIZ,
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+
+  assert.strictEqual(ejecucion.status, 0, ejecucion.stdout + ejecucion.stderr);
+  assert.match(ejecucion.stdout, /Manifiesto valido: \d+ artefactos verificados contra disco\./);
 });
 
 test('caso limite: source ausente en disco falla con SOURCE_NOT_FOUND y nombra el path y la entrada', () => {
