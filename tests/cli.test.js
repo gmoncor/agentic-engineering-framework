@@ -44,7 +44,7 @@ function crearPaqueteFixture(manifest, archivos = {}) {
 
 /** Captura stdout/stderr siempre (exito o error), a diferencia de execFileSync. */
 function ejecutar(args, opts = {}) {
-  const resultado = spawnSync('node', [CLI, ...args], {
+  const resultado = spawnSync(process.execPath, [CLI, ...args], {
     cwd: opts.cwd,
     env: Object.assign({}, process.env, opts.env),
     input: opts.input,
@@ -179,7 +179,7 @@ test('install --backend claude copia rutas comunes y de backend, y crea director
 
   assert.strictEqual(codigo, 0);
   assert.match(stdout, /Rutas copiadas/);
-  assert.match(stdout, /opus/i, 'debe avisar del modelo default en install de claude');
+  assert.match(stdout, /Nota:.*modelo de sesion/i, 'debe avisar del modelo de sesion en install de claude (sin settings.json en el fixture, sale sin nombre)');
   assert.strictEqual(
     fs.readFileSync(path.join(proyecto, '.claude', 'agents', 'planificador.md'), 'utf8'),
     'contenido agente',
@@ -580,7 +580,7 @@ test('install --backend all no avisa de backend equivocado aunque no haya marcad
 
   assert.strictEqual(codigo, 0);
   assert.doesNotMatch(stderr, /Aviso/);
-  assert.match(stdout, /opus/i, 'install --backend all incluye claude, debe avisar del modelo');
+  assert.match(stdout, /Nota:.*modelo de sesion/i, 'install --backend all incluye claude, debe avisar del modelo de sesion (sin settings.json en el fixture, sale sin nombre)');
 });
 
 test('install --backend codex sobre proyecto con AGENTS.md de antigravity no avisa (comparten archivo)', () => {
@@ -2323,6 +2323,7 @@ test('Caso B: excepcion inyectada en el cuerpo (SDD_TEST_THROW_IN_BODY) retira e
 });
 
 test('Caso C: ai_docs/core como enlace simbolico roto deja error parcial sin sellar el destino', () => {
+  if (process.platform === 'win32') return; // symlinkSync de directorio exige privilegios o modo desarrollador en Windows.
   const paquete = crearPaqueteFixture(
     { common: [], claude: ['CLAUDE.md'] },
     { 'CLAUDE.md': 'contexto' },
@@ -2351,4 +2352,57 @@ test('Caso C: ai_docs/core como enlace simbolico roto deja error parcial sin sel
     !fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
     'un error parcial no debe dejar lockfile residual',
   );
+});
+
+test('la nota del modelo de sesion cita el modelo real de .claude/settings.json del paquete de origen, no un literal', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    {
+      'CLAUDE.md': 'contexto',
+      '.claude/settings.json': JSON.stringify({ model: 'claude-otro-modelo-9' }),
+    },
+  );
+  const proyecto = dirTemporal();
+  const { codigo, stdout } = ejecutar(['install', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /claude-otro-modelo-9/, 'la nota debe nombrar el modelo declarado en el paquete de origen, no uno hardcodeado');
+});
+
+test('sin .claude/settings.json en el paquete de origen, la nota se omite o sale sin nombre de modelo y la instalacion no falla', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    { 'CLAUDE.md': 'contexto' },
+  );
+  const proyecto = dirTemporal();
+  const { codigo, stdout, stderr } = ejecutar(['install', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.doesNotMatch(stderr, /Error inesperado/);
+  assert.doesNotMatch(stdout, /modelo de sesion \(tier capaz/);
+});
+
+test('con .claude/settings.json invalido en el paquete de origen, la nota se omite o sale sin nombre de modelo y la instalacion no falla', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'] },
+    {
+      'CLAUDE.md': 'contexto',
+      '.claude/settings.json': '{ esto no es json valido',
+    },
+  );
+  const proyecto = dirTemporal();
+  const { codigo, stdout, stderr } = ejecutar(['install', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.doesNotMatch(stderr, /Error inesperado/);
+  assert.doesNotMatch(stdout, /modelo de sesion \(tier capaz/);
 });

@@ -881,6 +881,24 @@ function reportarArchivosProtegidos(saltadasPorEdicion) {
 }
 
 /**
+ * Lee el modelo de sesion declarado en .claude/settings.json de PACKAGE_ROOT
+ * (el paquete de origen que la instalacion acaba de copiar, no el destino).
+ * Tolerante: fichero ausente, JSON invalido o `model` ausente devuelven null
+ * en vez de lanzar -- el dato solo alimenta un aviso, no puede tumbar la
+ * instalacion.
+ */
+function leerModeloClaudeConfigurado() {
+  const settingsPath = path.join(PACKAGE_ROOT, '.claude', 'settings.json');
+  if (!fs.existsSync(settingsPath)) return null;
+  try {
+    const { model } = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    return typeof model === 'string' && model ? model : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Reporta el resultado de install. El mensaje final depende de `huboFallos`:
  * con fallos (rutas de copia o directorios del proyecto malformados), el
  * texto declara la instalacion incompleta en vez de exitosa, para que
@@ -904,7 +922,10 @@ function reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, sc
     console.log('Anadido scripts.test a package.json para correr los tests de los hooks.');
   }
   if (backend === 'claude' || backend === 'all') {
-    console.log('Nota: .claude/settings.json configura claude-opus-4-8 como modelo de sesion (tier capaz, precio alto). Cambialo con /model o editando settings.json.');
+    const modelo = leerModeloClaudeConfigurado();
+    console.log(modelo
+      ? `Nota: .claude/settings.json configura ${modelo} como modelo de sesion (tier capaz, precio alto). Cambialo con /model o editando settings.json.`
+      : 'Nota: revisa el modelo de sesion configurado en .claude/settings.json. Cambialo con /model o editando settings.json.');
   }
   if (huboFallos) {
     console.log('Instalacion incompleta: revisa los errores anteriores antes de continuar.');
