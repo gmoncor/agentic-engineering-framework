@@ -19,8 +19,12 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { runHook, tempDir, writeFile, HOOKS_DIR } = require('./helpers');
+const { runHook, tempDir, writeFile, HOOKS_DIR, motorDeWorkflowsInstalado } = require('./helpers');
 const signal = require('../sdd-review-signal');
+
+const SIN_MOTOR = motorDeWorkflowsInstalado()
+  ? false
+  : 'sin motor de workflows de Claude Code (.claude/workflows/implementar-spec.js y/o .claude/settings.json ausentes): no hay artefacto que verificar en este backend';
 
 const HOOK = 'sdd-review-gate.js';
 const SESSION = 'sesion-de-prueba-1';
@@ -235,7 +239,7 @@ test('round-trip: la senal que emite el flujo por task es exactamente la que el 
   assert.strictEqual(runHook(HOOK, commit('feat: pagos'), envSinSenal).decision.decision, 'deny');
 });
 
-test('el emisor del flujo revisa por task y usa el mismo contrato de senal que el hook', () => {
+test('el emisor del flujo revisa por task y usa el mismo contrato de senal que el hook', { skip: SIN_MOTOR }, () => {
   const workflow = fs.readFileSync(
     path.resolve(HOOKS_DIR, '..', '.claude', 'workflows', 'implementar-spec.js'), 'utf8');
 
@@ -248,7 +252,7 @@ test('el emisor del flujo revisa por task y usa el mismo contrato de senal que e
   assert.doesNotMatch(workflow, /SDD-POST-IMPL/, 'el canal de la marca en el mensaje de commit se elimino');
 });
 
-test('la limitacion frente a falsificacion deliberada esta documentada en README y en el modulo de la senal', () => {
+test('la limitacion frente a falsificacion deliberada esta documentada en README y en el modulo de la senal', { skip: SIN_MOTOR }, () => {
   // La ausencia del fichero es un fallo, no un motivo para omitir el caso: omitirlo
   // convertia un renombrado o un borrado en un contador de omitidos que nadie mira, y
   // la comparacion dejaba de ejecutarse en silencio. Los demas casos de este fichero
@@ -273,7 +277,7 @@ test('la limitacion frente a falsificacion deliberada esta documentada en README
   assert.match(signalSource, /LIMITE HONESTO/);
 });
 
-test('el hook solo se cablea donde el flujo emite la senal: Claude Code', () => {
+test('el hook solo se cablea donde el flujo emite la senal: Claude Code', { skip: SIN_MOTOR }, () => {
   const settings = fs.readFileSync(path.resolve(HOOKS_DIR, '..', '.claude', 'settings.json'), 'utf8');
   const hooksJson = fs.readFileSync(path.join(HOOKS_DIR, 'hooks.json'), 'utf8');
 

@@ -300,32 +300,45 @@ test('rejilla: 630 filas, todas regex-positivas, ninguna sin detectar', () => {
   );
 });
 
-// ─── Limites declarados: envoltorio CON argumentos propios (fuera de alcance, ver P19) ─────
+// ─── Clases cerradas: envoltorio CON argumentos propios (P19) y palabra suelta en cabeza de
+// segmento de "case"/funcion (P20) ───────────────────────────────────────────────────────────
 //
-// Estas tres quedan fuera de la rejilla a proposito: su eje es "envoltorio con argumentos
-// propios", que el modulo no resuelve por diseno (ver comentario L51-63 de sdd-git-command.js).
-//
-// Las dos siguientes (P20) son la otra mitad del mismo limite: una palabra suelta en cabeza
-// de segmento (nombre de rama de "case" o nombre de funcion) tampoco se puede descartar sin
-// adivinar, igual que "envoltorio con argumentos propios". Regresion frente a la ultima
-// release publicada (4.0.0): la regex por subcadena que el tokenizador sustituyo si las
-// detectaba.
+// Ambas comparten la misma forma de bypass: una palabra suelta en cabeza de segmento que ningun
+// descarte de un solo token puede saltar sin adivinar donde termina. P19 lo resuelve enumerando
+// los flags propios de cada envoltorio conocido (OPCIONES_ENVOLTORIO_CON_VALOR); P20 lo resuelve
+// tratando `case`/funcion como sintaxis con su propio parser, no como una entrada de Set.
 
-const LIMITES_DECLARADOS = [
-  { id: 'timeout 30', comando: 'timeout 30 git commit -m x' }, // LIMITE DECLARADO — P19
-  { id: 'nice -n 10', comando: 'nice -n 10 git commit -m x' }, // LIMITE DECLARADO — P19
-  { id: 'xargs', comando: 'xargs git commit -m x' }, // LIMITE DECLARADO — P19
-  { id: 'case/esac', comando: 'case x in a) git commit -m x;; esac' }, // LIMITE DECLARADO — P20
-  { id: 'definicion de funcion', comando: 'f() { git commit -m x; }; f' }, // LIMITE DECLARADO — P20
+const CASOS_CERRADOS = [
+  { id: 'timeout 30', comando: 'timeout 30 git commit -m x' }, // P19
+  { id: 'nice -n 10', comando: 'nice -n 10 git commit -m x' }, // P19
+  { id: 'xargs', comando: 'xargs git commit -m x' }, // P19
+  { id: 'case/esac', comando: 'case x in a) git commit -m x;; esac' }, // P20
+  { id: 'definicion de funcion', comando: 'f() { git commit -m x; }; f' }, // P20
 ];
 
-test('limites declarados: envoltorio con argumentos propios y palabra suelta en cabeza de segmento no se detectan (P19/P20, fuera de alcance)', () => {
-  const detectadas = LIMITES_DECLARADOS.filter(l => esInvocacion(l.comando, 'git', ['commit']));
+test('clases cerradas: envoltorio con argumentos propios y palabra suelta en cabeza de segmento SI se detectan (P19/P20)', () => {
+  const sinDetectar = CASOS_CERRADOS.filter(l => !esInvocacion(l.comando, 'git', ['commit']));
   assert.deepStrictEqual(
-    detectadas.map(l => l.id),
+    sinDetectar.map(l => l.id),
     [],
-    `limites declarados detectados por error (deberian seguir fuera de alcance): ${detectadas.map(l => l.id).join(', ')}`,
+    `casos que deberian estar cerrados y no se detectan: ${sinDetectar.map(l => l.id).join(', ')}`,
   );
+});
+
+test('control positivo P19: timeout -s KILL 30 (flag del envoltorio con su propio valor, encadenado con el posicional) reconoce git', () => {
+  assert.strictEqual(esInvocacion('timeout -s KILL 30 git commit -m x', 'git', ['commit']), true);
+});
+
+test('control negativo P19: nice git commit -m x (envoltorio sin flags) sigue resolviendo por el camino simple', () => {
+  assert.strictEqual(esInvocacion('nice git commit -m x', 'git', ['commit']), true);
+});
+
+test('control negativo P20: patron de case que MENCIONA "git commit" como texto no es invocacion', () => {
+  assert.strictEqual(esInvocacion('case x in "git commit") echo no-git;; esac', 'git', ['commit']), false);
+});
+
+test('control negativo P20: definicion de funcion sin invocacion posterior no cuenta', () => {
+  assert.strictEqual(esInvocacion('f() { git commit -m x; }', 'git', ['commit']), false);
 });
 
 // ─── Controles negativos: contra el fail-closed (premise_check #5) ─────────────────────────

@@ -38,4 +38,13 @@ function writeFile(file, content) {
   return file;
 }
 
-module.exports = { runHook, tempDir, writeFile, HOOKS_DIR };
+// Contrato verificado por sdd-review-gate.test.js y session-analyzer.test.js: solo
+// existen en instalaciones con el backend Claude Code (motor de workflows). Un
+// backend Gemini/Codex/Antigravity-only no los trae, y eso es correcto, no un bug.
+function motorDeWorkflowsInstalado() {
+  const claudeDir = path.resolve(HOOKS_DIR, '..', '.claude');
+  return fs.existsSync(path.join(claudeDir, 'workflows', 'implementar-spec.js'))
+    && fs.existsSync(path.join(claudeDir, 'settings.json'));
+}
+
+module.exports = { runHook, tempDir, writeFile, HOOKS_DIR, motorDeWorkflowsInstalado };
