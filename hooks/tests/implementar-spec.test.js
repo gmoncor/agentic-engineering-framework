@@ -7,7 +7,17 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { tempDir, writeFile } = require('./helpers');
+const { tempDir, writeFile, motorDeWorkflowsInstalado } = require('./helpers');
+
+if (!motorDeWorkflowsInstalado()) {
+  test('implementar-spec.test.js', {
+    skip: 'sin motor de workflows de Claude Code (.claude/workflows/implementar-spec.js y/o .claude/settings.json ausentes): .claude/workflows/lib/orquestacion no existe en este backend',
+  }, () => {});
+} else {
+  ejecutarTests();
+}
+
+function ejecutarTests() {
 const orq = require('../../.claude/workflows/lib/orquestacion');
 
 function taskDoc(archivos) {
@@ -539,3 +549,5 @@ test('implementar-spec.js: lo que se busca "en el proyecto" no se busca en el di
   assert.doesNotMatch(WORKFLOW, /descubrirComandoTest\('\.'\)/);
   assert.doesNotMatch(WORKFLOW, /computeNiveles\(taskList, '\.'\)/);
 });
+
+} // ejecutarTests

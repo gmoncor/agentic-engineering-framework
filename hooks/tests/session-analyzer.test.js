@@ -8,8 +8,18 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const path = require('path');
-const { tempDir, writeFile } = require('./helpers');
-const { parseTranscript, computeMetrics, hookIdentifierFromCommand, rutaNativa, PRICING_USD_PER_MTOK } = require('../../.claude/workflows/lib/session-analyzer');
+const { tempDir, writeFile, motorDeWorkflowsInstalado } = require('./helpers');
+
+if (!motorDeWorkflowsInstalado()) {
+  test('session-analyzer.test.js', {
+    skip: 'sin motor de workflows de Claude Code (.claude/workflows/implementar-spec.js y/o .claude/settings.json ausentes): .claude/workflows/lib/session-analyzer no existe en este backend',
+  }, () => {});
+} else {
+  ejecutarTests();
+}
+
+function ejecutarTests() {
+  const { parseTranscript, computeMetrics, hookIdentifierFromCommand, rutaNativa, PRICING_USD_PER_MTOK } = require('../../.claude/workflows/lib/session-analyzer');
 
 function assistantEvent(timestamp, model, usage) {
   return JSON.stringify({ type: 'assistant', timestamp, message: { model, usage } });
@@ -312,3 +322,5 @@ test('friccion: el mismo hook grabado en Windows y en Unix suma en una sola fila
     'sdd-turn-budget.js': { total: 2, byCode: { TURN_BUDGET_BLOCK: 2 } },
   });
 });
+
+}

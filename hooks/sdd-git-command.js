@@ -65,12 +65,57 @@ function esFlagDeScript(programa, flag) {
 // OPCIONES_GLOBALES_CON_VALOR para git/gh), no extender este Set.
 const ENVOLTORIOS_SIN_FLAGS = new Set(['env', 'command', 'nohup', 'stdbuf', 'nice', 'time', 'sudo', 'doas']);
 
+// Envoltorios cuyos flags propios se enumeran explicitamente: `timeout 30 git commit` y `nice -n
+// 10 git commit` no los resolvia ENVOLTORIOS_SIN_FLAGS, que solo descarta el nombre del
+// envoltorio a secas, sin sus argumentos. El Set de cada entrada son los flags que consumen el
+// token siguiente (mismo criterio que OPCIONES_GLOBALES_CON_VALOR); `xargs` no tiene entradas
+// porque en el caso que importa aqui (`xargs git commit`) no antepone flags propios.
+//
+// LIMITE REAL remanente, no cosmetico (dueño mecanico: P19): un envoltorio no enumerado aqui con
+// flags propios (`sudo -u otro git commit`) sigue sin resolverse -- enumerar los flags de cada
+// wrapper externo posible no es el objetivo de este modulo.
+const OPCIONES_ENVOLTORIO_CON_VALOR = {
+  timeout: new Set(['-s', '--signal']),
+  nice: new Set(['-n', '--adjustment']),
+  xargs: new Set(),
+};
+
+// `timeout` exige DURATION como argumento posicional propio siempre, lleve o no `-s`/`--signal`
+// -- a diferencia de `nice`, cuyo unico argumento propio ya es el valor de `-n`. Sin este Set,
+// `timeout 30 git commit` dejaria "30" fijado como `programa`.
+const ENVOLTORIOS_CON_POSICIONAL_PROPIO = new Set(['timeout']);
+
+/**
+ * Si `seg[idx]` es un envoltorio de OPCIONES_ENVOLTORIO_CON_VALOR, devuelve el indice tras saltar
+ * sus pares flag-valor (encadenados, uno tras otro) y su posicional propio si aplica. Devuelve
+ * null cuando el token no es un envoltorio de esta tabla, o cuando ENVOLTORIOS_SIN_FLAGS ya lo
+ * cubre y no hay flag/posicional propio que saltar -- ese caso lo resuelve el camino simple de
+ * esPrefijoDescartable, para no duplicar logica.
+ */
+function saltarEnvoltorioConValor(seg, idx) {
+  const nombre = path.basename(seg[idx].valor);
+  const flagsConValor = OPCIONES_ENVOLTORIO_CON_VALOR[nombre];
+  if (!flagsConValor) return null;
+
+  let cursor = idx + 1;
+  while (cursor < seg.length && !seg[cursor].entrecomillado && flagsConValor.has(seg[cursor].valor)) {
+    cursor += 2;
+  }
+
+  const saltoFlags = cursor > idx + 1;
+  const tienePosicional = ENVOLTORIOS_CON_POSICIONAL_PROPIO.has(nombre)
+    && cursor < seg.length && !seg[cursor].entrecomillado && !seg[cursor].valor.startsWith('-');
+  if (tienePosicional) cursor += 1;
+
+  return (saltoFlags || tienePosicional || !ENVOLTORIOS_SIN_FLAGS.has(nombre)) ? cursor : null;
+}
+
 // Tokens de sintaxis de shell que nunca son el programa de una invocacion: aparecen en cabeza de
 // segmento cuando una agrupacion (bloque, subshell, condicional, bucle, negacion) envuelve la
-// invocacion real. `case`/`esac` y la definicion de funcion (`f() { ... }`) quedan fuera a
-// proposito: comparten forma de bypass con lo de mas abajo (una palabra suelta en cabeza de
-// segmento que ningun descarte puede saltar sin adivinar) y piden tratamiento propio, no una
-// entrada de Set (ver Riesgos aceptados de la task que cerro esta clase).
+// invocacion real. `case`/`esac` y la definicion de funcion (`f() { ... }`) quedan fuera de este
+// Set a proposito: en ambos, el programa real esta TRAS una palabra suelta (el patron de `case`,
+// el nombre de la funcion) que ningun descarte de un solo token puede saltar sin adivinar donde
+// termina -- parseSegmento y extraerFunciones (mas abajo) los resuelven con tratamiento propio.
 const SINTAXIS_DE_SHELL = new Set([
   '(', ')', '{', '}', '!', 'if', 'then', 'elif', 'else', 'fi', 'while', 'until', 'for', 'do', 'done',
 ]);
@@ -201,6 +246,50 @@ function esPrefijoDescartable(tok) {
   );
 }
 
+// `nombre() { cuerpo }` define una funcion: no es una invocacion, es un registro para cuando ese
+// nombre se use despues como palabra de cabeza de segmento. `profundidad` tolera llaves anidadas
+// dentro del cuerpo (un `if`/subshell interno con sus propias `{ }`) sin cerrar en la primera.
+function esNombreDeFuncion(tok) {
+  return !tok.entrecomillado && /^[A-Za-z_][A-Za-z0-9_]*$/.test(tok.valor);
+}
+
+/**
+ * extraerFunciones(tokens) -> { tokens, funciones }
+ *
+ * Retira del stream cada definicion `nombre() { cuerpo }` y la registra en `funciones` (nombre ->
+ * tokens del cuerpo). El stream que devuelve ya no contiene la definicion: definirla no invoca
+ * nada: solo se convierte en invocacion cuando ese nombre aparece luego como cabeza de segmento
+ * (ver el uso de `funciones` en parseSegmento).
+ */
+function extraerFunciones(tokens) {
+  const funciones = new Map();
+  const salida = [];
+  let i = 0;
+
+  while (i < tokens.length) {
+    const esDefinicion = i + 3 < tokens.length
+      && esNombreDeFuncion(tokens[i])
+      && !tokens[i + 1].entrecomillado && tokens[i + 1].valor === '('
+      && !tokens[i + 2].entrecomillado && tokens[i + 2].valor === ')'
+      && !tokens[i + 3].entrecomillado && tokens[i + 3].valor === '{';
+
+    if (!esDefinicion) { salida.push(tokens[i]); i += 1; continue; }
+
+    let profundidad = 1;
+    let j = i + 4;
+    while (j < tokens.length && profundidad > 0) {
+      if (!tokens[j].entrecomillado && tokens[j].valor === '{') profundidad += 1;
+      else if (!tokens[j].entrecomillado && tokens[j].valor === '}') profundidad -= 1;
+      if (profundidad > 0) j += 1;
+    }
+
+    funciones.set(tokens[i].valor, tokens.slice(i + 4, j));
+    i = j + 1;
+  }
+
+  return { tokens: salida, funciones };
+}
+
 /**
  * Una invocacion (descarta el prefijo de asignaciones/sintaxis/envoltorios en cabeza de
  * segmento, toma el primer token restante como `programa`, y recorre el resto acumulando en
@@ -209,13 +298,37 @@ function esPrefijoDescartable(tok) {
  * de shell y el flag es de tipo -c, el resto del segmento no son sus flags/palabras: es un
  * script anidado, y se re-analiza como una invocacion propia (recursivo, por si el script
  * anidado a su vez envuelve otro ejecutor).
+ *
+ * `case ... in PATRON) cuerpo ;; esac`: el programa real esta tras el `)` que cierra el patron,
+ * no en el patron mismo (que puede citar "git commit" como texto sin ser una invocacion). Se
+ * localiza el primer `)` no entrecomillado del segmento y se re-analiza todo lo posterior.
+ *
+ * Si la cabeza de segmento es un nombre registrado en `funciones` (ver extraerFunciones), la
+ * invocacion real es la de su cuerpo: se re-analiza el cuerpo guardado en vez del segmento.
  */
-function parseSegmento(seg) {
+function parseSegmento(seg, funciones = new Map()) {
   let idx = 0;
-  while (idx < seg.length && esPrefijoDescartable(seg[idx])) idx += 1;
+  while (idx < seg.length) {
+    const tok = seg[idx];
+    if (!tok.entrecomillado) {
+      const salto = saltarEnvoltorioConValor(seg, idx);
+      if (salto !== null) { idx = salto; continue; }
+    }
+    if (esPrefijoDescartable(tok)) { idx += 1; continue; }
+    break;
+  }
   if (idx >= seg.length) return [];
 
-  const programa = path.basename(seg[idx].valor);
+  const cabeza = seg[idx];
+  if (!cabeza.entrecomillado && cabeza.valor === 'case') {
+    const cierre = seg.findIndex((t, i) => i > idx && !t.entrecomillado && t.valor === ')');
+    return cierre === -1 ? [] : parseSegmento(seg.slice(cierre + 1), funciones);
+  }
+  if (!cabeza.entrecomillado && funciones.has(cabeza.valor)) {
+    return invocacionesDeTokens(funciones.get(cabeza.valor), funciones);
+  }
+
+  const programa = path.basename(cabeza.valor);
   idx += 1;
   const palabras = [];
   const flags = [];
@@ -228,7 +341,7 @@ function parseSegmento(seg) {
       if (resto.length === 1 && resto[0].entrecomillado) {
         return [{ programa, palabras, flags }, ...invocaciones(resto[0].valor)];
       }
-      return [{ programa, palabras, flags }, ...parseSegmento(resto)];
+      return [{ programa, palabras, flags }, ...parseSegmento(resto, funciones)];
     }
     if (!tok.entrecomillado && OPCIONES_GLOBALES_CON_VALOR.has(tok.valor)) { idx += 2; continue; }
     if (!tok.entrecomillado && tok.valor.startsWith('-')) flags.push(tok.valor);
@@ -239,15 +352,8 @@ function parseSegmento(seg) {
   return [{ programa, palabras, flags }];
 }
 
-/**
- * invocaciones(cmd) -> [{ programa, palabras, flags }]
- *
- * Parte los tokens en segmentos por separadores de shell no entrecomillados y analiza cada
- * segmento con parseSegmento. Ver parseSegmento para el criterio por invocacion.
- */
-function invocaciones(cmd) {
-  const tokens = tokenizar(cmd);
-
+/** Parte `tokens` en segmentos por separadores de shell no entrecomillados y analiza cada uno. */
+function invocacionesDeTokens(tokens, funciones) {
   const segmentos = [[]];
   for (const t of tokens) {
     if (!t.entrecomillado && SEPARADORES.has(t.valor)) segmentos.push([]);
@@ -255,8 +361,19 @@ function invocaciones(cmd) {
   }
 
   const resultado = [];
-  for (const seg of segmentos) resultado.push(...parseSegmento(seg));
+  for (const seg of segmentos) resultado.push(...parseSegmento(seg, funciones));
   return resultado;
+}
+
+/**
+ * invocaciones(cmd) -> [{ programa, palabras, flags }]
+ *
+ * Extrae las definiciones de funcion del comando (ver extraerFunciones) y analiza el resto del
+ * stream con invocacionesDeTokens. Ver parseSegmento para el criterio por invocacion.
+ */
+function invocaciones(cmd) {
+  const { tokens, funciones } = extraerFunciones(tokenizar(cmd));
+  return invocacionesDeTokens(tokens, funciones);
 }
 
 /** Invocaciones de `cmd` cuyo programa y prefijo de palabras casan con los dados. */
