@@ -374,7 +374,7 @@ test('F4: 20 llamadas concurrentes sobre la misma sesion no pierden incrementos'
   assert.match(r.decision.reason, /llevas 21 acciones sin commit/, 'las 20 llamadas concurrentes mas esta deben sumar 21, sin perdida');
 });
 
-// --- s13/03: `git add` en enforce con el presupuesto superado ---
+// --- `git add` en enforce con el presupuesto superado ---
 // El unico checkpoint (commit) exige un fichero ya staged; sin esta exencion,
 // stagearlo con el presupuesto superado queda bloqueado por la misma tool
 // call que hace falta para llegar al commit, y el ciclo no tiene salida.
