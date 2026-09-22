@@ -1,5 +1,5 @@
 ---
-description: "Implementa TODAS las tasks de una spec en orden de dependencias, revision adversarial por task antes de commitear"
+description: "Implementa TODAS las tasks de una spec en orden de dependencias (o en paralelo con --parallel), revision adversarial por task antes de commitear"
 ---
 
 Ejecuta el workflow de implementacion completa de una spec.

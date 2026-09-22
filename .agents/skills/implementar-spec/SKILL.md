@@ -1,6 +1,6 @@
 ---
 name: implementar-spec
-description: "Se activa cuando el usuario pide implementar una spec completa o ejecutar todas sus tasks. Implementa las tasks respetando dependencias y cierra con revision adversarial."
+description: "Se activa cuando el usuario pide implementar una spec completa o ejecutar todas sus tasks, en orden de dependencias o en paralelo (pedido en lenguaje natural). Implementa las tasks respetando dependencias y cierra con revision adversarial."
 ---
 
 Implementa TODAS las tasks de una spec APROBADA.
