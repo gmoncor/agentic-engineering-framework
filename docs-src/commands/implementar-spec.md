@@ -3,7 +3,7 @@
      aqui el procedimiento va escrito paso a paso dentro del prompt. Es el
      unico sitio donde se edita esa version; el .toml se genera desde aqui. -->
 ---
-description: "Implementa TODAS las tasks de una spec en orden de dependencias, revision adversarial de cada una antes de commitear"
+description: "Implementa TODAS las tasks de una spec en orden de dependencias o en paralelo (pedido en lenguaje natural), revision adversarial de cada una antes de commitear"
 ---
 
 Implementa TODAS las tasks de una spec, en orden de dependencias.

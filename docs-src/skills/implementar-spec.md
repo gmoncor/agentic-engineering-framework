@@ -10,7 +10,7 @@
      comando y en la plantilla de revision de PR. -->
 ---
 name: implementar-spec
-description: "Se activa cuando el usuario pide implementar una spec completa o ejecutar todas sus tasks. Implementa las tasks respetando dependencias y cierra con revision adversarial."
+description: "Se activa cuando el usuario pide implementar una spec completa o ejecutar todas sus tasks, en orden de dependencias o en paralelo (pedido en lenguaje natural). Implementa las tasks respetando dependencias y cierra con revision adversarial."
 source-body: omit
 ---
 

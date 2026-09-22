@@ -1,4 +1,4 @@
-description = "Implementa TODAS las tasks de una spec en orden de dependencias, revision adversarial de cada una antes de commitear"
+description = "Implementa TODAS las tasks de una spec en orden de dependencias o en paralelo (pedido en lenguaje natural), revision adversarial de cada una antes de commitear"
 
 prompt = """
 Implementa TODAS las tasks de una spec, en orden de dependencias.
