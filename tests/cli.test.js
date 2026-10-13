@@ -64,7 +64,7 @@ function ejecutar(args, opts = {}) {
  */
 function ejecutarAsync(args, opts = {}) {
   return new Promise(resolve => {
-    const proceso = spawn('node', [CLI, ...args], {
+    const proceso = spawn(process.execPath, [CLI, ...args], {
       cwd: opts.cwd,
       env: Object.assign({}, process.env, opts.env),
     });
@@ -1791,48 +1791,53 @@ test('install con fallo durante la copia retira igualmente .sdd-install-in-progr
   );
 });
 
-test('install con un subdirectorio sin permisos de escritura reporta rutas fallidas, copia las demas y sale con exit != 0', () => {
-  if (process.platform === 'win32') return; // chmod no restringe escritura de forma fiable en Windows.
+test('install con una ruta de destino no escribible reporta rutas fallidas, copia las demas y sale con exit != 0', () => {
   const paquete = crearPaqueteFixture(
     { common: [], claude: ['.claude/workflows', 'CLAUDE.md'] },
     { '.claude/workflows/flujo.md': 'workflow', 'CLAUDE.md': 'contexto' },
   );
   const proyecto = dirTemporal();
-  fs.mkdirSync(path.join(proyecto, '.claude'));
-  fs.chmodSync(path.join(proyecto, '.claude'), 0o555);
+  // `.claude` es un fichero normal: crear `.claude/workflows` falla con
+  // EEXIST/ENOTDIR con cualquier uid (root incluido) y en cualquier
+  // plataforma, a diferencia de un directorio con permisos restringidos.
+  fs.writeFileSync(path.join(proyecto, '.claude'), 'no es un directorio');
 
-  try {
-    const { codigo, stdout, stderr } = ejecutar(['install', '--backend', 'claude', '--force'], {
-      cwd: proyecto,
-      env: { SDD_FRAMEWORK_ROOT: paquete },
-    });
+  const { codigo, stdout, stderr } = ejecutar(['install', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
 
-    assert.notStrictEqual(codigo, 0, 'debe salir con codigo distinto de cero si hubo fallos');
-    assert.match(stdout, /Rutas copiadas/);
-    assert.match(stdout, /CLAUDE\.md/, 'la ruta sin conflicto debe copiarse igual');
-    assert.match(stderr, /Rutas que fallaron al copiar/);
-    assert.match(stderr, /\.claude\/workflows/);
-    assert.strictEqual(
-      fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'),
-      'contexto',
-      'la ruta que si pudo copiarse no debe verse afectada por el fallo de la otra',
-    );
-    assert.ok(
-      !fs.existsSync(path.join(proyecto, '.claude', 'workflows')),
-      'la ruta fallida no debe dejar contenido a medio copiar',
-    );
+  assert.notStrictEqual(codigo, 0, 'debe salir con codigo distinto de cero si hubo fallos');
+  assert.match(stdout, /Rutas copiadas/);
+  assert.match(stdout, /CLAUDE\.md/, 'la ruta sin conflicto debe copiarse igual');
+  assert.match(stderr, /Rutas que fallaron al copiar/);
+  assert.match(stderr, /\.claude\/workflows/);
+  assert.strictEqual(
+    fs.readFileSync(path.join(proyecto, 'CLAUDE.md'), 'utf8'),
+    'contexto',
+    'la ruta que si pudo copiarse no debe verse afectada por el fallo de la otra',
+  );
+  assert.ok(
+    !fs.existsSync(path.join(proyecto, '.claude', 'workflows')),
+    'la ruta fallida no debe dejar contenido a medio copiar',
+  );
+  assert.ok(
+    fs.statSync(path.join(proyecto, '.claude')).isFile(),
+    'el fichero que bloquea la ruta fallida no debe sustituirse',
+  );
 
-    const sidecar = JSON.parse(
-      fs.readFileSync(path.join(proyecto, '.sdd-installed-hashes.json'), 'utf8'),
-    );
-    assert.ok('CLAUDE.md' in sidecar, 'el sidecar debe registrar la ruta exitosa');
-    assert.ok(
-      !Object.keys(sidecar).some(archivo => archivo.startsWith('.claude/workflows')),
-      'el sidecar no debe registrar hashes de la ruta que fallo',
-    );
-  } finally {
-    fs.chmodSync(path.join(proyecto, '.claude'), 0o755);
-  }
+  const sidecar = JSON.parse(
+    fs.readFileSync(path.join(proyecto, '.sdd-installed-hashes.json'), 'utf8'),
+  );
+  assert.ok('CLAUDE.md' in sidecar, 'el sidecar debe registrar la ruta exitosa');
+  assert.ok(
+    !Object.keys(sidecar).some(archivo => archivo.startsWith('.claude/workflows')),
+    'el sidecar no debe registrar hashes de la ruta que fallo',
+  );
+  assert.ok(
+    !fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
+    'el lockfile debe retirarse también cuando alguna ruta falla',
+  );
 });
 
 test('install sin fallos se comporta igual que antes: todas las rutas copiadas, sin reporte de fallidas, exit 0', () => {
@@ -2185,17 +2190,11 @@ test('F2: GEMINI.md como directorio no revienta el aviso de layout antiguo', () 
   assert.match(stderr, /no se pudo leer/i);
 });
 
-test('F3: dos instalaciones concurrentes sobre el mismo destino, una completa y la otra aborta sin corromper el resultado', async () => {
-  // El manifiesto lleva un directorio con muchos archivos (en vez de un par
-  // sueltos) a proposito: la copia y el hash-sidecar necesitan tiempo
-  // suficiente para que el segundo proceso, lanzado casi al mismo instante,
-  // llegue a intentar su propio lock MIENTRAS el primero todavia lo tiene
-  // puesto. Con un manifiesto minimo la copia termina antes de que el
-  // arranque del segundo proceso lo alcance, y la carrera deja de reproducirse.
-  const archivosBulk = {};
-  for (let i = 0; i < 400; i += 1) {
-    archivosBulk[`.claude/bulk/archivo-${i}.md`] = `contenido de prueba numero ${i} `.repeat(20);
-  }
+test('F3: dos instalaciones concurrentes sobre el mismo destino terminan sin corromper el resultado', async () => {
+  // Las aserciones no dependen del orden de llegada: si el segundo proceso
+  // encuentra el lock, aborta con 1; si llega cuando el primero ya terminó,
+  // instala con 0. El contrato determinista del lock lo cubre el test del
+  // lockfile preexistente.
   const paquete = crearPaqueteFixture(
     {
       common: ['CLAUDE.md'],
@@ -2209,29 +2208,55 @@ test('F3: dos instalaciones concurrentes sobre el mismo destino, una completa y 
       '.claude/agents/planificador.md': 'agente',
       'GEMINI.md': 'contexto gemini',
       'AGENTS.md': 'contexto agents',
-      ...archivosBulk,
     },
   );
   const proyecto = dirTemporal();
   const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
 
-  const [a, b] = await Promise.all([
+  const ejecuciones = await Promise.all([
     ejecutarAsync(['install', '--backend', 'all', '--force'], opts),
     ejecutarAsync(['install', '--backend', 'all', '--force'], opts),
   ]);
 
-  const codigos = [a.codigo, b.codigo].sort();
-  assert.deepStrictEqual(codigos, [0, 1], 'una ejecucion debe completar con exito y la otra debe abortar');
+  for (const ejecucion of ejecuciones) {
+    assert.ok(
+      ejecucion.codigo === 0 || ejecucion.codigo === 1,
+      `cada ejecución debe terminar con 0 o 1, no con ${ejecucion.codigo}: ${ejecucion.stderr}`,
+    );
+    if (ejecucion.codigo === 0) {
+      assert.match(ejecucion.stdout, /Framework instalado/);
+    } else {
+      assert.match(ejecucion.stderr, /instalacion en curso/i, 'una ejecución abortada solo puede deberse al lock');
+    }
+  }
+  assert.ok(
+    ejecuciones.some(ejecucion => ejecucion.codigo === 0),
+    'al menos una ejecución debe completar la instalación',
+  );
 
-  const ganadora = a.codigo === 0 ? a : b;
-  const abortada = a.codigo === 0 ? b : a;
-  assert.match(ganadora.stdout, /Framework instalado/);
-  assert.match(abortada.stderr, /instalacion en curso/i);
-
-  const totalEEXIST = [a.stdout, a.stderr, b.stdout, b.stderr]
+  const totalEEXIST = ejecuciones
+    .flatMap(ejecucion => [ejecucion.stdout, ejecucion.stderr])
     .map(texto => (texto.match(/EEXIST/g) || []).length)
     .reduce((suma, n) => suma + n, 0);
   assert.strictEqual(totalEEXIST, 0, 'ninguna ejecucion debe fallar por colision EEXIST al crear rutas del destino');
+
+  const esperados = {
+    'CLAUDE.md': 'contexto',
+    '.claude/agents/planificador.md': 'agente',
+    'GEMINI.md': 'contexto gemini',
+    'AGENTS.md': 'contexto agents',
+  };
+  for (const [ruta, contenido] of Object.entries(esperados)) {
+    assert.strictEqual(
+      fs.readFileSync(path.join(proyecto, ruta), 'utf8'),
+      contenido,
+      `el destino debe quedar completo: ${ruta}`,
+    );
+  }
+  assert.ok(
+    !fs.existsSync(path.join(proyecto, '.sdd-install-in-progress')),
+    'no debe quedar lockfile al terminar ambas ejecuciones',
+  );
 });
 
 test('F4: con al menos una ruta fallida, el mensaje final no declara exito', () => {
