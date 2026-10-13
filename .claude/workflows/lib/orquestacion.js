@@ -401,6 +401,253 @@ function falloDeGit(resultado, mensaje, log) {
   return resultado;
 }
 
+// ── Árbol limpio y apartado recuperable ──────────────────────────────────────
+
+/**
+ * Directorio de los documentos de plan. Queda fuera de la comprobación de árbol
+ * limpio y del apartado: specs y tasks pueden estar a medio editar sin ser
+ * trabajo de ninguna task, y el guard de escrituras también los exime.
+ */
+const DIR_PLAN = 'ai_docs';
+const PATHSPEC_SIN_PLAN = ['.', ':(exclude)' + DIR_PLAN];
+
+/** `git status` que lista, fichero a fichero, lo que no está commiteado fuera de ai_docs/. */
+const ARGV_ESTADO = ['status', '--porcelain', '--untracked-files=all', '--'].concat(PATHSPEC_SIN_PLAN);
+
+/** Ruta de una línea de `git status --porcelain`: el destino si es un renombrado, sin comillas. */
+function rutaDePorcelain(linea) {
+  let ruta = linea.slice(3);
+  const flecha = ruta.indexOf(' -> ');
+  if (flecha !== -1) ruta = ruta.slice(flecha + 4);
+  if (ruta.length >= 2 && ruta.startsWith('"') && ruta.endsWith('"')) {
+    ruta = ruta.slice(1, -1).replace(/\\(["\\])/g, '$1');
+  }
+  return ruta;
+}
+
+function esDelPlan(ruta) {
+  return ruta === DIR_PLAN || ruta.startsWith(DIR_PLAN + '/');
+}
+
+/**
+ * Lee la salida de `git status --porcelain` y dice si el árbol está limpio
+ * fuera de ai_docs/. Devuelve `{ limpio, rutas }`.
+ *
+ * El pathspec ya excluye ai_docs/; el filtro se repite aquí para que la
+ * decisión no dependa de que el git instalado entienda la exclusión.
+ */
+function evaluarArbolLimpio(salida) {
+  const rutas = String(salida == null ? '' : salida)
+    .split(/\r?\n/)
+    .filter(function (l) { return l.trim().length > 3; })
+    .map(rutaDePorcelain)
+    .filter(function (r) { return r && !esDelPlan(r); });
+  return { limpio: rutas.length === 0, rutas };
+}
+
+/**
+ * Ejecuta `git status` y evalúa el resultado. Un git que no corrió no acredita
+ * un árbol limpio: se devuelve `limpio: false` con el error, para que quien
+ * llama se detenga en vez de seguir sobre un estado desconocido.
+ */
+async function comprobarArbolLimpio(spawn) {
+  const estado = await gitVerificado(ARGV_ESTADO, spawn);
+  if (!estado.ok) return { limpio: false, rutas: [], error: estado.error };
+  return evaluarArbolLimpio(estado.out);
+}
+
+/** Las primeras rutas de una lista, para un mensaje legible. */
+function resumenRutas(rutas) {
+  const max = 10;
+  const lista = (rutas || []).slice(0, max).join(', ');
+  return rutas && rutas.length > max ? lista + ' y ' + (rutas.length - max) + ' más' : lista;
+}
+
+/**
+ * Motivo por el que el workflow no arranca la implementación con el árbol sucio,
+ * con las tres salidas que tiene quien lo lanzó.
+ */
+function mensajeArbolSucio(estado) {
+  const causa = estado.error
+    ? 'no se pudo comprobar que el árbol esté limpio (' + estado.error + ')'
+    : 'hay cambios sin commitear fuera de ' + DIR_PLAN + '/: ' + resumenRutas(estado.rutas);
+  return 'No se implementa: ' + causa + '. El commit de la primera task los absorbería, y el '
+    + 'apartado de una task fallida se los llevaría con su trabajo. Antes de relanzar: '
+    + 'commitéalos, apártalos con `git stash push --include-untracked`, o lanza la spec en '
+    + 'un worktree de git limpio.';
+}
+
+/**
+ * Argumentos del `git stash` que aparta el trabajo de una task que no se
+ * commitea. Devuelve `null` cuando no hay nada que se pueda atribuir a la task.
+ *
+ * - Secuencial: todo el árbol salvo ai_docs/. El árbol estaba limpio al empezar
+ *   la task, así que lo que queda es suyo, también lo que escribió fuera de su
+ *   tabla; acotarlo al ámbito dejaría ese resto para el commit de la siguiente.
+ * - Concurrente: solo `ambito`, las rutas de la task con cambios. El árbol es
+ *   compartido con las hermanas en curso; sin ámbito no hay nada atribuible.
+ */
+function argvApartado(task, ambito, modoParalelo) {
+  const base = ['stash', 'push', '--include-untracked', '-m', 'sdd-apartado: ' + task.titulo, '--'];
+  if (!modoParalelo) return base.concat(PATHSPEC_SIN_PLAN);
+  if (!Array.isArray(ambito) || ambito.length === 0) return null;
+  return base.concat(ambito.map(function (r) { return rutaNativa(r); }));
+}
+
+/**
+ * Rutas con cambios (`git status --porcelain -z`) que caen dentro del ámbito.
+ * El `stash` con una ruta que no casa con ningún fichero falla A MEDIAS: guarda
+ * la entrada y deja el árbol sin limpiar. Por eso el pathspec del apartado
+ * concurrente es solo lo que de verdad cambió, no la tabla entera.
+ *
+ * Devuelve `{ rutas, borradasEnIndice }`. Las segundas son las rutas cuyo
+ * borrado ya está preparado en el índice (X = 'D', o el origen de un
+ * renombrado): no existen ni en el árbol ni en el índice, así que el pathspec
+ * del `stash` no casaría con ellas hasta devolverlas al índice.
+ */
+function rutasCambiadasEnAmbito(salidaZ, ambito, prefijo) {
+  const declaradas = (ambito || []).map(function (r) {
+    return rutaNativa(r).replace(/^\.\//, '').replace(/\/+$/, '');
+  }).filter(Boolean);
+  const dentro = function (ruta) {
+    return declaradas.some(function (a) { return ruta === a || ruta.startsWith(a + '/'); });
+  };
+
+  const entradas = String(salidaZ || '').split('\0');
+  const rutas = [];
+  const borradasEnIndice = [];
+  const relativa = function (cruda) {
+    return (prefijo && cruda.startsWith(prefijo)) ? cruda.slice(prefijo.length) : cruda;
+  };
+  for (let i = 0; i < entradas.length; i++) {
+    const e = entradas[i];
+    if (e.length <= 3) continue;
+    const xy = e.slice(0, 2);
+    const destino = relativa(e.slice(3));
+    // Un renombrado o copia trae el origen en la entrada siguiente.
+    const origen = (/[RC]/.test(xy) && i + 1 < entradas.length) ? relativa(entradas[++i]) : null;
+    for (const r of [destino, origen]) {
+      if (r && dentro(r) && !rutas.includes(r)) rutas.push(r);
+    }
+    if (xy[0] === 'D' && dentro(destino)) borradasEnIndice.push(destino);
+    if (xy[0] === 'R' && origen && dentro(origen)) borradasEnIndice.push(origen);
+  }
+  return { rutas, borradasEnIndice };
+}
+
+/**
+ * Aparta, sin destruirlo, el trabajo de una task que no se commitea: queda en
+ * `git stash` con el nombre "sdd-apartado: <titulo>", recuperable con
+ * `git stash pop`. Nunca ejecuta `reset --hard` ni `clean`.
+ *
+ * `deps`: `spawnGit`, `modoParalelo`, `ambito`, `log`.
+ *
+ * Devuelve `{ ok, nota, detener }`. `detener` pide parar el recorrido
+ * secuencial: si el apartado falla o deja residuo, la siguiente task empezaría
+ * con ese resto y su `add -A` lo commitearía como propio.
+ */
+async function apartarTrabajo(task, deps) {
+  const d = deps || {};
+  const log = registrar(d);
+  const modoParalelo = !!d.modoParalelo;
+  const titulo = task.titulo;
+
+  let ambito = d.ambito;
+  if (modoParalelo) {
+    if (!Array.isArray(ambito) || ambito.length === 0) {
+      log('Task ' + titulo + ': trabajo conservado sin commitear (sin ámbito declarado no se puede '
+        + 'separar del de las hermanas)');
+      return {
+        ok: false, detener: false,
+        nota: 'trabajo conservado sin commitear: sin ámbito declarado no se puede apartar sin '
+          + 'llevarse el de las hermanas',
+      };
+    }
+    const estado = await gitVerificado(
+      ['status', '--porcelain', '-z', '--untracked-files=all', '--'].concat(ambito.map(function (r) {
+        return rutaNativa(r);
+      })), d.spawnGit);
+    if (!estado.ok) {
+      log('Task ' + titulo + ': no se pudo apartar su trabajo — ' + estado.error);
+      return { ok: false, detener: false, nota: 'trabajo conservado sin commitear: ' + estado.error };
+    }
+    // `status --porcelain` da las rutas desde la raíz del repositorio; el ámbito
+    // es relativo al proyecto, que puede ser un subdirectorio del repositorio.
+    const prefijo = await gitVerificado(['rev-parse', '--show-prefix'], d.spawnGit);
+    if (!prefijo.ok) {
+      log('Task ' + titulo + ': no se pudo apartar su trabajo — ' + prefijo.error);
+      return { ok: false, detener: false, nota: 'trabajo conservado sin commitear: ' + prefijo.error };
+    }
+    const cambiadas = rutasCambiadasEnAmbito(estado.out, ambito, prefijo.out.trim());
+    ambito = cambiadas.rutas;
+    if (ambito.length === 0) return { ok: true, detener: false, nota: 'nada que apartar en su ámbito' };
+
+    // Un borrado ya preparado en el índice (lo deja así la revisión, tras su
+    // `add -A`) se devuelve al índice para que el pathspec del `stash` case con
+    // él; el borrado sigue en el árbol y el `stash` lo guarda igual.
+    if (cambiadas.borradasEnIndice.length > 0) {
+      const devuelto = await gitVerificado(['reset', '-q', '--'].concat(cambiadas.borradasEnIndice), d.spawnGit);
+      if (!devuelto.ok) {
+        log('Task ' + titulo + ': no se pudo apartar su trabajo — ' + devuelto.error);
+        return { ok: false, detener: false, nota: 'trabajo conservado sin commitear: ' + devuelto.error };
+      }
+    }
+  }
+
+  // La cima de la pila antes y después dice si el `stash` guardó algo: con
+  // «No local changes to save» sale con 0 y no crea entrada, y ese mensaje
+  // cambia con el idioma de git.
+  const cimaAntes = await cimaDeStash(d.spawnGit);
+  const argv = argvApartado(task, ambito, modoParalelo);
+  const apartado = await gitVerificado(argv, d.spawnGit);
+  if (!apartado.ok) {
+    log('Task ' + titulo + ': no se pudo apartar su trabajo — ' + apartado.error
+      + '. No se destruye nada' + (modoParalelo ? '' : '; el recorrido se detiene'));
+    return {
+      ok: false, detener: !modoParalelo,
+      nota: 'no se pudo apartar el trabajo (' + apartado.error + '); se conserva sin commitear',
+    };
+  }
+
+  const guardado = (await cimaDeStash(d.spawnGit)) !== cimaAntes;
+  const nota = guardado
+    ? 'trabajo apartado en git stash "sdd-apartado: ' + titulo + '"'
+    : 'nada que apartar: git stash no guardó cambios';
+  if (!modoParalelo) {
+    const tras = await comprobarArbolLimpio(d.spawnGit);
+    if (!tras.limpio) {
+      const resto = tras.error || resumenRutas(tras.rutas);
+      log('Task ' + titulo + ': tras apartar su trabajo queda residuo (' + resto + '); el recorrido se detiene');
+      return { ok: false, detener: true, nota: nota + ', pero queda residuo: ' + resto };
+    }
+  }
+
+  log('Task ' + titulo + ': ' + nota + (guardado ? ' (recuperable con git stash pop)' : ''));
+  return { ok: true, detener: false, nota };
+}
+
+/**
+ * Commit de la cima de `git stash`, o cadena vacía si la pila está vacía o la
+ * lectura no corre. Solo sirve para comparar antes y después de un `stash push`.
+ */
+async function cimaDeStash(spawn) {
+  const r = await spawn(['rev-parse', '-q', '--verify', 'refs/stash']);
+  return r && r.code === 0 ? String(r.out || '').trim() : '';
+}
+
+/**
+ * Llama a `deps.descartar(task)` y deja constancia en el resultado. Un
+ * `descartar` que no devuelve nada cuenta como apartado sin incidencias.
+ */
+async function apartarYRegistrar(task, resultado, deps) {
+  const salida = (await deps.descartar(task)) || {};
+  if (salida.nota) {
+    resultado.notas = (resultado.notas ? resultado.notas + ' ' : '') + '(' + salida.nota + ')';
+  }
+  if (salida.detener) resultado.detener_recorrido = true;
+  return resultado;
+}
+
 // ── Revision del diff de una task y su commit ────────────────────────────────
 
 /**
@@ -414,10 +661,12 @@ function falloDeGit(resultado, mensaje, log) {
  * e indice, y sin acotar, `add -A` prepara tambien el trabajo sin commitear de
  * una hermana en curso (F1) — el commit de una absorbe el de otra, en el camino
  * feliz, sin que nadie falle. Sin `ambito` (modo secuencial, donde no hay
- * hermanas que contaminen el indice) el comportamiento es el de siempre.
+ * hermanas que contaminen el índice) se acota al proyecto (`-- .`, relativo a
+ * su raíz): en un monorepo, `add -A` sin pathspec prepararía también lo de
+ * fuera del subdirectorio, que la comprobación de árbol limpio no mira.
  */
 async function diffPreparado(spawn, ambito) {
-  const pathspec = (Array.isArray(ambito) && ambito.length > 0) ? ['--'].concat(ambito) : [];
+  const pathspec = pathspecDelCommit(ambito);
 
   const preparado = await gitVerificado(['add', '-A'].concat(pathspec), spawn);
   if (!preparado.ok) return { ok: false, error: preparado.error };
@@ -426,6 +675,15 @@ async function diffPreparado(spawn, ambito) {
   if (!lectura.ok) return { ok: false, error: lectura.error };
 
   return { ok: true, diff: lectura.out };
+}
+
+/**
+ * Pathspec común de `add`, `diff --cached` y `commit`: el ámbito si lo hay; si
+ * no, el proyecto entero (`.`), lo mismo que cubre la comprobación de árbol
+ * limpio. Lo que se revisa y lo que se commitea cubren así las mismas rutas.
+ */
+function pathspecDelCommit(ambito) {
+  return ['--'].concat((Array.isArray(ambito) && ambito.length > 0) ? ambito : ['.']);
 }
 
 /** Emite la constancia atada al diff revisado y commitea. El commit tambien se lee por exit code. */
@@ -441,8 +699,8 @@ async function comitearAprobada(task, resultado, contexto, deps) {
   // ya stageo una hermana en curso — exactamente lo que diffPreparado evita en
   // add/diff pero que aqui, sin pathspec, volveria a colar. `git commit -- <ruta>`
   // commitea solo esas rutas del indice y deja el resto preparado para su dueña.
-  const ambito = deps.ambito;
-  const pathspec = (Array.isArray(ambito) && ambito.length > 0) ? ['--'].concat(ambito) : [];
+  // Sin ámbito, el commit se acota al proyecto, igual que add/diff.
+  const pathspec = pathspecDelCommit(deps.ambito);
 
   // Un commit denegado (por un gate, por un indice bloqueado) dejaria el trabajo
   // sin commitear y el informe diria lo contrario.
@@ -461,7 +719,8 @@ async function comitearAprobada(task, resultado, contexto, deps) {
  * reflejado.
  *
  * `deps`: `spawnGit` (ejecuta git), `revisar`, `corregir`, `emitirSenal`,
- * `descartar` (deshace el trabajo sin commitear), `log`, `ambito` (opcional:
+ * `descartar(task)` (aparta, recuperable, el trabajo sin commitear; ver
+ * apartarTrabajo), `log`, `ambito` (opcional:
  * ficheros declarados de la task; se calcula una vez por task, antes de esta
  * llamada, no por cada comando de git).
  */
@@ -476,7 +735,7 @@ async function revisarYComitear(task, resultado, deps) {
   // motivo: quien lea el resultado sabe que este commit, si lo hay, no se acoto.
   if (Array.isArray(ambito) && ambito.length === 0) {
     resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
-      + '(ambito vacio: task sin tabla "Archivos afectados" legible, no se acota el commit)';
+      + '(ambito vacio: task sin tabla "Archivos afectados" legible; el commit solo se acota al proyecto)';
   }
 
   const primera = await diffPreparado(d.spawnGit, ambito);
@@ -521,16 +780,15 @@ async function revisarYComitear(task, resultado, deps) {
     veredicto = revision ? revision.veredicto : 'ERROR';
   }
 
-  // Sigue adversa: no se commitea. Se descarta el trabajo para que no contamine
-  // el diff de la siguiente task.
+  // Sigue adversa: no se commitea. Se aparta el trabajo, recuperable, para que
+  // no contamine el diff de la siguiente task.
   if (veredicto !== 'APROBADA') {
     log('Task ' + task.titulo + ': FALLIDA (revision ' + veredicto + '), no se commitea');
-    await d.descartar();
     resultado.resultado = 'FALLIDA';
     resultado.revision = revision;
     resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
       + '(revision adversarial: ' + veredicto + ')';
-    return resultado;
+    return apartarYRegistrar(task, resultado, d);
   }
 
   return comitearAprobada(task, resultado, { diff, revision }, d);
@@ -580,7 +838,7 @@ function escapeActivo(env) {
 
 /**
  * Gate de tests y, si pasa, revision + commit. El rojo de la suite BLOQUEA el
- * commit y descarta el trabajo de la task: es el unico veredicto admisible sobre
+ * commit y aparta el trabajo de la task: es el único veredicto admisible sobre
  * los tests, y no se cree ningun numero que el implementador reporte.
  */
 async function trasGateTests(task, resultado, deps) {
@@ -595,11 +853,10 @@ async function trasGateTests(task, resultado, deps) {
 
   if (gate.estado === 'FALLIDA' && !escapeActivo(deps.env)) {
     log('Task ' + task.titulo + ': FALLIDA (gate de tests) — ' + gate.nota + ', no se commitea');
-    await deps.descartar();
     resultado.resultado = 'FALLIDA';
     resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
       + '(gate de tests: ' + gate.nota + ')';
-    return resultado;
+    return apartarYRegistrar(task, resultado, deps);
   }
   if (gate.estado !== 'PASA') {
     log('Gate de tests (' + task.titulo + '): ' + gate.nota);
@@ -616,8 +873,11 @@ async function trasGateTests(task, resultado, deps) {
  * resultado FALLIDA. De eso depende que el fallo de una task no tumbe a las
  * hermanas de su mismo nivel cuando el nivel se lanza a la vez.
  *
- * `deps`: `implementar`, `gateTests`, `revisarYComitear`, `descartar`, `log`,
- * `env`.
+ * `deps`: `implementar`, `gateTests`, `revisarYComitear`, `descartar(task)`,
+ * `log`, `env` y, solo en el recorrido secuencial, `arbolLimpio()`: antes de
+ * implementar se comprueba que no queda residuo fuera de ai_docs/ (devuelve
+ * `{ limpio, rutas, error }`). Con residuo la task no se implementa y el
+ * recorrido se detiene: su `add -A` lo commitearía como propio.
  */
 async function ejecutarTask(task, resultadosPrevios, deps) {
   const d = deps || {};
@@ -631,12 +891,28 @@ async function ejecutarTask(task, resultadosPrevios, deps) {
   }
 
   try {
+    if (d.arbolLimpio) {
+      const estado = await d.arbolLimpio();
+      if (!estado || !estado.limpio) {
+        const resto = (estado && estado.error) || resumenRutas(estado && estado.rutas);
+        log('Task ' + task.titulo + ': no se implementa, el árbol tiene residuo fuera de '
+          + DIR_PLAN + '/ (' + resto + '); el recorrido se detiene');
+        const r = resultadoVacio(task, 'No se implementó: residuo sin commitear fuera de '
+          + DIR_PLAN + '/ al empezar (' + resto + ')');
+        r.detener_recorrido = true;
+        return r;
+      }
+    }
+
     log('Implementando: ' + task.titulo);
     const resultado = await d.implementar(task);
 
-    // Sin resultado, o el propio implementador fallo: nada que revisar ni commitear.
+    // Sin resultado, o el propio implementador falló: nada que revisar ni
+    // commitear, pero lo que haya escrito se aparta, recuperable, para que la
+    // siguiente task empiece con el árbol limpio.
     if (!resultado || resultado.resultado === 'FALLIDA') {
-      return resultado || resultadoVacio(task, 'El agente no retorno resultado');
+      const fallida = resultado || resultadoVacio(task, 'El agente no retorno resultado');
+      return d.descartar ? await apartarYRegistrar(task, fallida, d) : fallida;
     }
 
     return await trasGateTests(task, resultado, d);
@@ -665,40 +941,65 @@ async function ejecutarTask(task, resultadosPrevios, deps) {
  * cual fallo, no solo la primera excepcion). El commit de cada task se acota a
  * sus propios ficheros declarados (F1: `diffPreparado` con `ambito`), asi que ya
  * no absorbe en silencio el trabajo sin commitear de una hermana en curso; y una
- * task cuyo trabajo desaparecio del working tree -absorbido por otra o borrado
- * por su descarte- ya no se reporta COMPLETADA (F2: `revisarYComitear` distingue
- * el diff vacio legitimo del inesperado por `archivos_modificados`). Lo que
- * SIGUE sin hacer: no hay single-writer por fichero, no detecta colisiones entre
- * tasks que tocan el mismo archivo y no particiona el trabajo por ellas ni aisla
- * arboles de trabajo. Todas las tasks de un mismo nivel comparten el mismo
- * working tree e indice mientras se implementan; si el gate de tests de una
- * falla, el descarte de su trabajo (`reset --hard` + `clean -fd`) se lleva TODO
- * cambio sin commitear en ese momento, incluido el de las hermanas aun en curso
- * -lo que cambia es que esa hermana ya no se reporta como completada-. Evitar
- * que dos tasks se pisen (mismo fichero) sigue siendo responsabilidad de quien
- * pide el modo concurrente, no del framework. Las puertas de calidad (gate de
- * tests, revision del diff) se aplican por task en los dos modos.
+ * task cuyo trabajo desapareció del working tree -absorbido por otra- ya no se
+ * reporta COMPLETADA (F2: `revisarYComitear` distingue el diff vacio legitimo
+ * del inesperado por `archivos_modificados`). El trabajo de una task que no se
+ * commitea se aparta en `git stash`, acotado a las rutas de su ámbito que
+ * cambiaron (apartarTrabajo): no se lleva lo que las hermanas tienen en el
+ * árbol y es recuperable; sin ámbito no se aparta nada. Lo que SIGUE sin hacer: no hay single-writer por
+ * fichero, no detecta colisiones entre tasks que tocan el mismo archivo y no
+ * particiona el trabajo por ellas ni aísla árboles de trabajo. Todas las tasks
+ * de un mismo nivel comparten el mismo working tree e índice mientras se
+ * implementan: si dos declaran el mismo fichero, el apartado de una se lleva
+ * también lo que la otra escribió en él. Evitar que dos tasks se pisen sigue
+ * siendo responsabilidad de quien pide el modo concurrente, no del framework.
+ * Las puertas de calidad (gate de tests, revisión del diff) se aplican por task
+ * en los dos modos.
+ *
+ * PARADA. Un resultado con `detener_recorrido` (el apartado falló o dejó
+ * residuo, o la task encontró el árbol sucio al empezar) detiene el recorrido:
+ * en secuencial tras esa task, en concurrente al cerrar su nivel. Las tasks que
+ * quedan se reportan FALLIDAS sin implementar, con el motivo.
  */
 async function recorrerNiveles(niveles, ejecutar, opciones) {
   const modoParalelo = !!(opciones && opciones.modoParalelo);
   const acumulados = [];
 
+  let parada = null;
+
   for (const nivel of (niveles || [])) {
     const completados = acumulados.slice();
+
+    if (parada) {
+      for (const task of nivel) acumulados.push(noEjecutada(task, parada));
+      continue;
+    }
 
     if (modoParalelo) {
       const resultadosNivel = await Promise.all(nivel.map(function (task) {
         return ejecutar(task, completados);
       }));
-      for (const r of resultadosNivel) acumulados.push(r);
+      for (const r of resultadosNivel) {
+        acumulados.push(r);
+        if (!parada && r && r.detener_recorrido) parada = r;
+      }
     } else {
       for (const task of nivel) {
-        acumulados.push(await ejecutar(task, completados));
+        if (parada) { acumulados.push(noEjecutada(task, parada)); continue; }
+        const r = await ejecutar(task, completados);
+        acumulados.push(r);
+        if (r && r.detener_recorrido) parada = r;
       }
     }
   }
 
   return acumulados;
+}
+
+/** Resultado de una task que no llegó a ejecutarse porque el recorrido se detuvo. */
+function noEjecutada(task, parada) {
+  return resultadoVacio(task, 'No se implementó: el recorrido se detuvo en la task '
+    + parada.task_titulo + ' (' + (parada.notas || 'sin motivo registrado') + ')');
 }
 
 /**
@@ -795,6 +1096,11 @@ module.exports = {
   parsearArgs,
   gitVerificado,
   falloDeGit,
+  evaluarArbolLimpio,
+  comprobarArbolLimpio,
+  mensajeArbolSucio,
+  argvApartado,
+  apartarTrabajo,
   revisarYComitear,
   depsFallidas,
   ejecutarTask,
