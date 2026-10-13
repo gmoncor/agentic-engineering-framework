@@ -6,7 +6,7 @@ Gracias por tu interes en mejorar el framework. Este documento explica como repo
 
 ## Antes de empezar
 
-- **Node.js >= 20.11** — requerido por los hooks (`hooks/*.js`). Verifica con `node --version`
+- **Node.js >= 20** — requerido por los hooks (`hooks/*.js`); para desarrollar y ejecutar la suite, **>= 20.11** (`engines` de `package.json`). Verifica con `node --version`
 - Lee `CLAUDE.md` — define el estilo, el flujo SDD y los limites del framework. Todo cambio debe ser coherente con ellos
 - **Tests:** `npm test` ejecuta los tests de contrato de los hooks. Todo cambio en `hooks/` llega con sus tests en el mismo commit
 - **Deriva:** `npm run check-drift` verifica que las superficies **generadas** coinciden con su fuente. Ejecutalo antes del push si tocas `.claude/` o `docs-src/`. No cubre las superficies que se mantienen a mano, y son mas de las que parece: lee "Artefactos generados y deriva" antes de dar por portado un cambio
@@ -77,7 +77,7 @@ node scripts/compile.js --write                               # regenera las sal
 
 Antes de editar un artefacto, comprueba con el `grep` en que grupo cae.
 
-`npm run check-drift` es el paso previo manual al push de cualquier PR que toque `.claude/` o `docs-src/`: este repositorio no tiene integracion continua que lo ejecute por ti. Es apto para usarse como gate en un flujo de integracion continua si alguna vez se monta uno. Sus exit codes:
+`npm run check-drift` es el paso previo local al push de cualquier PR que toque `.claude/` o `docs-src/`. La integración continua (`.github/workflows/test.yml`) ejecuta `npm test` y el mismo gate de deriva (`node scripts/compile.js --check`) en cada PR y en cada push a `main`, pero ejecutarlo antes en local te ahorra una ronda de CI en rojo. Sus exit codes:
 
 | Exit | Significado |
 |---|---|
