@@ -31,7 +31,7 @@ const HOOK_TIMEOUT_MS = 5000;
 const BUNDLE_THRESHOLD_MS = 500;
 const SESSION_CALLS = 30; // umbral warn_at por defecto de sdd-turn-budget
 
-const { loadConfig } = require(path.join(HOOKS_DIR, 'sdd-hook-utils.js'));
+const { loadConfig, hookEnabled } = require(path.join(HOOKS_DIR, 'sdd-hook-utils.js'));
 const { findTasksDir, denialReason } = require(path.join(HOOKS_DIR, 'sdd-plan-state.js'));
 
 // Cableado real de Claude Code (.claude/settings.json): el backend mas
@@ -128,10 +128,12 @@ const writeCall = (f) => ({ session_id: SESSION_ID, tool_name: 'Write', tool_inp
 const readCall = (f) => ({ session_id: SESSION_ID, tool_name: 'Read', tool_input: { file_path: f } });
 const bashCall = (cmd) => ({ session_id: SESSION_ID, tool_name: 'Bash', tool_input: { command: cmd } });
 
-function hookEnabled(hookFile, config) {
+// Mismo predicado que el hook real (hookEnabled): sin `enabled` declarado vale el default de
+// cada hook, que para sdd-review-gate es apagado.
+function hookEncendido(hookFile, config) {
   const key = CONFIG_KEY[hookFile];
   if (!key) return true; // sin interruptor en config.json: siempre activo
-  return (config[key] || {}).enabled !== false;
+  return hookEnabled(key, config[key]);
 }
 
 function measureByTool(work, config, env) {
@@ -147,7 +149,7 @@ function measureByTool(work, config, env) {
     let aggregateP50 = 0;
     console.log('== ' + tool + ' (' + payloads.length + ' llamadas simuladas) ==');
     for (const hookFile of hooks) {
-      if (!hookEnabled(hookFile, config)) {
+      if (!hookEncendido(hookFile, config)) {
         console.log('  ' + hookFile + ': omitido (deshabilitado en hooks/config.json)');
         continue;
       }
@@ -186,8 +188,7 @@ function validateInstrument(work, targetFile) {
   const disabledConfig = path.join(work, 'config-disabled.json');
   fs.writeFileSync(disabledConfig, JSON.stringify({ sdd_turn_budget: { enabled: false } }));
   const negative = summarize(timeInProcess(() => {
-    const cfg = loadConfig(disabledConfig).sdd_turn_budget || {};
-    return cfg.enabled === false;
+    return !hookEnabled('sdd_turn_budget', loadConfig(disabledConfig).sdd_turn_budget);
   }, 30));
 
   console.log('  positivo (sdd-pipeline-guard, plan real): p50=' + fmt(positive.p50) + ' max=' + fmt(positive.max));

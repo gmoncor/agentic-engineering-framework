@@ -161,3 +161,38 @@ de lineas largas descrito arriba; si algun dia se endurece, ahi esta la grieta.
 subiendo el numero.** Subir el limite es una decision que necesita su propia
 justificacion escrita: sin ella, el presupuesto solo documenta el crecimiento
 en lugar de contenerlo.
+
+## Criterio de aceptación de un cambio de hook
+
+Un test que construye el payload con los campos que el hook lee pasa aunque el
+runtime envíe otro campo: comprueba el hook contra lo que su autor supone, no
+contra lo que llega. Un cambio que añade o cambia un campo leído del payload, o
+un hook nuevo, se acepta con tres pruebas:
+
+| Prueba | Qué acredita | Dónde |
+|---|---|---|
+| Fixture de payload real del backend, capturado del CLI y con su versión y fecha | Que el campo existe en lo que el runtime envía | Claude Code: `tests/fixtures/payloads_claude.json`, contrastado por `tests/hook-payload-fixtures.test.js` |
+| Un mutante que pone el test en rojo (renombrar el campo en el fixture, invertir la condición) | Que el test mira ese campo y no pasa en vacío | Se ejecuta al hacer el cambio; no se versiona |
+| El productor de cada dato verificado | Quién escribe el campo o el fichero que el hook consume, leído en su fuente | El runtime para el payload; el código del productor para un fichero de estado o una señal |
+
+El fixture se captura una vez, en un proyecto de prueba vacío (nunca en el clon
+del framework), con un hook que solo vuelca su entrada, y se anonimiza: rutas
+del usuario e identificadores reales se sustituyen por valores ficticios de la
+misma forma. No se añade ni se quita ningún otro campo. Si cambia la versión
+del CLI y el hook depende de un campo nuevo, se recaptura.
+
+Cuando un campo que el hook lee no llega en la captura (el hook degrada sin
+él), se declara como ausente y el banco comprueba que sigue sin llegar: si una
+captura nueva lo trae, la declaración caduca en rojo.
+
+**Otros backends.** Codex y Gemini no tienen fixture completo: sus payloads
+reales están medidos solo en la forma de `tool_name` y `tool_input` que leen
+los guards, dentro de sus tests (`codex-cli 0.162.1` en
+`hooks/tests/sdd-commit-guard-codex.test.js` y
+`hooks/tests/sdd-pipeline-guard-codex.test.js`; `gemini-cli 0.63.0` en
+`hooks/tests/gemini-nombres-reales.test.js`). Son el precedente del criterio,
+y el resto de sus campos queda sin acreditar contra el runtime. Antigravity no
+tiene captura.
+
+En Claude Code, la captura no ejerció `NotebookEdit`: el `tool_input.notebook_path`
+que lee `sdd-pipeline-guard.js` queda sin contrastar con un payload real.
