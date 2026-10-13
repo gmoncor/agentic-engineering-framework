@@ -11,6 +11,11 @@ export const meta = {
   ],
 }
 
+// Tamaño: de 4 + T a 6 + 2T agentes (T = tasks; 1 si el intake detiene) — intake, spec, tasks, un
+// revisor por task en paralelo y la auditoría; con veredicto adverso, una corrección, la re-revisión
+// de las tasks pendientes y otra auditoría. Revisar cada task en su propio contexto permite
+// lanzarlas a la vez sin que una revisión contamine a otra.
+
 // Como mucho una segunda pasada de revision/auditoria tras un veredicto adverso.
 // El presupuesto de pasadas es esta constante y nada mas: no hay motor de
 // convergencia. Con 1 no habria segunda pasada; con 2, una sola.
@@ -205,7 +210,7 @@ const contextoIntake = [
 phase('Spec')
 const specResult = await agent(`
 Lee ai_docs/dev_templates/spec.md y sigue su proceso completo para crear una especificacion.
-Lee ai_docs/core/ para contexto del proyecto.
+Lee de ai_docs/core/ solo las secciones que cite la solicitud o el análisis del intake.
 
 IMPORTANTE:
 - NO hagas preguntas de clarificacion. El intake ya cerro los huecos criticos.
@@ -239,7 +244,7 @@ phase('Tasks')
 const tasksResult = await agent(`
 Lee ai_docs/dev_templates/tareas.md y sigue su proceso completo.
 Lee la spec (en BORRADOR, pendiente de aprobacion del usuario) en: ${specPath}
-Lee ai_docs/core/ para contexto del proyecto.
+Lee de ai_docs/core/ solo las secciones que cite la spec.
 
 IMPORTANTE:
 - NO hagas preguntas ni esperes aprobacion. Trabaja con lo que hay.
@@ -315,14 +320,8 @@ async function pasadaRevisionAuditoria(numeroPasada, reviewsPrevias, indicesARev
 Lee ai_docs/dev_templates/revisar_tarea.md y sigue sus pasos pertinentes; declara con motivo los que omites.
 Lee la task en: ${task.path}
 Lee la spec madre en: ${specPath}
-Lee ai_docs/core/ para contexto del proyecto.
+Lee de ai_docs/core/ solo las secciones que cite la task o la spec.
 ${hallazgosPreviosTexto(previa)}
-POSTURA OBLIGATORIA:
-- Tu trabajo es ENCONTRAR PROBLEMAS, no confirmar que todo esta bien.
-- Asume que hay errores hasta demostrar lo contrario.
-- NO modifiques nada. Solo analiza y reporta.
-- NO hagas preguntas. Trabaja con lo que hay.
-
 Ejecuta todas las verificaciones:
 1. Coherencia con spec madre (objetivo, alcance, archivos, criterios)
 2. Alcance minimo KISS (cambios innecesarios, refactors de paso)
@@ -381,18 +380,12 @@ Las dudas sin evidencia van en avisos, no en problemas; no cambian el veredicto.
 Lee ai_docs/dev_templates/auditar_spec.md y sigue sus pasos pertinentes; declara con motivo los que omites.
 Lee la spec en: ${specPath}
 Lee TODAS las tasks: ${taskPaths}
-Lee ai_docs/core/ para contexto del proyecto.
+Lee de ai_docs/core/ solo las secciones que citen la spec o las tasks.
 
 Resultados de la revision individual de cada task (ya hecha por revisores independientes):
 ${reviewSummary}
 ${contratosTexto}
-POSTURA OBLIGATORIA:
-- Tu trabajo es ENCONTRAR PROBLEMAS, no confirmar que todo esta bien.
-- Asume que hay huecos hasta demostrar lo contrario.
-- Cada hallazgo con evidencia concreta (cita archivo y seccion).
-- Integra los hallazgos de las revisiones individuales — no los ignores.
-- NO modifiques nada. Solo audita y reporta.
-- NO hagas preguntas. Trabaja con lo que hay.
+Integra los hallazgos de esas revisiones: no los ignores. Cada hallazgo, con su evidencia (archivo y sección).
 
 Ejecuta todas las verificaciones:
 1. COBERTURA: cada criterio de aceptacion de la spec tiene al menos una task

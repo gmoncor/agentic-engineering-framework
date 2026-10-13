@@ -308,7 +308,7 @@ function dosRepos() {
     execFileSync('git', ['init', '-q'], { cwd: dir });
     fs.writeFileSync(path.join(dir, fichero), 'contenido de ' + nombre + '\n');
     execFileSync('git', ['add', fichero], { cwd: dir });
-    return { dir, diff: execFileSync('git', ['diff', '--cached'], { cwd: dir, encoding: 'utf8' }) };
+    return { dir, diff: execFileSync('git', ['diff', '--cached', '--no-ext-diff', '--no-textconv'], { cwd: dir, encoding: 'utf8' }) };
   };
   reposCache = { home, A: crear('A', 'a.txt'), B: crear('B', 'b.txt') };
   return reposCache;
@@ -392,24 +392,58 @@ test('sin -C, el cwd del payload manda sobre el del proceso del hook', () => {
   assert.strictEqual(runHookEn(B.dir, enA, env), 'deny');
 });
 
-test('con un diff.external global, el hook y el emisor calculan el mismo hash: no deniega', () => {
+test('con diff.external y textconv globales, ni el hook ni el emisor los ejecutan, y calculan el mismo hash: no deniega', { skip: SIN_MOTOR }, async () => {
+  // El emisor vive en el motor de workflows: se carga solo donde está instalado.
+  const orq = require('../../.claude/workflows/lib/orquestacion');
   const { A } = dosRepos();
   const home = tempDir('sdd-review-home-');
   try {
-    const externo = writeFile(path.join(home, 'externo.js'), "process.stdout.write('diff externo\\n');\n");
+    // La herramienta externa deja un centinela fuera del repositorio cada vez que git la ejecuta.
+    const centinela = path.join(home, 'centinela');
+    const externo = writeFile(path.join(home, 'externo.js'),
+      'require("fs").writeFileSync(' + JSON.stringify(centinela) + ', "x");\n'
+      + "process.stdout.write('diff externo\\n');\n");
+    const centinelaConv = path.join(home, 'centinela-textconv');
+    const conv = writeFile(path.join(home, 'conv.js'),
+      'require("fs").writeFileSync(' + JSON.stringify(centinelaConv) + ', "x");\n'
+      + "process.stdout.write('texto convertido\\n');\n");
+    const atributos = writeFile(path.join(home, 'atributos'), '* diff=conv\n');
     const barras = p => p.split(path.sep).join('/');
     writeFile(path.join(home, '.gitconfig'),
-      '[diff]\n\texternal = "' + barras(process.execPath) + '" "' + barras(externo) + '"\n');
+      '[core]\n\tattributesFile = "' + barras(atributos) + '"\n'
+      + '[diff]\n\texternal = "' + barras(process.execPath) + '" "' + barras(externo) + '"\n'
+      + '[diff "conv"]\n\ttextconv = "' + barras(process.execPath) + '" "' + barras(conv) + '"\n');
     const gitEnv = Object.assign({}, process.env, { HOME: home, USERPROFILE: home });
     delete gitEnv.GIT_CONFIG_GLOBAL;
 
-    // Mismos argumentos que el emisor de la señal en el flujo por task: `git diff --cached`.
-    const diffDelEmisor = execFileSync('git', ['diff', '--cached'], { cwd: A.dir, env: gitEnv, encoding: 'utf8' });
-    assert.match(diffDelEmisor, /diff externo/, 'el diff.external global debe aplicarse, o el caso no prueba nada');
+    // Controles: sin --no-ext-diff ni --no-textconv, git sí ejecuta cada herramienta. Si no, el caso
+    // no prueba nada.
+    const conExterno = execFileSync('git', ['diff', '--cached'], { cwd: A.dir, env: gitEnv, encoding: 'utf8' });
+    assert.match(conExterno, /diff externo/, 'el diff.external global debe aplicarse');
+    assert.ok(fs.existsSync(centinela), 'la herramienta externa debe dejar el centinela');
+    fs.rmSync(centinela);
+    const conTextconv = execFileSync('git', ['diff', '--cached', '--no-ext-diff'], { cwd: A.dir, env: gitEnv, encoding: 'utf8' });
+    assert.match(conTextconv, /texto convertido/, 'el textconv global debe aplicarse');
+    assert.ok(fs.existsSync(centinelaConv), 'el textconv debe dejar su centinela');
+    fs.rmSync(centinelaConv);
+
+    // Emisor real de la señal: la lectura del diff preparado del flujo por task.
+    const spawn = argv => {
+      const r = spawnSync('git', argv, { cwd: A.dir, env: gitEnv, encoding: 'utf8', timeout: 15000 });
+      return { code: r.status, out: r.stdout || '', err: r.stderr || (r.error ? r.error.message : '') };
+    };
+    const emitido = await orq.diffPreparado(spawn);
+    assert.ok(emitido.ok, emitido.error);
+    assert.doesNotMatch(emitido.diff, /diff externo|texto convertido/);
+    assert.match(emitido.diff, /contenido de A/);
+    assert.ok(!fs.existsSync(centinela), 'el emisor no debe ejecutar la herramienta externa');
+    assert.ok(!fs.existsSync(centinelaConv), 'el emisor no debe ejecutar el textconv');
 
     const env = entorno(CONFIG_ON, { HOME: home, USERPROFILE: home });
-    emitirSenal(env, diffDelEmisor);
+    emitirSenal(env, emitido.diff);
     assert.strictEqual(runHookEn(A.dir, bashPayload('git commit -m x'), env), 'silencio');
+    assert.ok(!fs.existsSync(centinela), 'el hook no debe ejecutar la herramienta externa');
+    assert.ok(!fs.existsSync(centinelaConv), 'el hook no debe ejecutar el textconv');
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

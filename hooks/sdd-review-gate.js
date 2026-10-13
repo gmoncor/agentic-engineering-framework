@@ -220,13 +220,14 @@ function resolverRuta(valor, desde) {
 // El diff que se va a commitear, leído en la raíz de raizDelCommit. SDD_STAGED_DIFF
 // permite inyectarlo en tests y entornos aislados, igual que SDD_CONFIG_PATH /
 // SDD_SIGNAL_DIR. Sin fsmonitor, que ejecutaría el monitor configurado en el repositorio
-// nombrado. Con los mismos argumentos de diff que el emisor de la señal (`git diff
-// --cached`): si se aplica un diff.external, se aplica igual en los dos lados y el hash
-// sigue atando. null si git no puede resolverlo.
+// nombrado, ni `diff.external` ni `textconv`, que ejecutarían la herramienta configurada
+// antes de decidir y meterían su salida en el hash. Con los mismos argumentos de diff que
+// el emisor de la señal (`git diff --cached --no-ext-diff --no-textconv`): el hash sigue
+// atando. null si git no puede resolverlo.
 function stagedDiff(raiz) {
   if (process.env.SDD_STAGED_DIFF != null) return process.env.SDD_STAGED_DIFF;
   try {
-    const r = spawnSync('git', ['-c', 'core.fsmonitor=false', 'diff', '--cached'], {
+    const r = spawnSync('git', ['-c', 'core.fsmonitor=false', 'diff', '--cached', '--no-ext-diff', '--no-textconv'], {
       cwd: raiz.dir, env: Object.assign({}, process.env, raiz.env), encoding: 'utf8', timeout: 5000,
     });
     if (r.error || r.status !== 0) return null;

@@ -8,6 +8,9 @@ export const meta = {
   ],
 }
 
+// Tamaño: 1 + N×(1 a 8) + 0 a 2 agentes — por task, implementador y revisor, y hasta tres rondas
+// de corrector + revisor; uno de descubrimiento y, al final, verificación de convergencia y, con
+// brechas bloqueantes, su creación de tasks. Cada agente acota un contexto que otro no debe heredar.
 const DISCOVER_SCHEMA = {
   type: 'object',
   properties: {
@@ -51,6 +54,9 @@ const IMPL_SCHEMA = {
     commit_message: { type: 'string' },
     commit_cuerpo: { type: 'string' },
     hallazgos_fuera_alcance: { type: 'array', items: { type: 'string' } },
+    // Lo que el cambio hizo distinto de lo declarado: ficheros fuera de la tabla, contratos
+    // cambiados, criterios no cumplidos. El revisor las contrasta con el diff.
+    desviaciones: { type: 'array', items: { type: 'string' } },
     notas: { type: 'string' }
   },
   required: ['task_path', 'task_titulo', 'resultado', 'archivos_modificados']
@@ -449,7 +455,7 @@ function promptImplementacion(task) {
 
   return '\
 Lee ai_docs/dev_templates/implementar.md y sigue su proceso completo para implementar esta task.\n\
-Lee ai_docs/core/ para contexto del proyecto.\n\
+Lee de ai_docs/core/ solo las secciones que cite la task o la spec.\n\
 \n\
 Task a implementar: ' + task.path + '\n\
 Spec madre: ' + specPath + '\n\
@@ -463,7 +469,7 @@ PROCESO OBLIGATORIO:\n\
 2. Investiga el codigo existente\n\
 3. Implementa los cambios descritos en la task\n\
 4. Escribe tests. Para funcionalidad nueva, RED-GREEN es obligatorio: el test debe FALLAR sin tu cambio\n\
-5. Ejecuta validaciones (linting, tests, build). El workflow re-ejecuta la suite como gate antes de commitear\n\
+5. Ejecuta los tests dirigidos a tu cambio y, si aplica, linting y build. La suite completa la corre el workflow como gate antes de revisar: no la repitas\n\
 \n\
 REGLAS:\n\
 - SOLO implementa lo que dice la task\n\
@@ -479,7 +485,8 @@ NO COMMITEAR:\n\
   optimize, remove, rename, docs, test, style, chore.\n\
 \n\
 Retorna: path de la task, titulo, resultado, archivos modificados,\n\
-commit_message, commit_cuerpo, hallazgos fuera de alcance.'
+commit_message, commit_cuerpo, hallazgos fuera de alcance y desviaciones: ficheros que tocaste\n\
+fuera de la tabla, contratos que cambiaste y criterios de aceptación que no se cumplen (vacío si no hay).'
 }
 
 async function implementarTask(task) {
@@ -510,20 +517,38 @@ Delta desde la revisión anterior (lo que cambió la corrección):\n\
 - Un hallazgo nuevo fuera del delta solo cuenta si es material (BLOQUEANTE): lo que ya estaba y no señalaste antes no se convierte ahora en crítico por una preferencia.\n'
 }
 
-// Revision adversarial de UNA task: contexto limpio, solo el diff de la task. En una re-revisión
-// (`previa`), además, los hallazgos previos y el delta.
-async function revisarDiff(task, diff, previa) {
+// Bloque del prompt de revisión con la evidencia del workflow: el resultado del gate de tests, que
+// es la única suite completa de la task, y las desviaciones que declararon el implementador y los
+// correctores.
+function bloqueEvidencia(contexto) {
+  const c = contexto || {}
+  const g = c.gate
+  // Solo con comando corrió una suite: sin él (ADVISORY, o sin resultado) no hay suite que no repetir.
+  const gate = !g
+    ? 'Gate de tests: no consta resultado; no corrió ninguna suite.\n'
+    : g.comando
+      ? 'Gate de tests del workflow (suite completa, ya ejecutada): `' + g.comando + '` → exit '
+        + (g.exitCode == null ? 'sin código' : g.exitCode) + '. ' + (g.nota || '') + '\n'
+        + 'No repitas la suite completa: ejecuta solo pruebas dirigidas a una sospecha concreta.\n'
+      : 'Gate de tests del workflow: no corrió ninguna suite. ' + (g.nota || g.estado || '') + '\n'
+  const desviaciones = (c.desviaciones || []).length
+    ? 'Desviaciones declaradas por quien implementó (contrástalas con el diff):\n- ' + c.desviaciones.join('\n- ') + '\n'
+    : 'Desviaciones declaradas: ninguna. Si el diff muestra alguna, es un hallazgo.\n'
+  return '\n' + gate + desviaciones
+}
+
+// Revision adversarial de UNA task: contexto limpio, solo el diff de la task, con la evidencia del
+// gate y las desviaciones declaradas. En una re-revisión (`contexto.previa`), además, los
+// hallazgos previos y el delta. La postura del revisor la cargan su agente y la plantilla.
+async function revisarDiff(task, diff, contexto) {
   return agent('\
 Lee ai_docs/dev_templates/revision_adversarial.md y sigue sus pasos, aplicados a UNA task.\n\
 Lee la task en: ' + task.path + '\n\
-Lee ai_docs/core/ para contexto del proyecto.\n\
-\n\
-POSTURA OBLIGATORIA:\n\
-- NO modifiques codigo. Solo analiza y reporta.\n\
-- NO hagas preguntas. Trabaja con lo que hay.\n\
+Lee de ai_docs/core/ solo las secciones que cite la task o la spec.\n\
+' + bloqueEvidencia(contexto) + '\
 \n\
 Diff de la task (lo que se va a commitear):\n\
-```diff\n' + diff + '\n```\n' + bloqueRevisionPrevia(previa) + '\
+```diff\n' + diff + '\n```\n' + bloqueRevisionPrevia(contexto && contexto.previa) + '\
 \n\
 Revisa: correccion frente a la task, tests presentes y utiles, edge cases,\n\
 regresiones, codigo muerto y seguridad.\n\
@@ -556,7 +581,8 @@ Resumen de la revision: ' + (revision.resumen || '') + '\n\
 REGLAS:\n\
 - Corrige SOLO los problemas listados, dentro de los archivos de esta task.\n\
 - Deja los cambios en el working tree. NO hagas git add ni git commit.\n\
-- Ejecuta los tests y asegurate de que pasan.\n\
+- Ejecuta los tests dirigidos a tu corrección y asegúrate de que pasan; la suite completa la vuelve a correr el gate.\n\
+- Declara en desviaciones lo que la corrección hizo fuera de lo pedido (ficheros, contratos, criterios).\n\
 - NO hagas preguntas.', {
     agentType: 'implementador',
     label: 'correccion-' + task.titulo.substring(0, 18),

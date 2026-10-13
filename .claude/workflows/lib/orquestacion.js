@@ -290,11 +290,20 @@ function veredictoPorExitCode(exitCode, fuente) {
  * los archivos que la task modifico. Funcion pura: el spawn del comando ocurre en
  * el workflow, que pasa aqui el codigo tal cual lo devolvio el proceso.
  * Estados: PASA | FALLIDA | ADVISORY; solo PASA desbloquea.
+ *
+ * Con comando, el veredicto lleva también el comando ejecutado y su código de
+ * salida (`null` si no lo hubo): el revisor los recibe como evidencia de la
+ * suite y no necesita volver a correrla.
  */
 function evaluarGateTests(entrada) {
   const { comando, exitCode, archivos } = entrada || {};
 
-  if (comando) return veredictoPorExitCode(exitCode, comando.fuente);
+  if (comando) {
+    return Object.assign(veredictoPorExitCode(exitCode, comando.fuente), {
+      comando: [comando.cmd].concat(comando.args || []).filter(Boolean).join(' '),
+      exitCode: Number.isInteger(exitCode) ? exitCode : null,
+    });
+  }
 
   // Sin comando: bloquea solo si la task toca codigo (no hay como probarlo);
   // docs/config quedan exentas y continuan con aviso, no se bloquea sin evidencia.
@@ -775,7 +784,11 @@ async function diffPreparado(spawn, ambito) {
   if (!preparado.ok) return { ok: false, error: preparado.error };
   if (!preparado.pathspec) return { ok: true, diff: '', pathspec: null };
 
-  const lectura = await gitVerificado(['diff', '--cached'].concat(preparado.pathspec), spawn);
+  // Sin `diff.external` ni `textconv`: el hash de la señal se calcula sobre el diff
+  // de git, no sobre la salida de una herramienta configurada en el repositorio.
+  // El hook sdd-review-gate.js lee el diff con los mismos argumentos, o el hash no
+  // ataría.
+  const lectura = await gitVerificado(['diff', '--cached', '--no-ext-diff', '--no-textconv'].concat(preparado.pathspec), spawn);
   if (!lectura.ok) return { ok: false, error: lectura.error };
 
   return { ok: true, diff: lectura.out, pathspec: preparado.pathspec };
@@ -879,6 +892,13 @@ function criticosDe(revision) {
   return criticos.concat(persistentes.filter(function (h) { return !criticos.includes(h); }));
 }
 
+/** Desviaciones que declara un implementador o un corrector, si las trae. */
+function desviacionesDe(resultado) {
+  const r = resultado || {};
+  return (Array.isArray(r.desviaciones) ? r.desviaciones : [])
+    .filter(function (x) { return typeof x === 'string' && x.trim(); });
+}
+
 /** Correcciones propuestas por la revisión, si las trae. */
 function correccionesDe(revision) {
   const r = revision || {};
@@ -969,10 +989,15 @@ function resultadoDiffVacio(task, resultado, log) {
  * Revisa el diff de la task y, si la revision no abre ronda (`abreRonda`), emite
  * la constancia atada a ESE diff y commitea. Si la abre: hasta
  * MAX_RONDAS_CORRECCION rondas de corregir (solo los críticos), volver a pasar el
- * gate y volver a revisar con los hallazgos previos y el delta
- * (`revisar(task, diff, previa)`). Agotado el tope, `BLOQUEADA_REVISION`
+ * gate y volver a revisar con los hallazgos previos y el delta. Agotado el tope, `BLOQUEADA_REVISION`
  * (`escalarRevision`). Devuelve el resultado del implementador con el veredicto
  * reflejado.
+ *
+ * `revisar(task, diff, contexto)` recibe `contexto = { gate, desviaciones, previa }`:
+ * `gate`, el último veredicto del gate de tests (`resultado.gate_tests` o el de
+ * tras la corrección; `null` si no consta), que es la única suite completa de la
+ * task; `desviaciones`, las que declararon el implementador y los correctores,
+ * para contrastarlas con el diff; `previa`, solo en una re-revisión.
  *
  * `deps`: `spawnGit` (ejecuta git), `revisar`, `corregir`, `emitirSenal`,
  * `descartar(task)` (aparta, recuperable, el trabajo sin commitear; ver
@@ -1000,7 +1025,15 @@ async function revisarYComitear(task, resultado, deps) {
   if (!primera.diff.trim()) return resultadoDiffVacio(task, resultado, log);
   let preparado = primera;
 
-  let revision = normalizarRevision(await d.revisar(task, preparado.diff));
+  // Evidencia que acompaña a cada revisión: el último gate y las desviaciones
+  // declaradas, que se acumulan con las de cada corrección.
+  let gate = resultado.gate_tests || null;
+  const desviaciones = desviacionesDe(resultado);
+  const contexto = function (previa) {
+    return { gate: gate, desviaciones: desviaciones.slice(), previa: previa };
+  };
+
+  let revision = normalizarRevision(await d.revisar(task, preparado.diff, contexto(undefined)));
   if (revision.veredicto_original) resultado.veredicto_original = revision.veredicto_original;
 
   // Hallazgos abiertos: los críticos de la última revisión utilizable. Una
@@ -1024,17 +1057,20 @@ async function revisarYComitear(task, resultado, deps) {
     if (revision.veredicto !== 'ERROR') {
       // El corrector recibe solo lo que bloquea: los menores no abren ronda y,
       // mezclados con los críticos, ensancharían la corrección sin motivo.
-      await d.corregir(task, {
+      const correccion = await d.corregir(task, {
         veredicto: revision.veredicto,
         problemas_criticos: abiertos,
         correcciones_propuestas: propuestas,
         resumen: revision.resumen,
       });
+      for (const dv of desviacionesDe(correccion)) {
+        if (!desviaciones.includes(dv)) desviaciones.push(dv);
+      }
 
       // La corrección cambia el código que el gate ya había dado por bueno: se
       // vuelve a pasar antes de revisar, o se commitearía sin evidencia de tests.
       if (d.gateTests) {
-        const gate = await d.gateTests(task);
+        gate = await d.gateTests(task);
         resultado.gate_tests_tras_correccion = gate;
         const corte = await decidirGate(task, resultado, gate, d);
         if (corte) return corte;
@@ -1056,7 +1092,7 @@ async function revisarYComitear(task, resultado, deps) {
     };
     preparado = siguiente;
 
-    revision = normalizarRevision(await d.revisar(task, preparado.diff, previa));
+    revision = normalizarRevision(await d.revisar(task, preparado.diff, contexto(previa)));
     if (revision.veredicto_original) resultado.veredicto_original = revision.veredicto_original;
     if (revision.veredicto !== 'ERROR') {
       diffRevisado = preparado.diff;
@@ -1619,6 +1655,7 @@ module.exports = {
   RUTAS_FUERA,
   pathspecDeTask,
   prepararTask,
+  diffPreparado,
   normalizarRevision,
   MAX_RONDAS_CORRECCION,
   abreRonda,
