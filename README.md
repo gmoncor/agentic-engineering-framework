@@ -202,6 +202,16 @@ Funciona con cualquier LLM: ChatGPT, Copilot, Cursor, Windsurf, o cualquier otro
 
 No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` para entender que hay en cada carpeta.
 
+Algunas herramientas sin backend propio leen `AGENTS.md` como contexto del proyecto. El paso 1 no lo copia: para ellas, copia también `AGENTS.md` y `.agents/skills/` junto a `ai_docs/` en la raíz de tu proyecto (o instala con `--backend codex`, que los entrega junto con `.codex/`). Ahí llegan las reglas escritas, pero no el enforcement:
+
+| Herramienta | Qué lee | Hooks | Workflows |
+|-------------|---------|-------|-----------|
+| GitHub Copilot | `AGENTS.md` | No corren | No corren |
+| Windsurf | `AGENTS.md` | No corren | No corren |
+| Devin | `AGENTS.md` | No corren | No corren |
+
+Sin hooks, nada bloquea una escritura no planificada ni un commit sin revisión: el flujo SDD se sigue por disciplina y la frontera dura va en CI y en las protecciones de rama.
+
 ### Que se instala
 
 | Componente | Donde (Claude) | Donde (Gemini) | Donde (Codex) | Donde (Antigravity) |
@@ -584,7 +594,7 @@ Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohibe esos mismos com
 
 **Antigravity** carga cuatro hooks via `.agents/hooks.json`: `sdd-pipeline-guard.js` (guard de escrituras), `sdd-commit-guard.js` (guard de commits), `sdd-read-before-edit.js` (aviso de lectura previa) y `sdd-turn-budget.js` (contador de acciones sin commit). No carga el registro de sesiones (`sdd-session-start.js`), por la razon ya dada arriba: no consta que su CLI exponga un evento de arranque de sesion equivalente.
 
-**Hay dos bloqueos reales: escrituras y commits sin revision.** `sdd-pipeline-guard.js` impide escribir codigo que nadie planifico: puede comprobarlo mecanicamente, porque el archivo que se va a escribir esta declarado en una task o no lo esta. `sdd-review-gate.js` impide commitear un diff que no consta revisado: la revision adversarial ocurre POR TASK, antes del commit, y su senal guarda el hash del diff revisado; el hook recalcula el hash de `git diff --cached` y lo contrasta. Sin senal, o con un hash que no ata el diff staged, deniega. Cuando no hay diff cacheado computable no bloquea a ciegas: degrada a aviso. Que el codigo entregado se revise lo sostiene el flujo (`/implementar-spec` revisa cada task antes de commitearla) reforzado por el gate. Si necesitas una frontera aun mas dura sobre lo que llega a la rama, ponla en CI y en las protecciones de rama.
+**Hay dos bloqueos reales: escrituras y commits sin revision.** `sdd-pipeline-guard.js` impide escribir codigo que nadie planifico: puede comprobarlo mecanicamente, porque el archivo que se va a escribir esta declarado en una task o no lo esta. Cubre las herramientas de edición del agente (en Claude Code, `Write`, `Edit` y `NotebookEdit`); lo que se escribe por shell (`>`, `tee`, `sed -i`, `cp`) no pasa por él y solo lo detecta la revisión del diff. `sdd-review-gate.js` impide commitear un diff que no consta revisado: la revision adversarial ocurre POR TASK, antes del commit, y su senal guarda el hash del diff revisado; el hook recalcula el hash de `git diff --cached` y lo contrasta. Sin senal, o con un hash que no ata el diff staged, deniega. Cuando no hay diff cacheado computable no bloquea a ciegas: degrada a aviso. Que el codigo entregado se revise lo sostiene el flujo (`/implementar-spec` revisa cada task antes de commitearla) reforzado por el gate. Si necesitas una frontera aun mas dura sobre lo que llega a la rama, ponla en CI y en las protecciones de rama.
 
 **Configuracion (`hooks/config.json`):** `sdd-review-gate.js` viene desactivado. Ponlo en `"enabled": true` para que bloquee cuando vayas a commitear codigo sin constancia de revision. El workflow `/implementar-spec` emite la senal que lo satisface; su contrato vive en `hooks/sdd-review-signal.js`. Solo se cablea en Claude Code: los demas backends no tienen motor de workflows y, por tanto, no tienen emisor de la senal — el gate ahi no podria satisfacerse por ninguna via legitima.
 
