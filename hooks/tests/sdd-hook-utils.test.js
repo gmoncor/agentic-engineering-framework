@@ -100,28 +100,53 @@ test('stdin llega completo y valido -> devuelve el objeto parseado', async () =>
   }
 });
 
-test('stdin nunca cierra -> resuelve a null tras el timeout, en tiempo acotado', async () => {
+// Temporizador falso para readPayload(): registra lo programado y lo limpiado, y solo dispara
+// cuando el test lo pide. Así el test afirma qué decidió la carrera, no cuánto tardó.
+function temporizadorFalso() {
+  const estado = { programado: null, limpiado: false, disparado: false };
+  const handle = { unref() { estado.unref = true; return handle; } };
+  return {
+    estado,
+    setTimeout(fn, ms, ...args) {
+      estado.programado = { fn, ms, args };
+      return handle;
+    },
+    clearTimeout(h) {
+      if (h === handle) estado.limpiado = true;
+    },
+    disparar() {
+      estado.disparado = true;
+      estado.programado.fn(...estado.programado.args);
+    },
+  };
+}
+
+test('stdin nunca cierra -> el temporizador decide la carrera y resuelve a null', async () => {
   stubStdin(hangingStdin());
+  const reloj = temporizadorFalso();
   try {
-    const start = Date.now();
-    const data = await readPayload(50); // timeout corto para no ralentizar la suite
-    const elapsed = Date.now() - start;
-    assert.strictEqual(data, null);
-    assert.ok(elapsed < 2000, `readPayload() debe resolver en tiempo acotado, tardo ${elapsed}ms`);
+    const lectura = readPayload({ timeoutMs: 50, setTimeout: reloj.setTimeout, clearTimeout: reloj.clearTimeout });
+    assert.ok(reloj.estado.programado, 'readPayload() debe programar su temporizador');
+    assert.strictEqual(reloj.estado.programado.ms, 50);
+    assert.ok(reloj.estado.unref, 'el temporizador debe soltar el bucle de eventos con unref()');
+    reloj.disparar();
+    assert.strictEqual(await lectura, null);
+    assert.ok(reloj.estado.limpiado, 'el temporizador debe limpiarse al resolver');
   } finally {
     restoreStdin();
     clearHangingStdin();
   }
 });
 
-test('stdin llega con JSON invalido -> resuelve a null sin esperar al timeout', async () => {
+test('stdin llega con JSON inválido -> resuelve a null sin que salte el temporizador, y lo limpia', async () => {
   stubStdin(closingStdin(['no es json {']));
+  const reloj = temporizadorFalso();
   try {
-    const start = Date.now();
-    const data = await readPayload(5000);
-    const elapsed = Date.now() - start;
+    const data = await readPayload({ timeoutMs: 5000, setTimeout: reloj.setTimeout, clearTimeout: reloj.clearTimeout });
     assert.strictEqual(data, null);
-    assert.ok(elapsed < 1000, `JSON invalido no debe esperar al timeout, tardo ${elapsed}ms`);
+    assert.ok(reloj.estado.programado, 'readPayload() debe programar su temporizador');
+    assert.strictEqual(reloj.estado.disparado, false, 'JSON inválido no debe depender del temporizador');
+    assert.ok(reloj.estado.limpiado, 'el temporizador debe limpiarse al resolver');
   } finally {
     restoreStdin();
   }

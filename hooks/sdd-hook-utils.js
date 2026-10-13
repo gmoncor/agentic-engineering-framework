@@ -41,8 +41,17 @@ function checkNodeVersion() {
 // anomalo), leer hasta EOF cuelga el proceso indefinidamente. La carrera
 // contra el timeout garantiza que el hook siempre resuelve: si stdin no
 // llega a tiempo, se degrada a null igual que un payload invalido.
-async function readPayload(timeoutMs) {
+//
+// `opciones` es opcional: `{ timeoutMs, setTimeout, clearTimeout }`. Los temporizadores
+// inyectables permiten a los tests afirmar qué decidió la carrera sin medir el reloj; por
+// defecto son los globales.
+async function readPayload(opciones) {
   checkNodeVersion();
+  const {
+    timeoutMs,
+    setTimeout = global.setTimeout,
+    clearTimeout = global.clearTimeout,
+  } = opciones || {};
   let timer;
   const timeout = new Promise((resolve) => {
     timer = setTimeout(resolve, timeoutMs || STDIN_TIMEOUT_MS, null);
