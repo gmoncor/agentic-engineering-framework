@@ -102,6 +102,9 @@ El commit guard avisa automaticamente si hay tasks de convergencia pendientes al
 [tipo]: [descripcion breve — maximo 70 caracteres]
 
 ## Descripcion
+### Para quien no conoce el código
+[Una frase: qué cambia para quien usa el proyecto y por qué]
+
 ### Spec
 [Titulo de la spec que origina estos cambios, si aplica]
 
@@ -121,8 +124,16 @@ El commit guard avisa automaticamente si hay tasks de convergencia pendientes al
 - [ ] [Paso 2]
 - [ ] [Paso 3]
 
+### Cómo revertir
+- Merge commit: `git revert -m 1 <sha-del-merge>`
+- Squash: `git revert <sha-del-squash>`
+- Rebase: `git revert <primero>^..<último>` (los commits que la PR añadió a la base)
+- [Pasos adicionales si el cambio migra datos o configuración; si no, «ninguno»]
+
 ### Notas para el revisor
 - [Algo que el revisor deberia saber o tener en cuenta]
+
+Closes #[n]  <!-- solo si la PR cierra una issue; si no, quitar la línea -->
 ```
 
 ### Paso 5: Presentar al usuario
