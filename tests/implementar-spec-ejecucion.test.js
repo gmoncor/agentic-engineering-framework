@@ -767,37 +767,115 @@ test('resolverConvergencia: con tasks sin completar se omite, sin invocar la ver
 });
 
 test('resolverConvergencia: una respuesta que no parsea no se toma por convergida', async () => {
-  for (const respuesta of [null, undefined, {}, { criterios_verificados: 9 }]) {
+  const respuestas = [null, undefined, {}, { criterios_verificados: 9 }, { veredicto: 'CERRADA', brechas: [] }];
+  for (const respuesta of respuestas) {
+    let creaciones = 0;
     const r = await orq.resolverConvergencia({
       completadas: 3, fallidas: 0, total: 3, log: () => {}, verificar: async () => respuesta,
+      crearTasks: async () => { creaciones += 1; return []; },
     });
     assert.deepStrictEqual(r, { veredicto: 'ERROR', razon: 'parse_failed' }, JSON.stringify(respuesta));
+    assert.strictEqual(creaciones, 0, JSON.stringify(respuesta));
   }
 });
 
-test('resolverConvergencia: DIVERGE conserva las tasks de convergencia generadas', async () => {
+const BRECHA_A = { criterio: 'CA-1', hallazgo: 'falta el login', evidencia: 'src/auth.js:10', severidad: 'BLOQUEANTE' };
+const BRECHA_B = { criterio: 'CA-2', hallazgo: 'logout a medias', evidencia: 'src/auth.js:40', severidad: 'BLOQUEANTE' };
+const AVISO = { criterio: 'CA-3', hallazgo: 'mensaje poco claro', evidencia: 'src/ui.js:5', severidad: 'WARNING' };
+
+test('resolverConvergencia: DIVERGE pasa solo las brechas BLOQUEANTES al paso de creación', async () => {
+  const recibidas = [];
+  const registro = [];
   const r = await orq.resolverConvergencia({
-    completadas: 3, fallidas: 0, total: 3, log: () => {},
-    verificar: async () => ({
-      veredicto: 'DIVERGE', criterios_verificados: 7,
-      tasks_generadas: ['ai_docs/tasks/004_cierre.md'],
-    }),
+    completadas: 3, fallidas: 0, total: 3, log: m => registro.push(m),
+    verificar: async () => ({ veredicto: 'DIVERGE', criterios_verificados: 7, brechas: [BRECHA_A, AVISO, BRECHA_B] }),
+    crearTasks: async (brechas) => {
+      recibidas.push(brechas);
+      return ['ai_docs/tasks/004_convergencia_auth.md', 'ai_docs/tasks/005_convergencia_auth.md'];
+    },
   });
 
+  assert.deepStrictEqual(recibidas, [[BRECHA_A, BRECHA_B]]);
   assert.deepStrictEqual(r, {
     veredicto: 'DIVERGE', criterios_verificados: 7,
-    tasks_generadas: ['ai_docs/tasks/004_cierre.md'],
+    brechas: [BRECHA_A, BRECHA_B], avisos: [AVISO],
+    tasks_generadas: ['ai_docs/tasks/004_convergencia_auth.md', 'ai_docs/tasks/005_convergencia_auth.md'],
   });
+  // El registro distingue lo reportado de lo creado: reportar no es generar.
+  const texto = registro.join('\n');
+  assert.match(texto, /2 brecha\(s\) BLOQUEANTE reportada\(s\): CA-1 — falta el login; CA-2 — logout a medias/);
+  assert.match(texto, /2 task\(s\) creada\(s\) por el paso de creación/);
+  assert.doesNotMatch(texto, /generadas/);
+});
+
+test('resolverConvergencia: con solo WARNING no se crean tasks y la spec converge con los avisos', async () => {
+  for (const veredicto of ['DIVERGE', 'CONVERGIDA']) {
+    let creaciones = 0;
+    const registro = [];
+    const r = await orq.resolverConvergencia({
+      completadas: 3, fallidas: 0, total: 3, log: m => registro.push(m),
+      verificar: async () => ({ veredicto, criterios_verificados: 5, brechas: [AVISO] }),
+      crearTasks: async () => { creaciones += 1; return ['ai_docs/tasks/009_x.md']; },
+    });
+
+    assert.strictEqual(creaciones, 0, veredicto);
+    assert.deepStrictEqual(r,
+      { veredicto: 'CONVERGIDA', criterios_verificados: 5, avisos: [AVISO], tasks_generadas: [] }, veredicto);
+    assert.match(registro.join('\n'), /1 aviso\(s\) para que decida el usuario: CA-3 — mensaje poco claro/);
+  }
+});
+
+test('resolverConvergencia: una brecha BLOQUEANTE impide cerrar aunque el agente diga CONVERGIDA', async () => {
+  const r = await orq.resolverConvergencia({
+    completadas: 1, fallidas: 0, total: 1, log: () => {},
+    verificar: async () => ({ veredicto: 'CONVERGIDA', criterios_verificados: 2, brechas: [BRECHA_A] }),
+    crearTasks: async () => ['ai_docs/tasks/006_convergencia_auth.md'],
+  });
+
+  assert.strictEqual(r.veredicto, 'DIVERGE');
+  assert.deepStrictEqual(r.tasks_generadas, ['ai_docs/tasks/006_convergencia_auth.md']);
+});
+
+test('resolverConvergencia: si la creación no devuelve rutas, DIVERGE conserva todas las brechas', async () => {
+  const fallos = [async () => null, async () => { throw new Error('sin agente'); }, undefined];
+  for (const crearTasks of fallos) {
+    const registro = [];
+    const r = await orq.resolverConvergencia({
+      completadas: 3, fallidas: 0, total: 3, log: m => registro.push(m),
+      verificar: async () => ({ veredicto: 'DIVERGE', criterios_verificados: 7, brechas: [BRECHA_A, AVISO, BRECHA_B] }),
+      crearTasks,
+    });
+
+    assert.deepStrictEqual(r, {
+      veredicto: 'DIVERGE', criterios_verificados: 7,
+      brechas: [BRECHA_A, BRECHA_B], avisos: [AVISO], tasks_generadas: [],
+    }, String(crearTasks));
+    assert.match(registro.join('\n'), /no devolvió rutas; las brechas quedan en el resultado/);
+  }
+});
+
+test('resolverConvergencia: DIVERGE sin brechas no se toma por convergida ni crea tasks', async () => {
+  let creaciones = 0;
+  const r = await orq.resolverConvergencia({
+    completadas: 3, fallidas: 0, total: 3, log: () => {},
+    verificar: async () => ({ veredicto: 'DIVERGE', criterios_verificados: 4, brechas: [] }),
+    crearTasks: async () => { creaciones += 1; return []; },
+  });
+
+  assert.strictEqual(creaciones, 0);
+  assert.deepStrictEqual(r,
+    { veredicto: 'DIVERGE', criterios_verificados: 4, brechas: [], avisos: [], tasks_generadas: [] });
 });
 
 test('resolverConvergencia: CONVERGIDA cierra la spec con sus criterios verificados', async () => {
   const r = await orq.resolverConvergencia({
     completadas: 3, fallidas: 0, total: 3, log: () => {},
-    verificar: async () => ({ veredicto: 'CONVERGIDA', criterios_verificados: 5 }),
+    verificar: async () => ({ veredicto: 'CONVERGIDA', criterios_verificados: 5, brechas: [] }),
+    crearTasks: async () => { throw new Error('no debe llamarse'); },
   });
 
   assert.deepStrictEqual(r,
-    { veredicto: 'CONVERGIDA', criterios_verificados: 5, tasks_generadas: [] });
+    { veredicto: 'CONVERGIDA', criterios_verificados: 5, avisos: [], tasks_generadas: [] });
 });
 
 // ── Resultado del flujo ──────────────────────────────────────────────────────

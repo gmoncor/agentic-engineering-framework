@@ -85,9 +85,30 @@ const CONVERGENCIA_SCHEMA = {
   properties: {
     veredicto: { type: 'string', enum: ['CONVERGIDA', 'DIVERGE'] },
     criterios_verificados: { type: 'integer' },
-    tasks_generadas: { type: 'array', items: { type: 'string' } }
+    brechas: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string' },
+          hallazgo: { type: 'string' },
+          evidencia: { type: 'string' },
+          severidad: { type: 'string', enum: ['BLOQUEANTE', 'WARNING'] }
+        },
+        required: ['criterio', 'hallazgo', 'evidencia', 'severidad']
+      }
+    }
   },
-  required: ['veredicto']
+  required: ['veredicto', 'brechas']
+}
+
+const CREACION_CONVERGENCIA_SCHEMA = {
+  type: 'object',
+  properties: {
+    tasks_creadas: { type: 'array', items: { type: 'string' } },
+    error: { type: 'string' }
+  },
+  required: ['tasks_creadas']
 }
 
 // ── Modulos del repo ──────────────────────────────────────────────────────────
@@ -599,6 +620,8 @@ log('Implementacion: ' + completadas + ' completadas, ' + fallidas + ' fallidas 
 // revision_adversarial.md en modo standalone (sin repetir Pasos 1-3/5, que ya
 // se cubrieron por task). Se omite si alguna task quedo FALLIDA/bloqueada: no
 // tiene sentido verificar convergencia sobre un resultado incompleto.
+// La verificación solo reporta brechas; con alguna BLOQUEANTE, un paso aparte
+// con escritura las convierte en tasks (orq.resolverConvergencia lo decide).
 phase('Convergencia')
 
 async function verificarConvergencia() {
@@ -606,13 +629,40 @@ async function verificarConvergencia() {
 Aplica solo el Paso 4bis de ai_docs/dev_templates/revision_adversarial.md en modo\n\
 standalone contra la spec ' + specPath + ' y sus tasks.\n\
 No repitas Pasos 1-3/5. No toques codigo.\n\
-No crees ficheros ni tasks: devuelve en `tasks_generadas` una línea por brecha BLOQUEANTE,\n\
-con la forma `brecha: <criterio> — <hallazgo>`.\n\
-Emite el veredicto.', {
+No crees ficheros; reporta. Devuelve cada brecha en `brechas` con:\n\
+- `criterio`: la sección o el criterio de la spec afectado;\n\
+- `hallazgo`: la brecha y la corrección sugerida;\n\
+- `evidencia`: lo que la acredita, con archivo:línea cuando aplique;\n\
+- `severidad`: BLOQUEANTE o WARNING.\n\
+Sin brechas, `brechas` va vacía. Emite el veredicto.', {
     label: 'convergencia',
     phase: 'Convergencia',
     schema: CONVERGENCIA_SCHEMA
   })
+}
+
+// Paso de creación: convierte en tasks las brechas BLOQUEANTES que la verificación reportó.
+// La verificación no escribe; este paso sí. Devuelve las rutas creadas, o null si no hubo
+// respuesta utilizable: entonces las brechas siguen en el resultado del flujo.
+async function crearTasksConvergencia(brechas) {
+  const r = await agent('\
+La verificación de convergencia de la spec ' + specPath + ' reportó estas brechas BLOQUEANTES:\n\
+```json\n' + JSON.stringify(brechas, null, 2) + '\n```\n\
+Crea una task de convergencia por cada brecha, como indica la sección «Tasks de convergencia»\n\
+del Paso 4bis de ai_docs/dev_templates/revision_adversarial.md, con el formato de\n\
+ai_docs/dev_templates/tareas.md. Numera cada una con scripts/next-task-number.sh.\n\
+\n\
+REGLAS:\n\
+- Solo creas ficheros nuevos: no modifiques la spec, las tasks existentes ni el código.\n\
+- Si next-task-number.sh no está disponible, no crees nada y explica el motivo en `error`.\n\
+- NO hagas preguntas.\n\
+Devuelve en `tasks_creadas` la ruta de cada task creada.', {
+    label: 'crear-convergencia',
+    phase: 'Convergencia',
+    schema: CREACION_CONVERGENCIA_SCHEMA
+  })
+  if (r && r.error) registro('Convergencia: el paso de creación informa: ' + r.error)
+  return r && Array.isArray(r.tasks_creadas) ? r.tasks_creadas : null
 }
 
 const convergencia = await orq.resolverConvergencia({
@@ -620,6 +670,7 @@ const convergencia = await orq.resolverConvergencia({
   fallidas: fallidas,
   total: taskList.length,
   verificar: verificarConvergencia,
+  crearTasks: crearTasksConvergencia,
   log: registro,
 })
 

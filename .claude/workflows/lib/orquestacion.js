@@ -1352,30 +1352,84 @@ function resumirResultados(resultados) {
 
 // ── Convergencia y resultado del flujo ───────────────────────────────────────
 
-/** Traduce la respuesta de la verificacion de convergencia al veredicto del flujo. */
-function veredictoConvergencia(respuesta, log) {
+function describirBrecha(b) {
+  return (b && b.criterio ? b.criterio : '(sin criterio)') + ' — ' + (b && b.hallazgo ? b.hallazgo : '(sin hallazgo)');
+}
+
+/**
+ * Traduce el informe de la verificación de convergencia al veredicto del flujo.
+ *
+ * La verificación solo reporta brechas; las tasks las crea `crearTasks`, inyectada,
+ * que recibe únicamente las BLOQUEANTES y devuelve las rutas creadas (o null).
+ * El veredicto lo fija la severidad de lo reportado: con alguna BLOQUEANTE la spec
+ * DIVERGE; con solo WARNING queda CONVERGIDA y los avisos van al usuario, que decide.
+ * Una severidad que no es WARNING cuenta como BLOQUEANTE: ante la duda, no se cierra.
+ * Las brechas viajan siempre en el resultado: si la creación falla, ninguna se pierde.
+ */
+async function veredictoConvergencia(respuesta, crearTasks, log) {
   if (!respuesta || !respuesta.veredicto) {
     log('Convergencia: la respuesta del agente no parseo contra el schema');
     return { veredicto: 'ERROR', razon: 'parse_failed' };
   }
+  if (respuesta.veredicto !== 'CONVERGIDA' && respuesta.veredicto !== 'DIVERGE') {
+    log('Convergencia: veredicto desconocido: ' + respuesta.veredicto);
+    return { veredicto: 'ERROR', razon: 'parse_failed' };
+  }
 
-  if (respuesta.veredicto === 'DIVERGE') {
-    const tasksGeneradas = respuesta.tasks_generadas || [];
-    log('DIVERGENCIA: spec no cerrada, ' + tasksGeneradas.length
-      + ' task(s) de convergencia generadas: ' + tasksGeneradas.join(', '));
+  const brechas = Array.isArray(respuesta.brechas) ? respuesta.brechas.filter(Boolean) : [];
+  const avisos = brechas.filter(b => b.severidad === 'WARNING');
+  const bloqueantes = brechas.filter(b => b.severidad !== 'WARNING');
+
+  if (bloqueantes.length === 0 && (respuesta.veredicto !== 'DIVERGE' || avisos.length > 0)) {
+    log('CONVERGENCIA: spec cerrada, ' + (respuesta.criterios_verificados || 0)
+      + ' criterios verificados'
+      + (avisos.length
+        ? '; ' + avisos.length + ' aviso(s) para que decida el usuario: ' + avisos.map(describirBrecha).join('; ')
+        : ''));
     return {
-      veredicto: 'DIVERGE',
+      veredicto: 'CONVERGIDA',
       criterios_verificados: respuesta.criterios_verificados,
-      tasks_generadas: tasksGeneradas,
+      avisos: avisos,
+      tasks_generadas: [],
     };
   }
 
-  log('CONVERGENCIA: spec cerrada, ' + (respuesta.criterios_verificados || 0)
-    + ' criterios verificados');
+  if (bloqueantes.length === 0) {
+    log('DIVERGENCIA: spec no cerrada, pero la verificación no reportó ninguna brecha; no hay tasks que crear');
+    return {
+      veredicto: 'DIVERGE',
+      criterios_verificados: respuesta.criterios_verificados,
+      brechas: [],
+      avisos: [],
+      tasks_generadas: [],
+    };
+  }
+
+  log('DIVERGENCIA: spec no cerrada, ' + bloqueantes.length + ' brecha(s) BLOQUEANTE reportada(s): '
+    + bloqueantes.map(describirBrecha).join('; '));
+
+  let creadas = null;
+  if (typeof crearTasks === 'function') {
+    try {
+      creadas = await crearTasks(bloqueantes);
+    } catch (err) {
+      log('Convergencia: el paso de creación falló: ' + (err && err.message ? err.message : String(err)));
+      creadas = null;
+    }
+  }
+  const rutas = Array.isArray(creadas) ? creadas.filter(r => typeof r === 'string' && r) : [];
+  if (rutas.length) {
+    log('Convergencia: ' + rutas.length + ' task(s) creada(s) por el paso de creación: ' + rutas.join(', '));
+  } else {
+    log('Convergencia: el paso de creación no devolvió rutas; las brechas quedan en el resultado');
+  }
+
   return {
-    veredicto: 'CONVERGIDA',
+    veredicto: 'DIVERGE',
     criterios_verificados: respuesta.criterios_verificados,
-    tasks_generadas: [],
+    brechas: bloqueantes,
+    avisos: avisos,
+    tasks_generadas: rutas,
   };
 }
 
@@ -1385,7 +1439,7 @@ function veredictoConvergencia(respuesta, log) {
  * completar, y entonces `verificar` no llega a invocarse: medir la convergencia
  * de lo que no se implemento no dice nada, y la invocacion cuesta.
  *
- * `deps`: `completadas`, `fallidas`, `total`, `verificar`, `log`.
+ * `deps`: `completadas`, `fallidas`, `total`, `verificar`, `crearTasks`, `log`.
  */
 async function resolverConvergencia(deps) {
   const d = deps || {};
@@ -1396,7 +1450,7 @@ async function resolverConvergencia(deps) {
     return { veredicto: 'OMITIDA', razon: 'tasks_fallidas' };
   }
 
-  return veredictoConvergencia(await d.verificar(), log);
+  return veredictoConvergencia(await d.verificar(), d.crearTasks, log);
 }
 
 /**
