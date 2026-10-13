@@ -149,12 +149,13 @@ test('advisory (default): supera block_at -> avisa, nunca bloquea', () => {
   assert.strictEqual(r.decision.code, 'TURN_BUDGET_BLOCK');
 });
 
-test('advisory: supera hard_stop_at -> avisa con el mensaje de interrupcion, sin deny', () => {
+test('advisory: supera hard_stop_at -> propone un checkpoint al usuario, sin ordenar interrumpir ni denegar', () => {
   const e = entorno(CONFIG_ADVISORY);
   const r = repetir(4, e.env);
   assert.strictEqual(r.decision.decision, 'warn');
   assert.strictEqual(r.code, 0);
-  assert.match(r.decision.reason, /INTERRUMPE y espera/);
+  assert.doesNotMatch(r.decision.reason, /INTERRUMPE/, 'en advisory el aviso no es una barrera');
+  assert.match(r.decision.reason, /Propón al usuario un checkpoint/);
   assert.strictEqual(r.decision.code, 'TURN_BUDGET_HARD_STOP');
 });
 
@@ -220,7 +221,7 @@ test('enforce + subagente: al alcanzar block_at avisa (no deniega) con mensaje a
   const e = entorno(CONFIG_ENFORCE);
   const r = repetirSubagente(3, e.env); // block_at = 3
   assert.strictEqual(r.decision.decision, 'warn');
-  assert.match(r.decision.reason, /busca un punto para hacer commit/);
+  assert.match(r.decision.reason, /El commit lo hace quien coordina/);
   assert.strictEqual(r.decision.code, 'TURN_BUDGET_BLOCK');
 });
 
@@ -245,7 +246,7 @@ test('enforce + subagente detectado solo por is_sidechain: avisa (no deniega)', 
   const e = entorno(CONFIG_ENFORCE);
   const r = repetirSidechain(3, e.env, SESSION, true); // block_at = 3
   assert.strictEqual(r.decision.decision, 'warn');
-  assert.match(r.decision.reason, /busca un punto para hacer commit/);
+  assert.match(r.decision.reason, /El commit lo hace quien coordina/);
   assert.strictEqual(r.decision.code, 'TURN_BUDGET_BLOCK');
 });
 
@@ -387,7 +388,7 @@ test('enforce + presupuesto superado: git add se avisa, no se deniega', () => {
   const r = runHook(HOOK, shell(SESSION, 'git add nuevo.js'), e.env);
   assert.strictEqual(r.decision.decision, 'warn', 'git add se avisa, no se deniega, con el presupuesto superado');
   assert.strictEqual(r.code, 0);
-  assert.match(r.decision.reason, /INTERRUMPE y espera/, 'el aviso del presupuesto se mantiene: git add no es un punto ciego');
+  assert.match(r.decision.reason, /presupuesto duro/, 'el aviso del presupuesto se mantiene: git add no es un punto ciego');
 });
 
 test('enforce: git add no reinicia el contador -- la siguiente accion se sigue denegando', () => {
@@ -413,4 +414,146 @@ test('enforce: una mencion textual de "git add" (grep) no es invocacion real y s
   const mencion = runHook(HOOK, shell(SESSION, 'grep -r "git add" README.md'), e.env);
   assert.strictEqual(mencion.decision.decision, 'deny', 'la exencion cuelga de esInvocacion, no de una subcadena');
   assert.strictEqual(mencion.code, 2);
+});
+
+// --- Contador por agente y avisos acordes a lo que cada rol puede hacer ---
+// Un subagente no commitea (lo hace quien coordina) y un workflow commitea por
+// su cuenta, sin que ningún hook vea el commit: si sus acciones se sumaran al
+// contador del hilo principal, este crecería sin reinicio posible.
+
+// Lanza n llamadas en tandas concurrentes acotadas (no hace falta orden: el
+// registro es de solo-anexado).
+async function lanzar(n, payload, env) {
+  const TANDA = 20;
+  for (let i = 0; i < n; i += TANDA) {
+    const k = Math.min(TANDA, n - i);
+    await Promise.all(Array.from({ length: k }, () => runHookAsync(HOOK, payload, env)));
+  }
+}
+
+test('warn_at + 1 llamadas con agent_id no elevan el contador del hilo principal', async () => {
+  const e = entorno(CONFIG_ADVISORY);
+  const n = base.warn_at + 1; // basta superar warn_at: con la clave compartida ya avisaría
+  await lanzar(n, accionSubagente(SESSION), e.env);
+
+  const r = runHook(HOOK, accion(SESSION), e.env);
+  assert.strictEqual(r.decision, null, 'la primera accion propia del hilo principal sigue por debajo de warn_at');
+
+  const registroAgente = path.join(e.dir, 'sdd-turns-' + SESSION + '-a-agent-1.log');
+  const lineas = fs.readFileSync(registroAgente, 'utf8').split('\n').filter(Boolean).length;
+  assert.strictEqual(lineas, n, 'las llamadas del subagente se cuentan en su propio registro');
+});
+
+test('el hilo principal avisa al llegar a warn_at con sus propias llamadas', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  repetirSubagente(3, e.env);
+  repetir(1, e.env);
+  const r = repetir(1, e.env); // segunda accion propia = warn_at
+  assert.strictEqual(r.decision.decision, 'warn');
+  assert.strictEqual(r.decision.code, 'TURN_BUDGET_WARN');
+  assert.match(r.decision.reason, /llevas 2 acciones/);
+});
+
+test('subagentes con agent_id distinto llevan contadores separados', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  repetirSubagente(3, e.env);
+  const otro = Object.assign(accionSubagente(SESSION), { agent_id: 'agent-2' });
+  const r = runHook(HOOK, otro, e.env);
+  assert.strictEqual(r.decision, null, 'el segundo subagente arranca de cero');
+});
+
+test('subagente sin agent_id (solo agent_type o is_sidechain): registro común de subagentes, separado del hilo principal', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  repetirSidechain(2, e.env, SESSION, true);
+  const tipo = { tool_name: 'Read', tool_input: { file_path: '/x' }, session_id: SESSION, agent_type: 'revisor' };
+  const r = runHook(HOOK, tipo, e.env);
+  assert.match(r.decision.reason, /llevas 3 acciones/, 'is_sidechain y agent_type comparten el registro -sub');
+  assert.ok(fs.existsSync(path.join(e.dir, 'sdd-turns-' + SESSION + '-sub.log')));
+
+  const principal = repetir(1, e.env);
+  assert.strictEqual(principal.decision, null, 'el hilo principal no hereda las acciones de los subagentes');
+});
+
+for (const [nombre, config] of [['advisory', CONFIG_ADVISORY], ['enforce', CONFIG_ENFORCE]]) {
+  test(nombre + ' + subagente: los avisos de block_at y hard_stop_at no piden commitear ni interrumpir', () => {
+    const e = entorno(config);
+    repetirSubagente(2, e.env);
+    const block = runHook(HOOK, accionSubagente(SESSION), e.env); // block_at = 3
+    const hard = runHook(HOOK, accionSubagente(SESSION), e.env); // hard_stop_at = 4
+    for (const [r, code] of [[block, 'TURN_BUDGET_BLOCK'], [hard, 'TURN_BUDGET_HARD_STOP']]) {
+      assert.strictEqual(r.decision.decision, 'warn');
+      assert.strictEqual(r.decision.code, code);
+      assert.doesNotMatch(r.decision.reason, /haz commit|INTERRUMPE/i);
+      assert.match(r.decision.reason, /termina la task o devuelve el motivo/);
+    }
+  });
+}
+
+test('enforce: un subagente por encima del presupuesto no arrastra al hilo principal, que sigue denegando con sus propias acciones', () => {
+  const e = entorno(CONFIG_ENFORCE);
+  repetirSubagente(5, e.env);
+  assert.strictEqual(repetir(1, e.env).decision, null, 'el hilo principal no hereda el contador del subagente');
+  const r = repetir(3, e.env); // 4 acciones propias = hard_stop_at
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.code, 2);
+  assert.match(r.decision.reason, /INTERRUMPE y espera/);
+});
+
+test('git commit de un subagente reinicia solo su registro', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  repetir(1, e.env);
+  repetirSubagente(2, e.env);
+  runHook(HOOK, Object.assign(commit(SESSION), { agent_id: 'agent-1' }), e.env);
+  assert.strictEqual(repetirSubagente(1, e.env).decision, null, 'el subagente arranca de cero tras su commit');
+  assert.strictEqual(repetir(1, e.env).decision.code, 'TURN_BUDGET_WARN', 'el hilo principal conserva su cuenta');
+});
+
+test('purga: cubre los registros por agente (prefijo sdd-turns-)', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  const viejo = path.join(e.dir, 'sdd-turns-sesion-vieja-a-agent-9.log');
+  const viejoSub = path.join(e.dir, 'sdd-turns-sesion-vieja-sub.log');
+  writeFile(viejo, '1\n');
+  writeFile(viejoSub, '1\n');
+  const t = (Date.now() - 25 * 60 * 60 * 1000) / 1000;
+  fs.utimesSync(viejo, t, t);
+  fs.utimesSync(viejoSub, t, t);
+
+  repetirSubagente(1, e.env);
+
+  assert.strictEqual(fs.existsSync(viejo), false);
+  assert.strictEqual(fs.existsSync(viejoSub), false);
+  assert.strictEqual(fs.existsSync(path.join(e.dir, 'sdd-turns-' + SESSION + '-a-agent-1.log')), true);
+});
+
+test('un agent_id "sub" no comparte el registro común de subagentes sin agent_id', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  repetirSidechain(2, e.env, SESSION, true);
+  const r = runHook(HOOK, Object.assign(accionSubagente(SESSION), { agent_id: 'sub' }), e.env);
+  assert.strictEqual(r.decision, null, 'el subagente "sub" arranca de cero en su propio registro');
+  assert.ok(fs.existsSync(path.join(e.dir, 'sdd-turns-' + SESSION + '-a-sub.log')));
+});
+
+test('un agent_id de más de 100 caracteres usa un hash corto en el nombre del registro', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  const largo = 'x'.repeat(150);
+  runHook(HOOK, Object.assign(accionSubagente(SESSION), { agent_id: largo }), e.env);
+  const r = runHook(HOOK, Object.assign(accionSubagente(SESSION), { agent_id: largo }), e.env);
+  assert.match(r.decision.reason, /llevas 2 acciones/, 'el mismo agent_id largo sigue contando en el mismo registro');
+  const registros = fs.readdirSync(e.dir).filter((n) => n.startsWith('sdd-turns-' + SESSION + '-a-'));
+  assert.deepStrictEqual(registros, ['sdd-turns-' + SESSION + '-a-h' + require('crypto').createHash('sha1').update(largo).digest('hex').slice(0, 12) + '.log']);
+});
+
+test('git commit del hilo principal trunca también el registro común de subagentes', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  repetirSidechain(2, e.env, SESSION, true);
+  runHook(HOOK, commit(SESSION), e.env);
+  assert.strictEqual(repetirSidechain(1, e.env, SESSION, true).decision, null, 'el registro común vuelve a cero');
+});
+
+test('git commit de un subagente no trunca el registro común de subagentes', () => {
+  const e = entorno(CONFIG_ADVISORY);
+  repetirSidechain(2, e.env, SESSION, true);
+  runHook(HOOK, Object.assign(commit(SESSION), { agent_id: 'agent-1' }), e.env);
+  const r = repetirSidechain(1, e.env, SESSION, true);
+  assert.match(r.decision.reason, /llevas 3 acciones/, 'solo el commit del hilo principal es checkpoint del registro común');
 });
