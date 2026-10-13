@@ -31,7 +31,7 @@
 | `planificador` | Crea specs, deriva tasks | Pasos 1-2 |
 | `revisor` | Revisa tasks y hace revision adversarial (esceptico) | Pasos 2, 5 |
 | `implementador` | Ejecuta UNA task individual (codigo + tests) | Paso 4 |
-| `asesor` | Analiza problemas, evalua opciones, recomienda (read-only) | Cualquier momento |
+| `asesor` | Analiza problemas, evalua opciones, recomienda | Cualquier momento |
 
 <!-- nucleo: reglas-clave -->
 ## Reglas clave
@@ -42,7 +42,7 @@
 4. **Revision adversarial obligatoria** — el paso 5 verifica la implementacion completa antes de mergear
 5. **Tasks atomicas** — una task, un cambio acotado, un commit
 6. **Roadmap global** — el plan de trabajo vive en `ai_docs/core/` y guia cada planificacion
-7. **El revisor es esceptico** — su trabajo es encontrar problemas, validar con evidencia
+7. **El revisor es escéptico y bloquea solo lo material** — su trabajo es encontrar problemas, validar con evidencia
 
 <!-- nucleo: estructura -->
 ## Estructura de archivos
@@ -95,6 +95,27 @@ Formato en `ai_docs/dev_templates/spec.md` y `ai_docs/dev_templates/tareas.md`.
 - Commits: `<tipo>: <descripcion>` (tipos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore)
 
 <!-- nucleo: limites -->
+## Coste de la verificación
+
+Un test, un hook o un job de CI se decide por riesgo y por coste: en qué punto del ciclo corre, quién espera y cuánto cuesta medido, no supuesto. Va en el punto más barato que aún atrapa el riesgo; el mismo check dos veces se paga dos veces. Ese cálculo mueve o acota una verificación, nunca deja un riesgo sin cubrir.
+
+## Operativa y esperas
+
+- Informes y respuestas finales: el veredicto primero, sin narrar el proceso seguido.
+- Salida filtrada en origen con las opciones del propio comando (formato, límite, `--stat`), no recortada después.
+- Texto con comillas, multilínea o código va a un fichero temporal fuera del árbol de trabajo y se pasa por ruta absoluta literal, sin variables (`git commit -F <fichero>`), no citado en la orden; quien crea el fichero lo retira al terminar.
+- Un comando que termina solo: una llamada con timeout si tu herramienta lo admite. Uno largo (CI, despliegue, servidor): el mecanismo de segundo plano del backend, si figura en tus herramientas. Nunca bucles `sleep`/`until` ni `tail -f`.
+- Todo proceso propio se detiene antes de cerrar; nunca uno ajeno.
+
+## Dónde va cada cosa
+
+| Dónde | Qué guarda |
+|-------|------------|
+| Instrucciones raíz (este fichero) | Reglas y convenciones del proyecto |
+| `ai_docs/core/` | Decisiones que condicionan trabajo futuro, con su porqué |
+| Task doc | Alcance de una task: qué cambia y cómo se valida |
+| Memoria del agente | Solo lo no derivable del código ni de los documentos |
+
 ## Limites del framework
 
 - Planificacion completa (spec + tasks + revision + auditoria) antes de implementar
