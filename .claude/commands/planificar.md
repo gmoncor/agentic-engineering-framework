@@ -1,5 +1,6 @@
 ---
 description: "Planificacion exhaustiva: intake + spec + tasks + revision paralela + auditoria cruzada"
+argument-hint: "[descripción de lo que quieres construir]"
 ---
 
 ## Ejecucion del workflow
