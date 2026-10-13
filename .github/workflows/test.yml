@@ -1,8 +1,9 @@
 name: test
 
-# Frontera dura fuera de la máquina del desarrollador: la suite completa y la
-# deriva de los derivados compilados. La versión de Node es la mínima que
-# declara `engines` en package.json.
+# Frontera dura fuera de la máquina del desarrollador: la suite completa. La
+# deriva de los derivados compilados se comprueba dentro de la suite, que falla
+# si algún derivado no coincide con su fuente. La versión de Node es la mínima
+# que declara `engines` en package.json.
 on:
   pull_request:
   push:
@@ -24,5 +25,3 @@ jobs:
           node-version: '20.11'
       - name: Suite de tests
         run: npm test
-      - name: Deriva de derivados
-        run: node scripts/compile.js --check

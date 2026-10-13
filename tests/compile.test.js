@@ -874,6 +874,34 @@ test('7.3 sin fragmento, la skill de Antigravity solo pierde argument-hint y que
   assert.ok(!salida.includes('argument-hint'), 'Antigravity no invoca skills con argumentos');
 });
 
+test('7.6 disable-model-invocation es de Claude Code: no llega a Gemini ni a Antigravity', () => {
+  const conFlag = SKILL_FUENTE.replace('---\n\nSigue', 'disable-model-invocation: true\n---\n\nSigue');
+
+  const gemini = transformarSkill(conFlag, entradaDe('skill-pr', 'gemini'));
+  const antigravity = transformarSkill(conFlag, entradaDe('skill-pr', 'antigravity'));
+
+  assert.strictEqual(gemini, SKILL_FUENTE, 'Gemini pierde solo el flag y conserva argument-hint');
+  assert.strictEqual(antigravity, '---\nname: bugfix\ndescription: "Triaje de bugs"\n---\n\nSigue la plantilla.\n');
+});
+
+test('7.7 la skill pr del repositorio declara el flag y ninguna de sus salidas lo lleva', () => {
+  const entrada = cargarManifiesto().artifacts.find(a => a.id === 'skill-pr');
+  const fuente = fs.readFileSync(path.join(RAIZ, entrada.source), 'utf8');
+  assert.match(fuente, /^disable-model-invocation: true$/m, 'pr tiene efecto externo: solo se invoca a petición');
+
+  for (const salida of entrada.outputs) {
+    const generada = fs.readFileSync(path.join(RAIZ, salida.path), 'utf8');
+    assert.ok(!/^disable-model-invocation:/m.test(generada), `${salida.path} no debe llevar el flag de Claude Code`);
+  }
+});
+
+test('7.8 una skill sin campos solo-Claude ni modelo sale idéntica para Gemini', () => {
+  const sinCampos = SKILL_FUENTE.replace('argument-hint: "[descripcion del error]"\n', '');
+
+  assert.strictEqual(transformarSkill(sinCampos, entradaDe('skill-bugfix', 'gemini')), sinCampos);
+  assert.strictEqual(transformarSkill(sinCampos, entradaDe('skill-bugfix', 'antigravity')), sinCampos);
+});
+
 // --- Politica de modelos ---------------------------------------------------
 
 const BACKENDS_DE_LA_POLITICA = ['gemini', 'codex', 'antigravity'];
@@ -1021,16 +1049,6 @@ function capturarSalida(fn) {
     Object.assign(console, originales);
   }
 }
-
-test('9.1 el compilador del repositorio sale con 0 y confirma que no hay deriva', () => {
-  const ejecucion = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'compile.js'), '--check'], {
-    cwd: RAIZ,
-    encoding: 'utf8',
-  });
-
-  assert.strictEqual(ejecucion.status, CODIGO_OK, ejecucion.stdout + ejecucion.stderr);
-  assert.match(ejecucion.stdout, /Sin deriva/, 'sin deriva el reporte confirma, no calla');
-});
 
 test('9.2 package.json expone el gate como script npm', () => {
   const { scripts } = require('../package.json');
@@ -1187,13 +1205,16 @@ test('10.1 el manifiesto declara el numero de salidas generadas que el compilado
   assert.strictEqual(verificadas.filter(salida => salida.estado === 'ok').length, SALIDAS_GENERADAS);
 });
 
-test('10.2 el reporte del compilador publica la cifra de salidas verificadas', () => {
+// Única ejecución del gate de deriva como subproceso en la suite: CI no lo
+// repite en un paso propio, así que `npm test` falla con cualquier deriva.
+test('10.2 el compilador del repositorio sale con 0, confirma que no hay deriva y publica la cifra de salidas verificadas', () => {
   const ejecucion = spawnSync(process.execPath, [path.join(RAIZ, 'scripts', 'compile.js'), '--check'], {
     cwd: RAIZ,
     encoding: 'utf8',
   });
 
   assert.strictEqual(ejecucion.status, CODIGO_OK, ejecucion.stdout + ejecucion.stderr);
+  assert.match(ejecucion.stdout, /Sin deriva/, 'sin deriva el reporte confirma, no calla');
   assert.match(
     ejecucion.stdout,
     new RegExp(`Verificados: ${SALIDAS_GENERADAS}\\b`),
