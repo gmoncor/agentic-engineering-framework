@@ -4,6 +4,8 @@ description: "Ejecuta UNA task de una spec APROBADA: escribe código y tests y v
 model: sonnet
 tools:
   - Read
+  - Grep
+  - Glob
   - Edit
   - Write
   - Bash

@@ -4,6 +4,8 @@ description: "Despáchalo para revisar una task antes de implementarla, auditar 
 model: inherit
 tools:
   - Read
+  - Grep
+  - Glob
   - Bash
 ---
 

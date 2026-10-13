@@ -13,8 +13,8 @@
       "model_field": true,
       "model": { "default": "gemini-2.5-pro", "roles": {} },
       "tools": {
-        "map": { "Read": "read_file", "Write": "write_file", "Edit": "edit_file", "Bash": "run_command" },
-        "always": ["glob", "grep_search"],
+        "map": { "Read": "read_file", "Write": "write_file", "Edit": "edit_file", "Bash": "run_command", "Grep": "grep_search", "Glob": "glob" },
+        "always": [],
         "unsupported": ["Agent"]
       }
     },

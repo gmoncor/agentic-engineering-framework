@@ -673,6 +673,8 @@ const AGENTE_FUENTE = [
   'model: opus-4-6',
   'tools:',
   '  - Read',
+  '  - Grep',
+  '  - Glob',
   '  - Bash',
   '---',
   '',
@@ -718,7 +720,7 @@ test('6.3 la politica manda sobre el modelo de la fuente y traduce las herramien
 
   assert.ok(markdown.includes('model: gemini-2.5-pro'), 'el modelo debe salir de la politica');
   assert.ok(!markdown.includes('opus-4-6'), 'el modelo declarado en la fuente no debe llegar a la salida');
-  assert.ok(markdown.includes('tools: [read_file, run_command, glob, grep_search]'), 'las herramientas deben ir traducidas');
+  assert.ok(markdown.includes('tools: [read_file, run_command, grep_search, glob]'), 'las herramientas deben ir traducidas');
   assert.ok(markdown.includes('Cuerpo largo'), 'Gemini si comparte el cuerpo del fichero de Claude');
 });
 

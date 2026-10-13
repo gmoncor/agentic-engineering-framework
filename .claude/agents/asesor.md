@@ -4,6 +4,8 @@ description: "Analiza un problema, evalúa opciones y recomienda una solución c
 model: inherit
 tools:
   - Read
+  - Grep
+  - Glob
   - Bash
 ---
 
