@@ -13,7 +13,7 @@
 
 Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 
-1. **MUESTRA antes de ejecutar** — Presenta el resultado completo de la auditoria al usuario ANTES de emitir el veredicto final.
+1. **VEREDICTO primero** — La salida abre con el veredicto y el problema más grave; después, el resultado completo de la auditoría.
 2. **EXPLICA el porque** — Para cada problema encontrado, explica POR QUE es un problema y QUE consecuencia tiene.
 3. **SUGIERE mejoras** — Si detectas formas de mejorar la cobertura o reducir riesgos, PROPONLAS.
 4. **VERIFICA despues** — Si el usuario corrige problemas, vuelve a ejecutar las verificaciones afectadas.
@@ -23,7 +23,7 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 **Instrucciones adicionales para esta plantilla:**
 - Esta plantilla es de AUDITORIA. NO modifica nada. Solo detecta problemas y emite un veredicto.
 - El rol del auditor es ENCONTRAR PROBLEMAS, no confirmar que todo esta bien. Asumir que hay huecos hasta demostrar lo contrario.
-- NUNCA emitas un veredicto APROBADO si hay problemas pendientes. Es preferible un falso positivo que un falso negativo.
+- Un problema impide el veredicto APROBADO solo si es material y tiene evidencia: criterio sin cobertura, contradicción entre spec y tasks, contrato roto, dependencia circular, o hueco que impide implementar o verificar una task. Una duda sin evidencia va como WARNING, con lo que la resolvería, en el campo de avisos del resultado (`avisos`), no entre los huecos ni las incoherencias. Antes de bloquear, intenta refutar el hallazgo. La búsqueda no se relaja: lo que cambia es el umbral de bloqueo.
 
 ---
 
@@ -134,6 +134,8 @@ Para cada task con dependencias declaradas:
 ## Paso 7: Presentar resultado
 
 ```
+**Veredicto:** [APROBADO / NECESITA_AJUSTES / NECESITA_REPLANTEAMIENTO] — [problema más grave en una frase, o "sin problemas bloqueantes"]
+
 ## Resultado de la auditoria
 
 **Spec:** [Titulo]
@@ -162,9 +164,7 @@ Para cada task con dependencias declaradas:
 - [N] dependencias verificadas: [N] correctas, [N] con problemas
 - Dependencias no declaradas encontradas: [lista o "Ninguna"]
 
-### Veredicto
-
-[APROBADO / NECESITA_AJUSTES / NECESITA_REPLANTEAMIENTO]
+### Acciones según el veredicto
 
 **Si NECESITA_AJUSTES:**
 - [Ajuste 1: que corregir y en que task]
