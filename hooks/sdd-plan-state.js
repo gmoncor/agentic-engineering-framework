@@ -220,7 +220,11 @@ function headerFieldValues(texto, nombre) {
   return Array.from(texto.matchAll(patron), m => m[1]);
 }
 
-/** Estado vigente de una spec: el valor del ULTIMO campo `Estado` en linea propia, o null si no hay. */
+/**
+ * Estado vigente de una spec o una task: el valor del ULTIMO campo `Estado` en línea propia del
+ * texto completo, o null si no hay. Es la misma línea que reescribe el escritor del estado de una
+ * task en el motor de workflows, así que lector y escritor miran siempre la misma.
+ */
 function estadoVigente(texto) {
   const valores = headerFieldValues(texto, 'Estado');
   return valores.length ? valores[valores.length - 1] : null;
@@ -395,6 +399,7 @@ module.exports = {
   isPlainObject,
   findTasksDir,
   denialReason,
+  estadoVigente,
   findApprovedSpecs,
   findTaskFiles,
   findActiveTaskFiles,

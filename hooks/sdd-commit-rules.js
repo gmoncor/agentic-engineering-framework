@@ -11,7 +11,7 @@
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { resolveRepoPath } = require('./sdd-plan-state');
+const { resolveRepoPath, estadoVigente } = require('./sdd-plan-state');
 const { invocacionesDe, usaFlag, tokenizar } = require('./sdd-git-command');
 
 // Separadores de shell sin comillas: cierran la invocación en curso al buscar el fichero de -F.
@@ -86,10 +86,15 @@ function pendingConvergenceTasks() {
     .map(f => TASKS_DIR + '/' + f);
 }
 
+/**
+ * La task sigue PENDIENTE según su Estado vigente: la última línea propia `Estado:` del texto
+ * completo, con o sin negrita (`**Estado:** PENDIENTE` es el formato de la plantilla). Una mención
+ * en mitad de una frase no cuenta.
+ */
 function estaPendiente(taskPath) {
   try {
-    const head = fs.readFileSync(taskPath, 'utf8').split('\n').slice(0, 10).join('\n');
-    return /Estado:\s*PENDIENTE/.test(head);
+    const estado = estadoVigente(fs.readFileSync(taskPath, 'utf8'));
+    return estado !== null && /^PENDIENTE\b/.test(estado);
   } catch {
     return false;
   }
@@ -264,6 +269,7 @@ module.exports = {
   isGitCommit,
   isGhPr,
   pendingConvergenceTasks,
+  estaPendiente,
   commitWarnings,
   extractCommitMessage,
   extractPrBody,
