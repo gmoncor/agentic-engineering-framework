@@ -61,6 +61,11 @@ function cederElTurno() {
 
 const CIMA_STASH = 'rev-parse -q --verify refs/stash';
 
+// Pathspec del proyecto en secuencial: todo salvo los documentos de plan y el registro de sesiones.
+const PROYECTO = '-- . :(exclude)ai_docs/tasks :(exclude)ai_docs/audits';
+const ADD_PROYECTO = 'add -A ' + PROYECTO;
+const DIFF_PROYECTO = 'diff --cached ' + PROYECTO;
+
 /**
  * Doble del spawn de git. `respuestas` se indexa por el argv unido con espacios
  * (o por su primer tramo, para un `commit` cuyo mensaje no se conoce de antemano).
@@ -251,13 +256,15 @@ test('resumirResultados: solo COMPLETADA cuenta como completada', () => {
 
 // ── Gate de dependencias fallidas ────────────────────────────────────────────
 
-test('depsFallidas: solo una dependencia FALLIDA bloquea', () => {
+test('depsFallidas: solo COMPLETADA satisface una dependencia', () => {
   const task = tarea('b', ['ai_docs/tasks/a.md']);
   const completada = [{ task_path: 'ai_docs/tasks/a.md', resultado: 'COMPLETADA' }];
   const fallida = [{ task_path: 'ai_docs/tasks/a.md', resultado: 'FALLIDA' }];
+  const parcial = [{ task_path: 'ai_docs/tasks/a.md', resultado: 'PARCIAL' }];
 
   assert.deepStrictEqual(orq.depsFallidas(task, completada), []);
   assert.deepStrictEqual(orq.depsFallidas(task, fallida), ['ai_docs/tasks/a.md']);
+  assert.deepStrictEqual(orq.depsFallidas(task, parcial), ['ai_docs/tasks/a.md']);
   assert.deepStrictEqual(orq.depsFallidas(task, []), []);
   assert.deepStrictEqual(orq.depsFallidas(tarea('a'), fallida), []);
 });
@@ -466,7 +473,7 @@ function depsRevision(git, overrides) {
 }
 
 test('revisarYComitear: revision aprobada -> constancia atada a ESE diff y commit verificado', async () => {
-  const git = gitDoble({ 'diff --cached -- .': { code: 0, out: DIFF, err: '' } });
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
   const { deps, visto } = depsRevision(git);
   const resultado = Object.assign(resultadoDe(tarea('a')),
     { commit_message: 'feat: implementa a', commit_cuerpo: 'que y por que' });
@@ -480,14 +487,14 @@ test('revisarYComitear: revision aprobada -> constancia atada a ESE diff y commi
   assert.strictEqual(r.resultado, 'COMPLETADA');
   assert.strictEqual(r.marca_revision, 'hash-de-' + DIFF.length);
   assert.deepStrictEqual(git.llamadas,
-    ['add -A -- .', 'diff --cached -- .', 'commit -m feat: implementa a -m que y por que -- .']);
+    [ADD_PROYECTO, DIFF_PROYECTO, 'commit -m feat: implementa a -m que y por que ' + PROYECTO]);
 });
 
 test('revisarYComitear: un diff que no se pudo leer no se confunde con un working tree limpio', async () => {
   // El defecto que cierra: git no corre, la salida estandar viene vacia igual que
   // en un working tree limpio, se registraba la constancia de ese vacio y el gate
   // denegaba el commit despues sin que nada explicase por que.
-  const git = gitDoble({ 'diff --cached -- .': { code: 128, out: '', err: 'fatal: index.lock existe' } });
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 128, out: '', err: 'fatal: index.lock existe' } });
   const { deps, visto } = depsRevision(git);
 
   const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
@@ -503,19 +510,19 @@ test('revisarYComitear: un diff que no se pudo leer no se confunde con un workin
 });
 
 test('revisarYComitear: si la preparacion del diff no corre, no hay revision ni commit', async () => {
-  const git = gitDoble({ 'add -A -- .': { code: null, out: '', err: 'spawnSync git ETIMEDOUT' } });
+  const git = gitDoble({ [ADD_PROYECTO]: { code: null, out: '', err: 'spawnSync git ETIMEDOUT' } });
   const { deps, visto } = depsRevision(git);
 
   const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
 
-  assert.deepStrictEqual(git.llamadas, ['add -A -- .'], 'no se sigue leyendo tras un git que no corrio');
+  assert.deepStrictEqual(git.llamadas, [ADD_PROYECTO], 'no se sigue leyendo tras un git que no corrio');
   assert.deepStrictEqual(visto.revisiones, []);
   assert.strictEqual(r.resultado, 'FALLIDA');
   assert.match(r.notas, /sin codigo de salida/);
 });
 
 test('revisarYComitear: exit 0 sin nada preparado es un working tree limpio, no un fallo', async () => {
-  const git = gitDoble({ 'diff --cached -- .': { code: 0, out: '', err: '' } });
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: '', err: '' } });
   const { deps, visto } = depsRevision(git);
   // Task sin ficheros declarados: es la situacion legitima que este caso fija, distinta de F2
   // (diff vacio con trabajo declarado), cubierta abajo.
@@ -532,12 +539,12 @@ test('revisarYComitear: exit 0 sin nada preparado es un working tree limpio, no 
 
 // ── F2: diff vacio inesperado (trabajo declarado que ya no esta) ─────────────
 // Rojo antes de esta task: esta misma rama servia a dos situaciones opuestas — la task sin nada
-// que hacer, y aquella cuyo trabajo desaparecio (absorbido por una hermana o borrado por su
-// descarte) — y las dos se reportaban COMPLETADA. depsFallidas solo bloquea por FALLIDA, asi que
-// las tasks posteriores avanzaban creyendo que el fichero o el contrato existia.
+// que hacer, y aquella cuyo trabajo desaparecio (absorbido por una hermana o apartado en stash)
+// — y las dos se reportaban COMPLETADA. depsFallidas no bloquea por una COMPLETADA, asi que las
+// tasks posteriores avanzaban creyendo que el fichero o el contrato existia.
 
 test('revisarYComitear: diff vacio con archivos_modificados declarados es un exito falso, no COMPLETADA', async () => {
-  const git = gitDoble({ 'diff --cached -- .': { code: 0, out: '', err: '' } });
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: '', err: '' } });
   const { deps, visto } = depsRevision(git);
   const resultado = resultadoDe(tarea('a')); // archivos_modificados: ['src/a.js'], no vacio
 
@@ -554,7 +561,7 @@ test('ejecutarTask: la task cuyo trabajo desaparecio protege a las posteriores v
   // Composicion real: el diff vacio inesperado se traduce en FALLIDA, y esa FALLIDA
   // bloquea a quien dependa de ella (a diferencia de antes, cuando avanzaban sobre un
   // contrato que en realidad no existia).
-  const git = gitDoble({ 'diff --cached -- .': { code: 0, out: '', err: '' } });
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: '', err: '' } });
   const deps = Object.assign(depsTask().deps, {
     revisarYComitear: (t, r) => orq.revisarYComitear(t, r, depsRevision(git).deps),
   });
@@ -571,20 +578,25 @@ test('ejecutarTask: la task cuyo trabajo desaparecio protege a las posteriores v
 // concurrente el commit de una task se llevaba tambien el trabajo sin commitear de una hermana.
 
 test('revisarYComitear: en modo concurrente, add y diff llegan acotados al ambito declarado de la task', async () => {
-  const git = gitDoble({ 'diff --cached -- src/a.js': { code: 0, out: DIFF, err: '' } });
+  const git = gitDoble({
+    'diff --cached -- src/a.js': { code: 0, out: DIFF, err: '' },
+    'status --porcelain -z --untracked-files=all -- src/a.js': { code: 0, out: ' M src/a.js\0', err: '' },
+  });
   const { deps } = depsRevision(git, { ambito: ['src/a.js'] });
 
   const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
 
-  assert.strictEqual(git.llamadas[0], 'add -A -- src/a.js',
+  const preparacion = git.llamadas.filter(c => /^(add|diff)/.test(c));
+  assert.strictEqual(preparacion[0], 'add -A -- src/a.js',
     'el add no debe absorber los ficheros de una hermana');
-  assert.strictEqual(git.llamadas[1], 'diff --cached -- src/a.js');
+  assert.strictEqual(preparacion[1], 'diff --cached -- src/a.js');
   assert.strictEqual(r.resultado, 'COMPLETADA');
 });
 
 test('revisarYComitear: el ambito acota tambien la segunda preparacion, tras una correccion', async () => {
   const git = gitDoble({
     'diff --cached -- src/a.js': n => ({ code: 0, out: n === 1 ? DIFF : DIFF + '+corregido\n', err: '' }),
+    'status --porcelain -z --untracked-files=all -- src/a.js': { code: 0, out: ' M src/a.js\0', err: '' },
   });
   let veredictos = ['NECESITA_CORRECCIONES', 'APROBADA'];
   const { deps, visto } = depsRevision(git, {
@@ -604,23 +616,23 @@ test('revisarYComitear: el ambito acota tambien la segunda preparacion, tras una
 test('revisarYComitear: ambito vacio en modo concurrente acota el add solo al proyecto y registra el motivo', async () => {
   // Task sin tabla "Archivos afectados" legible: acotar a una lista vacia equivaldria a no
   // commitear nunca, asi que solo se acota al proyecto (add -A -- .).
-  const git = gitDoble({ 'diff --cached -- .': { code: 0, out: DIFF, err: '' } });
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
   const { deps } = depsRevision(git, { ambito: [] });
 
   const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
 
-  assert.deepStrictEqual(git.llamadas.slice(0, 2), ['add -A -- .', 'diff --cached -- .']);
+  assert.deepStrictEqual(git.llamadas.slice(0, 2), [ADD_PROYECTO, DIFF_PROYECTO]);
   assert.match(r.notas, /ambito vacio/);
   assert.strictEqual(r.resultado, 'COMPLETADA');
 });
 
 test('revisarYComitear: sin ambito (modo secuencial) el add se acota al proyecto y sin nota alguna', async () => {
-  const git = gitDoble({ 'diff --cached -- .': { code: 0, out: DIFF, err: '' } });
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
   const { deps } = depsRevision(git); // sin `ambito` en absoluto
 
   const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
 
-  assert.deepStrictEqual(git.llamadas.slice(0, 2), ['add -A -- .', 'diff --cached -- .']);
+  assert.deepStrictEqual(git.llamadas.slice(0, 2), [ADD_PROYECTO, DIFF_PROYECTO]);
   assert.doesNotMatch(r.notas || '', /ambito/);
 });
 
@@ -628,7 +640,10 @@ test('revisarYComitear: sin ambito (modo secuencial) el add se acota al proyecto
 // asi que `git commit` sin pathspec se llevaba igual el trabajo ya preparado de una hermana --
 // exactamente lo que add/diff ya evitaban, colandose de vuelta en el propio commit.
 test('revisarYComitear: en modo concurrente, el commit tambien llega acotado al ambito declarado', async () => {
-  const git = gitDoble({ 'diff --cached -- src/a.js': { code: 0, out: DIFF, err: '' } });
+  const git = gitDoble({
+    'diff --cached -- src/a.js': { code: 0, out: DIFF, err: '' },
+    'status --porcelain -z --untracked-files=all -- src/a.js': { code: 0, out: ' M src/a.js\0', err: '' },
+  });
   const { deps } = depsRevision(git, { ambito: ['src/a.js'] });
 
   await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
@@ -641,20 +656,20 @@ test('revisarYComitear: en modo concurrente, el commit tambien llega acotado al 
 test('revisarYComitear: sin ámbito (modo secuencial), add, diff y commit se acotan al proyecto', async () => {
   // En un monorepo el proyecto es un subdirectorio: sin `-- .` se prepararía y
   // commitearía también lo de fuera, que la comprobación de árbol limpio no mira.
-  const git = gitDoble({ 'diff --cached -- .': { code: 0, out: DIFF, err: '' } });
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
   const { deps } = depsRevision(git); // sin `ambito`
 
   await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
 
-  assert.deepStrictEqual(git.llamadas.slice(0, 2), ['add -A -- .', 'diff --cached -- .']);
+  assert.deepStrictEqual(git.llamadas.slice(0, 2), [ADD_PROYECTO, DIFF_PROYECTO]);
   const commit = git.llamadas.find(c => c.startsWith('commit'));
-  assert.match(commit, / -- \.$/, 'el commit cubre lo mismo que se revisó');
+  assert.ok(commit.endsWith(' ' + PROYECTO), 'el commit cubre lo mismo que se revisó: ' + commit);
 });
 
 test('revisarYComitear: revision adversa -> una pasada de correccion y re-revision del nuevo diff', async () => {
   const CORREGIDO = DIFF + '+corregido\n';
   const git = gitDoble({
-    'diff --cached -- .': n => ({ code: 0, out: n === 1 ? DIFF : CORREGIDO, err: '' }),
+    [DIFF_PROYECTO]: n => ({ code: 0, out: n === 1 ? DIFF : CORREGIDO, err: '' }),
   });
   let veredictos = ['NECESITA_CORRECCIONES', 'APROBADA'];
   const { deps, visto } = depsRevision(git, {
@@ -675,7 +690,7 @@ test('revisarYComitear: revision adversa -> una pasada de correccion y re-revisi
 });
 
 test('revisarYComitear: revision que sigue adversa -> se descarta el trabajo y no se commitea', async () => {
-  const git = gitDoble({ 'diff --cached -- .': { code: 0, out: DIFF, err: '' } });
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
   const { deps, visto } = depsRevision(git, {
     revisar: async (t, diff) => { visto1.push(diff); return { veredicto: 'RECHAZADA' }; },
   });
@@ -693,7 +708,7 @@ test('revisarYComitear: revision que sigue adversa -> se descarta el trabajo y n
 });
 
 test('revisarYComitear: una revision que no parsea cuenta como adversa, no como aprobada', async () => {
-  const git = gitDoble({ 'diff --cached -- .': { code: 0, out: DIFF, err: '' } });
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
   const { deps, visto } = depsRevision(git, { revisar: async () => null });
 
   const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
@@ -705,7 +720,7 @@ test('revisarYComitear: una revision que no parsea cuenta como adversa, no como 
 
 test('revisarYComitear: un commit denegado no se reporta como task commiteada', async () => {
   const git = gitDoble({
-    'diff --cached -- .': { code: 0, out: DIFF, err: '' },
+    [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' },
     commit: { code: 1, out: '', err: 'el gate de revision denego el commit' },
   });
   const { deps } = depsRevision(git);
@@ -719,7 +734,7 @@ test('revisarYComitear: un commit denegado no se reporta como task commiteada', 
 
 test('revisarYComitear: sin commit_message propuesto el subject se deriva del titulo y se recorta', async () => {
   const largo = 'titulo interminable '.repeat(6).trim();
-  const git = gitDoble({ 'diff --cached -- .': { code: 0, out: DIFF, err: '' } });
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
   const { deps } = depsRevision(git);
 
   await orq.revisarYComitear(tarea(largo), { task_titulo: largo, resultado: 'COMPLETADA' }, deps);
@@ -946,13 +961,14 @@ test('descubrirComandoTest: package.json con JSON corrupto no tumba el descubrim
 // El descarte de una task fallida era `reset --hard` + `clean -fd` sobre todo el
 // árbol: borraba el trabajo sin commitear del usuario y, en concurrente, el de las
 // hermanas en curso. Ahora se aparta en `git stash`, y el recorrido secuencial
-// exige el árbol limpio fuera de ai_docs/ antes de cada task.
+// exige el árbol limpio fuera de RUTAS_FUERA antes de cada task.
 //
 // Control positivo: con el descarte antiguo cableado como `descartar`, los casos
 // que miran el git grabado caen por la llamada a `reset --hard`.
 
-const ESTADO = 'status --porcelain --untracked-files=all -- . :(exclude)ai_docs';
-const APARTADO_SECUENCIAL = /^stash push --include-untracked -m sdd-apartado: .+ -- \. :\(exclude\)ai_docs$/;
+const ESTADO = 'status --porcelain --untracked-files=all ' + PROYECTO;
+const APARTADO_SECUENCIAL =
+  /^stash push --include-untracked -m sdd-apartado: .+ -- \. :\(exclude\)ai_docs\/tasks :\(exclude\)ai_docs\/audits$/;
 
 function sinDestruccion(llamadas) {
   for (const c of llamadas) {
@@ -980,15 +996,17 @@ function gitConEstado() {
   return { arbol, git };
 }
 
-test('evaluarArbolLimpio: un cambio fuera de ai_docs/ ensucia el árbol; uno dentro, no', () => {
+test('evaluarArbolLimpio: fuera de RUTAS_FUERA ensucia el árbol, ai_docs/core incluido; dentro, no', () => {
+  assert.deepStrictEqual(orq.RUTAS_FUERA, ['ai_docs/tasks', 'ai_docs/audits']);
   assert.deepStrictEqual(orq.evaluarArbolLimpio(''), { limpio: true, rutas: [] });
-  assert.deepStrictEqual(orq.evaluarArbolLimpio('?? ai_docs/tasks/001_a.md\n M ai_docs/core/x.md\n'),
+  assert.deepStrictEqual(
+    orq.evaluarArbolLimpio('?? ai_docs/tasks/001_a.md\n?? ai_docs/audits/provenance.jsonl\n'),
     { limpio: true, rutas: [] });
   assert.deepStrictEqual(
-    orq.evaluarArbolLimpio(' M src/a.js\n?? "con espacio.txt"\nR  viejo.js -> nuevo.js\n?? ai_docs/x.md\n'),
-    { limpio: false, rutas: ['src/a.js', 'con espacio.txt', 'nuevo.js'] });
-  // Un fichero cuyo nombre solo empieza como el directorio de plan no está exento.
-  assert.strictEqual(orq.evaluarArbolLimpio('?? ai_docs_copia.md\n').limpio, false);
+    orq.evaluarArbolLimpio(' M src/a.js\n?? "con espacio.txt"\nR  viejo.js -> nuevo.js\n M ai_docs/core/x.md\n'),
+    { limpio: false, rutas: ['src/a.js', 'con espacio.txt', 'nuevo.js', 'ai_docs/core/x.md'] });
+  // Un fichero cuyo nombre solo empieza como una ruta excluida no está exento.
+  assert.strictEqual(orq.evaluarArbolLimpio('?? ai_docs/tasks_copia.md\n').limpio, false);
 });
 
 test('comprobarArbolLimpio: git que no corre no acredita un árbol limpio', async () => {
@@ -999,7 +1017,7 @@ test('comprobarArbolLimpio: git que no corre no acredita un árbol limpio', asyn
   assert.match(orq.mensajeArbolSucio(r), /no se pudo comprobar/);
 });
 
-test('arranque: con un fichero fuera de ai_docs/ modificado no se implementa y el mensaje da las tres salidas', async () => {
+test('arranque: con un fichero fuera de RUTAS_FUERA modificado no se implementa y el mensaje da las tres salidas', async () => {
   const git = gitDoble({ [ESTADO]: { code: 0, out: ' M src/a.js\n', err: '' } });
   const estado = await orq.comprobarArbolLimpio(git.spawn);
   assert.strictEqual(estado.limpio, false);
@@ -1014,12 +1032,12 @@ test('arranque: con un fichero fuera de ai_docs/ modificado no se implementa y e
   const resultados = await orq.recorrerNiveles([tareas('a', 'b')], (t, p) => orq.ejecutarTask(t, p, deps));
   assert.deepStrictEqual(visto.implementadas, []);
   assert.strictEqual(resultados[0].detener_recorrido, true);
-  assert.match(resultados[0].notas, /residuo sin commitear fuera de ai_docs\/ al empezar \(src\/a\.js\)/);
+  assert.match(resultados[0].notas, /residuo sin commitear fuera de ai_docs\/tasks\/ y ai_docs\/audits\/ al empezar \(src\/a\.js\)/);
   assert.match(resultados[1].notas, /el recorrido se detuvo en la task a/);
   assert.deepStrictEqual(orq.resumirResultados(resultados), { completadas: 0, fallidas: 2 });
 });
 
-test('arranque: un cambio solo bajo ai_docs/ no impide implementar', async () => {
+test('arranque: un cambio solo bajo ai_docs/tasks/ no impide implementar', async () => {
   const git = gitDoble({ [ESTADO]: { code: 0, out: '?? ai_docs/tasks/001_a.md\n', err: '' } });
   assert.strictEqual((await orq.comprobarArbolLimpio(git.spawn)).limpio, true);
 
@@ -1028,7 +1046,7 @@ test('arranque: un cambio solo bajo ai_docs/ no impide implementar', async () =>
   assert.deepStrictEqual(visto.implementadas, ['a', 'b']);
 });
 
-test('apartado: gate rojo en secuencial aparta todo el árbol salvo ai_docs/, sin reset ni clean', async () => {
+test('apartado: gate rojo en secuencial aparta todo el árbol salvo RUTAS_FUERA, sin reset ni clean', async () => {
   const git = gitDoble();
   const { deps } = depsTask({
     gateTests: async () => ({ estado: 'FALLIDA', nota: 'Tests en rojo (exit 1) via package.json' }),
@@ -1039,7 +1057,7 @@ test('apartado: gate rojo en secuencial aparta todo el árbol salvo ai_docs/, si
 
   assert.strictEqual(r.resultado, 'FALLIDA');
   assert.ok(git.llamadas.some(c => APARTADO_SECUENCIAL.test(c)), git.llamadas.join('\n'));
-  assert.ok(git.llamadas.includes('stash push --include-untracked -m sdd-apartado: a -- . :(exclude)ai_docs'));
+  assert.ok(git.llamadas.includes('stash push --include-untracked -m sdd-apartado: a ' + PROYECTO));
   sinDestruccion(git.llamadas);
   assert.match(r.notas, /trabajo apartado en git stash "sdd-apartado: a"/);
   assert.ok(!r.detener_recorrido);
@@ -1068,7 +1086,7 @@ test('apartado: revisión adversa tras la corrección aparta, en los dos modos, 
   for (const modoParalelo of [false, true]) {
     const ambito = modoParalelo ? ['src/a.js'] : undefined;
     const git = gitDoble({
-      'diff --cached -- .': { code: 0, out: DIFF, err: '' },
+      [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' },
       'diff --cached -- src/a.js': { code: 0, out: DIFF, err: '' },
       'status --porcelain -z --untracked-files=all -- src/a.js': { code: 0, out: ' M src/a.js\0', err: '' },
     });
@@ -1083,7 +1101,7 @@ test('apartado: revisión adversa tras la corrección aparta, en los dos modos, 
     assert.strictEqual(r.resultado, 'FALLIDA');
     const esperado = modoParalelo
       ? 'stash push --include-untracked -m sdd-apartado: a -- src/a.js'
-      : 'stash push --include-untracked -m sdd-apartado: a -- . :(exclude)ai_docs';
+      : 'stash push --include-untracked -m sdd-apartado: a ' + PROYECTO;
     assert.ok(git.llamadas.includes(esperado), 'modoParalelo=' + modoParalelo + '\n' + git.llamadas.join('\n'));
     assert.ok(!git.llamadas.some(c => c.startsWith('commit')));
     sinDestruccion(git.llamadas);
@@ -1168,7 +1186,7 @@ test('apartado: el implementador que escribe y devuelve FALLIDA o nada deja el �
 
     const resultados = await orq.recorrerNiveles([tareas('a', 'b')], (t, p) => orq.ejecutarTask(t, p, deps));
 
-    assert.ok(git.llamadas.includes('stash push --include-untracked -m sdd-apartado: a -- . :(exclude)ai_docs'),
+    assert.ok(git.llamadas.includes('stash push --include-untracked -m sdd-apartado: a ' + PROYECTO),
       'devuelto=' + devuelto);
     assert.strictEqual(arbol.stashes, 1);
     assert.deepStrictEqual(visto.implementadas, ['a', 'b'], 'devuelto=' + devuelto);
@@ -1226,7 +1244,7 @@ function repoTemporal(subdirProyecto) {
   return { dir, spawn, g, escribir: (ruta, txt) => escribirArchivo(dir, ruta, txt) };
 }
 
-test('apartado con git real, secuencial: sale todo lo de la task, también lo escrito fuera de su tabla; ai_docs/ queda', async () => {
+test('apartado con git real, secuencial: sale todo lo de la task, también lo escrito fuera de su tabla; ai_docs/tasks/ queda', async () => {
   const repo = repoTemporal();
   try {
     repo.escribir('base.txt', 'base\n');
@@ -1235,15 +1253,15 @@ test('apartado con git real, secuencial: sale todo lo de la task, también lo es
 
     repo.escribir('a.txt', 'de la task\n');
     repo.escribir('fuera.txt', 'fuera de su tabla\n');
-    repo.escribir('ai_docs/x.md', 'plan\n');
+    repo.escribir('ai_docs/tasks/x.md', 'plan\n');
 
     const r = await orq.apartarTrabajo(tarea('a'), { spawnGit: repo.spawn, modoParalelo: false });
 
     assert.strictEqual(r.ok, true, r.nota);
     assert.ok(!fs.existsSync(path.join(repo.dir, 'a.txt')));
     assert.ok(!fs.existsSync(path.join(repo.dir, 'fuera.txt')), 'la siguiente task lo commitearía como suyo');
-    assert.strictEqual(fs.readFileSync(path.join(repo.dir, 'ai_docs/x.md'), 'utf8'), 'plan\n');
-    assert.strictEqual(repo.g(['status', '--porcelain', '--', '.', ':(exclude)ai_docs']), '');
+    assert.strictEqual(fs.readFileSync(path.join(repo.dir, 'ai_docs/tasks/x.md'), 'utf8'), 'plan\n');
+    assert.strictEqual(repo.g(['status', '--porcelain', '--', '.', ':(exclude)ai_docs/tasks', ':(exclude)ai_docs/audits']), '');
     assert.strictEqual((await orq.comprobarArbolLimpio(repo.spawn)).limpio, true);
 
     const guardado = repo.g(['stash', 'show', '-p', '--include-untracked', 'stash@{0}']);
@@ -1292,7 +1310,7 @@ test('apartado con git real, concurrente: sale solo el ámbito de la task; la he
   }
 });
 
-test('comprobarArbolLimpio con git real: ai_docs/ no cuenta; cualquier otra ruta sí', async () => {
+test('comprobarArbolLimpio con git real: ai_docs/tasks/ no cuenta; cualquier otra ruta sí', async () => {
   const repo = repoTemporal();
   try {
     repo.escribir('base.txt', 'base\n');
@@ -1391,6 +1409,419 @@ test('commit con git real en un monorepo: lo de fuera del proyecto no entra en e
     assert.doesNotMatch(revisados[0], /otro\.txt/, 'el revisor no ve lo de fuera del proyecto');
     assert.strictEqual(repo.g(['show', '--name-only', '--format=', 'HEAD']), 'proyecto/a.txt\n');
     assert.strictEqual(repo.g(['status', '--porcelain']), ' M otro.txt\n');
+  } finally {
+    fs.rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+// ── Re-gate tras la corrección ───────────────────────────────────────────────
+// Rojo antes de esta task: el gate de tests corría solo antes de la primera revisión, y tras la
+// pasada de corrección `revisarYComitear` commiteaba sin volver a pasarlo.
+
+const PASA = { estado: 'PASA', nota: 'Tests verdes (exit 0) via package.json' };
+const ROJO = { estado: 'FALLIDA', nota: 'Tests en rojo (exit 1) via package.json' };
+
+/** Revisor doble que devuelve, en orden, los veredictos dados y anota los diffs revisados. */
+function revisorEnOrden(revisiones, vistas) {
+  const cola = revisiones.slice();
+  return async (t, diff) => { vistas.push(diff); return cola.shift(); };
+}
+
+test('re-gate: tras la corrección el gate vuelve a pasar; su rojo aparta el trabajo y no hay commit', async () => {
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+  let llamadasGate = 0;
+  const apartados = [];
+  const descartar = async () => {
+    const salida = { ok: true, detener: false, nota: 'trabajo apartado en git stash "sdd-apartado: a"' };
+    apartados.push(salida);
+    return salida;
+  };
+  const gateTests = async () => (++llamadasGate === 1 ? PASA : ROJO);
+  const revisadas = [];
+  const { deps: dr, visto } = depsRevision(git, {
+    revisar: revisorEnOrden([{ veredicto: 'NECESITA_CORRECCIONES', problemas_criticos: ['x'] }], revisadas),
+    gateTests,
+    descartar,
+  });
+  const { deps } = depsTask({ gateTests, descartar, revisarYComitear: (t, r) => orq.revisarYComitear(t, r, dr) });
+
+  const r = await orq.ejecutarTask(tarea('a'), [], deps);
+
+  assert.strictEqual(llamadasGate, 2, 'el gate corre antes de revisar y otra vez tras corregir');
+  assert.strictEqual(visto.correcciones, 1);
+  assert.strictEqual(revisadas.length, 1, 'con el re-gate en rojo no se re-revisa');
+  assert.ok(!git.llamadas.some(c => c.startsWith('commit')), git.llamadas.join('\n'));
+  assert.deepStrictEqual(apartados.map(a => a.ok), [true], 'el apartado recibe el trabajo una vez');
+  assert.strictEqual(r.resultado, 'FALLIDA');
+  assert.strictEqual(r.gate_tests_tras_correccion.estado, 'FALLIDA');
+  assert.match(r.notas, /gate de tests: Tests en rojo \(exit 1\)/);
+  assert.match(r.notas, /trabajo apartado en git stash/);
+  assert.ok(!r.detener_recorrido);
+});
+
+test('re-gate: un fallo de git conserva el trabajo, y el escape degrada el rojo pero no el fallo de git', async () => {
+  const casos = [
+    { gate: { estado: 'FALLIDA', infraestructura: true, nota: 'git add -A fallo: exit 128' }, env: { SDD_GUARD_SKIP: '1' }, commit: false },
+    { gate: ROJO, env: { SDD_GUARD_SKIP: '1' }, commit: true },
+  ];
+  for (const caso of casos) {
+    const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+    const { deps, visto } = depsRevision(git, {
+      revisar: revisorEnOrden([{ veredicto: 'NECESITA_CORRECCIONES' }, { veredicto: 'APROBADA' }], []),
+      gateTests: async () => caso.gate,
+      env: caso.env,
+    });
+
+    const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+    assert.strictEqual(visto.descartes, 0, JSON.stringify(caso.gate));
+    assert.strictEqual(git.llamadas.some(c => c.startsWith('commit')), caso.commit, JSON.stringify(caso.gate));
+    assert.strictEqual(r.resultado, caso.commit ? 'COMPLETADA' : 'FALLIDA');
+    if (!caso.commit) assert.match(r.notas, /fallo de git, no veredicto de revision/);
+  }
+});
+
+test('re-gate: un apartado que pide detener en secuencial para el recorrido; la siguiente no se implementa', async () => {
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+  let llamadasGate = 0;
+  const descartar = async () => ({ ok: false, detener: true, nota: 'no se pudo apartar el trabajo' });
+  const gateTests = async () => (++llamadasGate === 1 ? PASA : ROJO);
+  const { deps: dr } = depsRevision(git, {
+    revisar: revisorEnOrden([{ veredicto: 'RECHAZADA' }], []), gateTests, descartar,
+  });
+  const { deps, visto } = depsTask({ gateTests, descartar, revisarYComitear: (t, r) => orq.revisarYComitear(t, r, dr) });
+
+  const resultados = await orq.recorrerNiveles([tareas('a', 'b')], (t, p) => orq.ejecutarTask(t, p, deps));
+
+  assert.deepStrictEqual(visto.implementadas, ['a']);
+  assert.strictEqual(resultados[0].detener_recorrido, true);
+  assert.match(resultados[1].notas, /el recorrido se detuvo en la task a/);
+});
+
+// ── Veredicto contradictorio ─────────────────────────────────────────────────
+// Rojo antes de esta task: `APROBADA` con `problemas_criticos` no vacío se commiteaba.
+
+test('normalizarRevision: sin revisión es ERROR; APROBADA con críticos pasa a corrección; el resto, igual', () => {
+  assert.strictEqual(orq.normalizarRevision(null).veredicto, 'ERROR');
+  assert.strictEqual(orq.normalizarRevision({}).veredicto, 'ERROR');
+
+  const contradictoria = orq.normalizarRevision({ veredicto: 'APROBADA', problemas_criticos: ['sin validar'] });
+  assert.strictEqual(contradictoria.veredicto, 'NECESITA_CORRECCIONES');
+  assert.strictEqual(contradictoria.veredicto_original, 'APROBADA');
+  assert.match(contradictoria.causa, /veredicto contradictorio/);
+  assert.deepStrictEqual(contradictoria.problemas_criticos, ['sin validar']);
+
+  const limpia = { veredicto: 'APROBADA', problemas_criticos: [], problemas_menores: ['estilo'] };
+  assert.strictEqual(orq.normalizarRevision(limpia), limpia);
+  const adversa = { veredicto: 'NECESITA_CORRECCIONES', problemas_criticos: ['x'] };
+  assert.strictEqual(orq.normalizarRevision(adversa), adversa);
+});
+
+test('revisarYComitear: APROBADA con un crítico no se commitea en la primera pasada: va a corrección', async () => {
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+  const recibidas = [];
+  const { deps, visto } = depsRevision(git, {
+    revisar: revisorEnOrden([
+      { veredicto: 'APROBADA', problemas_criticos: ['falta validar la entrada'], problemas_menores: [] },
+      { veredicto: 'APROBADA', problemas_criticos: [], problemas_menores: [] },
+    ], []),
+    corregir: async (t, revision) => {
+      assert.ok(!git.llamadas.some(c => c.startsWith('commit')), 'nada se commitea antes de corregir');
+      recibidas.push(revision);
+      visto.correcciones += 1;
+    },
+  });
+
+  const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+  assert.strictEqual(visto.correcciones, 1);
+  assert.strictEqual(recibidas[0].veredicto, 'NECESITA_CORRECCIONES');
+  assert.deepStrictEqual(recibidas[0].problemas_criticos, ['falta validar la entrada']);
+  assert.strictEqual(git.llamadas.filter(c => c.startsWith('commit')).length, 1);
+  assert.strictEqual(r.resultado, 'COMPLETADA');
+  assert.strictEqual(r.veredicto_original, 'APROBADA');
+});
+
+test('revisarYComitear: APROBADA con críticos también tras corregir -> FALLIDA, apartada y sin commit', async () => {
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+  const contradictoria = { veredicto: 'APROBADA', problemas_criticos: ['x'], problemas_menores: [] };
+  const { deps, visto } = depsRevision(git, { revisar: revisorEnOrden([contradictoria, contradictoria], []) });
+
+  const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+  assert.ok(!git.llamadas.some(c => c.startsWith('commit')));
+  assert.strictEqual(visto.descartes, 1);
+  assert.strictEqual(r.resultado, 'FALLIDA');
+  assert.match(r.notas, /NECESITA_CORRECCIONES, veredicto contradictorio/);
+  assert.strictEqual(r.revision.veredicto_original, 'APROBADA');
+});
+
+test('revisarYComitear: APROBADA sin críticos se commitea sin pasar por corrección', async () => {
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+  const { deps, visto } = depsRevision(git, {
+    revisar: revisorEnOrden([{ veredicto: 'APROBADA', problemas_criticos: [], problemas_menores: ['nombre'] }], []),
+  });
+
+  const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+  assert.strictEqual(visto.correcciones, 0);
+  assert.ok(git.llamadas.some(c => c.startsWith('commit')));
+  assert.strictEqual(r.resultado, 'COMPLETADA');
+  assert.strictEqual(r.veredicto_original, undefined);
+});
+
+test('revisarYComitear: revisión nula tras la corrección -> ERROR, sin commit y con el trabajo apartado', async () => {
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+  const { deps } = depsRevision(git, {
+    revisar: revisorEnOrden([{ veredicto: 'RECHAZADA' }, null], []),
+    descartar: descartarCon(git, false),
+  });
+
+  const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+  assert.strictEqual(r.resultado, 'FALLIDA');
+  assert.match(r.notas, /revision adversarial: ERROR/);
+  assert.ok(!git.llamadas.some(c => c.startsWith('commit')));
+  assert.ok(git.llamadas.some(c => APARTADO_SECUENCIAL.test(c)), git.llamadas.join('\n'));
+  sinDestruccion(git.llamadas);
+});
+
+// ── PARCIAL ──────────────────────────────────────────────────────────────────
+// Rojo antes de esta task: un PARCIAL del implementador pasaba al gate y al commit, y su
+// dependiente se implementaba porque solo FALLIDA bloqueaba.
+
+function depsConParcial(parciales, descartar) {
+  const gate = [];
+  const { deps, visto } = depsTask({
+    implementar: async t => { visto.implementadas.push(t.titulo); return resultadoDe(t, parciales.includes(t.titulo) ? 'PARCIAL' : 'COMPLETADA'); },
+    gateTests: async t => { gate.push(t.titulo); return PASA; },
+  });
+  if (descartar) deps.descartar = descartar;
+  return { deps, visto, gate };
+}
+
+test('PARCIAL: sin gate ni commit, se aparta; su dependiente queda bloqueada y la independiente sigue', async () => {
+  for (const modoParalelo of [false, true]) {
+    const { deps, visto, gate } = depsConParcial(['a']);
+    const a = tarea('a');
+    const c = tarea('c');
+    const b = tarea('b', ['ai_docs/tasks/a.md']);
+
+    const resultados = await orq.recorrerNiveles([[a, c], [b]], (t, p) => orq.ejecutarTask(t, p, deps), { modoParalelo });
+    const por = Object.fromEntries(resultados.map(r => [r.task_titulo, r]));
+
+    assert.deepStrictEqual(gate, ['c'], 'modoParalelo=' + modoParalelo);
+    assert.deepStrictEqual(visto.comiteadas, ['c']);
+    assert.strictEqual(visto.descartes, 1, 'el trabajo PARCIAL se aparta');
+    assert.deepStrictEqual(visto.implementadas.sort(), ['a', 'c']);
+    assert.strictEqual(por.a.resultado, 'PARCIAL');
+    assert.match(por.a.notas, /implementación PARCIAL: no pasa a gate ni a commit/);
+    assert.strictEqual(por.c.resultado, 'COMPLETADA');
+    assert.strictEqual(por.b.resultado, 'FALLIDA');
+    assert.strictEqual(por.b.bloqueada, true);
+    assert.match(por.b.notas, /sus dependencias no se completaron \(ai_docs\/tasks\/a\.md\)/);
+  }
+});
+
+test('PARCIAL: con la dependencia COMPLETADA la dependiente sí se implementa', async () => {
+  const { deps, visto } = depsConParcial([]);
+  const resultados = await orq.recorrerNiveles([[tarea('a')], [tarea('b', ['ai_docs/tasks/a.md'])]],
+    (t, p) => orq.ejecutarTask(t, p, deps));
+
+  assert.deepStrictEqual(visto.implementadas, ['a', 'b']);
+  assert.deepStrictEqual(resultados.map(r => r.resultado), ['COMPLETADA', 'COMPLETADA']);
+});
+
+test('PARCIAL: un apartado que pide detener en secuencial para el recorrido', async () => {
+  const { deps, visto } = depsConParcial(['a'],
+    async () => ({ ok: false, detener: true, nota: 'no se pudo apartar el trabajo' }));
+
+  const resultados = await orq.recorrerNiveles([tareas('a', 'c')], (t, p) => orq.ejecutarTask(t, p, deps));
+
+  assert.deepStrictEqual(visto.implementadas, ['a']);
+  assert.strictEqual(resultados[0].resultado, 'PARCIAL');
+  assert.strictEqual(resultados[0].detener_recorrido, true);
+  assert.match(resultados[1].notas, /el recorrido se detuvo en la task a/);
+});
+
+// ── Pathspec único de preparación, revisión y commit, con git real ───────────
+// Rojo antes de esta task: en concurrente el pathspec era la tabla entera (`add` con un fichero
+// declarado que la task no creó sale con 128; un borrado ya preparado no se puede volver a
+// preparar); en secuencial, `ai_docs/` entero quedaba fuera (ai_docs/core sucio se colaba en el
+// commit de la primera task) y el gate preparaba sin pathspec (en un monorepo, lo de fuera del
+// proyecto).
+
+/** Envuelve el spawn real y anota cada argv. */
+function spawnAnotado(repo) {
+  const llamadas = [];
+  return { llamadas, spawn: async argv => { llamadas.push(argv.join(' ')); return repo.spawn(argv); } };
+}
+
+/** Dependencias de revisarYComitear con git real y revisión que aprueba. */
+function depsReales(spawn, ambito) {
+  return {
+    spawnGit: spawn,
+    log: () => {},
+    revisar: async () => ({ veredicto: 'APROBADA', problemas_criticos: [], problemas_menores: [] }),
+    corregir: async () => {},
+    emitirSenal: async () => 'marca',
+    descartar: async () => {},
+    ambito,
+  };
+}
+
+test('pathspec con git real, concurrente: la tabla declara un fichero no creado; se prepara y commitea lo creado', async () => {
+  const repo = repoTemporal();
+  try {
+    repo.escribir('base.txt', 'base\n');
+    repo.g(['add', '-A']);
+    repo.g(['commit', '-q', '-m', 'base']);
+
+    repo.escribir('a.txt', 'de la task\n');
+    repo.escribir('x.txt', 'de una hermana\n');
+    const ambito = ['a.txt', 'b.txt'];
+    const git = spawnAnotado(repo);
+
+    // El gate prepara con la misma función que la revisión.
+    const gate = await orq.prepararTask(git.spawn, ambito);
+    assert.strictEqual(gate.ok, true, gate.error);
+    assert.deepStrictEqual(gate.pathspec, ['--', 'a.txt']);
+    assert.strictEqual(repo.g(['diff', '--cached', '--name-only']), 'a.txt\n');
+
+    const r = await orq.revisarYComitear(tarea('a'),
+      Object.assign(resultadoDe(tarea('a')), { archivos_modificados: ['a.txt'], commit_message: 'feat: a' }),
+      depsReales(git.spawn, ambito));
+
+    assert.strictEqual(r.resultado, 'COMPLETADA', r.notas);
+    assert.deepStrictEqual(git.llamadas.filter(c => c.startsWith('add')), ['add -A -- a.txt', 'add -A -- a.txt']);
+    assert.strictEqual(repo.g(['show', '--name-only', '--format=', 'HEAD']), 'a.txt\n');
+    assert.strictEqual(repo.g(['status', '--porcelain']), '?? x.txt\n');
+  } finally {
+    fs.rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+test('pathspec con git real, concurrente: un borrado preparado por el gate llega al commit', async () => {
+  const repo = repoTemporal();
+  try {
+    repo.escribir('a.txt', 'a original\n');
+    repo.escribir('c.txt', 'se borra\n');
+    repo.g(['add', '-A']);
+    repo.g(['commit', '-q', '-m', 'base']);
+
+    repo.escribir('a.txt', 'a de la task\n');
+    fs.rmSync(path.join(repo.dir, 'c.txt'));
+    const ambito = ['a.txt', 'c.txt'];
+    const git = spawnAnotado(repo);
+
+    const gate = await orq.prepararTask(git.spawn, ambito);
+    assert.strictEqual(gate.ok, true, gate.error);
+
+    const r = await orq.revisarYComitear(tarea('a'),
+      Object.assign(resultadoDe(tarea('a')), { archivos_modificados: ambito, commit_message: 'feat: a' }),
+      depsReales(git.spawn, ambito));
+
+    assert.strictEqual(r.resultado, 'COMPLETADA', r.notas);
+    // La segunda preparación deja fuera el borrado ya preparado: con él, `add` saldría con 128.
+    assert.deepStrictEqual(git.llamadas.filter(c => c.startsWith('add')), ['add -A -- a.txt c.txt', 'add -A -- a.txt']);
+    assert.strictEqual(repo.g(['show', '--name-status', '--format=', 'HEAD']), 'M\ta.txt\nD\tc.txt\n');
+    assert.strictEqual(repo.g(['status', '--porcelain']), '');
+  } finally {
+    fs.rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+test('pathspec con git real, concurrente: sin rutas cambiadas en el ámbito no hay add y nada se prepara', async () => {
+  const repo = repoTemporal();
+  try {
+    repo.escribir('a.txt', 'a\n');
+    repo.g(['add', '-A']);
+    repo.g(['commit', '-q', '-m', 'base']);
+
+    repo.escribir('x.txt', 'de una hermana, sin declarar\n');
+    const git = spawnAnotado(repo);
+
+    const gate = await orq.prepararTask(git.spawn, ['a.txt']);
+    assert.strictEqual(gate.ok, true, gate.error);
+    assert.strictEqual(gate.pathspec, null);
+
+    const r = await orq.revisarYComitear(tarea('a'),
+      Object.assign(resultadoDe(tarea('a')), { archivos_modificados: [] }), depsReales(git.spawn, ['a.txt']));
+
+    assert.strictEqual(r.resultado, 'COMPLETADA');
+    assert.match(r.notas, /sin cambios en el working tree/);
+    assert.ok(!git.llamadas.some(c => c.startsWith('add') || c.startsWith('commit')), git.llamadas.join('\n'));
+    assert.strictEqual(repo.g(['diff', '--cached', '--name-only']), '');
+    assert.strictEqual(repo.g(['status', '--porcelain']), '?? x.txt\n');
+  } finally {
+    fs.rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+/** Monorepo con el proyecto en `proyecto/`, el plan versionado y sin `.gitignore`. */
+function monorepo() {
+  const repo = repoTemporal('proyecto');
+  repo.escribir('fuera.txt', 'fuera original\n');
+  repo.escribir('proyecto/base.txt', 'base\n');
+  repo.escribir('proyecto/ai_docs/tasks/001_x.md', '# Task\n');
+  repo.escribir('proyecto/ai_docs/core/x.md', '# Contexto\n');
+  repo.g(['add', '-A']);
+  repo.g(['commit', '-q', '-m', 'base']);
+  return repo;
+}
+
+test('arranque con git real: ai_docs/core sucio no arranca y el mensaje propone commitearlo, sin stash', async () => {
+  const repo = monorepo();
+  try {
+    repo.escribir('proyecto/ai_docs/core/x.md', '# Contexto editado\n');
+
+    const estado = await orq.comprobarArbolLimpio(repo.spawn);
+
+    assert.deepStrictEqual(estado, { limpio: false, rutas: ['proyecto/ai_docs/core/x.md'] });
+    const mensaje = orq.mensajeArbolSucio(estado);
+    assert.match(mensaje, /proyecto\/ai_docs\/core\/x\.md/);
+    assert.match(mensaje, /Commitéalos antes de lanzar/);
+    assert.doesNotMatch(mensaje, /git stash push/);
+    assert.doesNotMatch(mensaje, /worktree de git limpio/);
+  } finally {
+    fs.rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+test('mensajeArbolSucio: con core y otras rutas, core solo se commitea y el resto conserva las tres salidas', () => {
+  const mensaje = orq.mensajeArbolSucio({ limpio: false, rutas: ['ai_docs/core/x.md', 'src/a.js'] });
+  const [core, resto] = mensaje.split('Hay cambios sin commitear fuera');
+  assert.match(core, /ai_docs\/core\/x\.md/);
+  assert.doesNotMatch(core, /git stash push/);
+  assert.match(resto, /src\/a\.js/);
+  assert.match(resto, /git stash push --include-untracked/);
+  assert.match(resto, /worktree/);
+});
+
+test('secuencial con git real: registro de sesiones, doc de la task y lo de fuera del proyecto no entran', async () => {
+  const repo = monorepo();
+  try {
+    // El hook de inicio de sesión escribe el registro antes de lanzar: no impide arrancar.
+    repo.escribir('proyecto/ai_docs/audits/provenance.jsonl', '{"sesion":1}\n');
+    assert.deepStrictEqual(await orq.comprobarArbolLimpio(repo.spawn), { limpio: true, rutas: [] });
+
+    repo.escribir('proyecto/a.txt', 'de la task\n');
+    repo.escribir('proyecto/ai_docs/tasks/001_x.md', '# Task\nEstado: en curso\n');
+    repo.escribir('fuera.txt', 'cambio ajeno al proyecto\n');
+
+    // Gate: la misma preparación que la revisión.
+    const gate = await orq.prepararTask(repo.spawn, undefined);
+    assert.strictEqual(gate.ok, true, gate.error);
+    assert.strictEqual(repo.g(['diff', '--cached', '--name-only']), 'proyecto/a.txt\n');
+
+    const r = await orq.revisarYComitear(tarea('a'),
+      Object.assign(resultadoDe(tarea('a')), { archivos_modificados: ['a.txt'], commit_message: 'feat: a' }),
+      depsReales(repo.spawn, undefined));
+
+    assert.strictEqual(r.resultado, 'COMPLETADA', r.notas);
+    assert.strictEqual(repo.g(['show', '--name-only', '--format=', 'HEAD']), 'proyecto/a.txt\n');
+    assert.strictEqual(repo.g(['status', '--porcelain', '--untracked-files=all']),
+      ' M fuera.txt\n M proyecto/ai_docs/tasks/001_x.md\n?? proyecto/ai_docs/audits/provenance.jsonl\n');
   } finally {
     fs.rmSync(repo.dir, { recursive: true, force: true });
   }

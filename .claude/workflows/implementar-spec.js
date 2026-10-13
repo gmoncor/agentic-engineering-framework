@@ -1,6 +1,6 @@
 export const meta = {
   name: 'implementar-spec',
-  description: 'Implementa todas las tasks de una spec en orden topologico, una tras otra',
+  description: 'Implementa todas las tasks de una spec en orden de dependencias; con --parallel, a la vez dentro de cada nivel',
   phases: [
     { title: 'Descubrimiento', detail: 'Identificar tasks, dependencias y orden de ejecucion' },
     { title: 'Implementacion', detail: 'Implementar cada task, revisarla y commitearla antes de pasar a la siguiente' },
@@ -174,7 +174,8 @@ async function calcularAmbitoTask(task) {
 
   if (!fs.existsSync(ruta)) {
     log('Ambito de ' + task.titulo + ' vacio: el proyecto no tiene hooks/sdd-task-files.js instalado, '
-      + 'asi que no hay tabla "Archivos afectados" que parsear. No se acota el commit.')
+      + 'asi que no hay tabla "Archivos afectados" que parsear; el commit solo se acota al '
+      + 'proyecto.')
     return []
   }
 
@@ -183,7 +184,7 @@ async function calcularAmbitoTask(task) {
     const contenido = fs.readFileSync(await resolverEnProyecto(task.path), 'utf8')
     return parser.parseAffectedFiles(contenido)
   } catch (e) {
-    log('Ambito de ' + task.titulo + ' vacio: ' + e.message + '. No se acota el commit.')
+    log('Ambito de ' + task.titulo + ' vacio: ' + e.message + '; el commit solo se acota al proyecto.')
     return []
   }
 }
@@ -210,7 +211,8 @@ async function git(argv) {
 
 // Aparta, sin destruirlo, el trabajo sin commitear de una task que no se commitea: queda en
 // `git stash` con nombre y se recupera con `git stash pop`. En secuencial, todo el árbol salvo
-// ai_docs/; en concurrente, solo el ámbito de la task. El criterio vive en
+// orq.RUTAS_FUERA (documentos de plan y registro de sesiones); en concurrente, solo el ámbito de
+// la task. El criterio vive en
 // orquestacion.apartarTrabajo, probado con dobles y con git real.
 async function apartarTrabajo(task) {
   return orq.apartarTrabajo(task, {
@@ -221,7 +223,8 @@ async function apartarTrabajo(task) {
   })
 }
 
-// Antes de cada task del recorrido secuencial: el árbol tiene que seguir limpio fuera de ai_docs/.
+// Antes de cada task del recorrido secuencial: el árbol tiene que seguir limpio fuera de
+// orq.RUTAS_FUERA.
 async function arbolLimpio() {
   return orq.comprobarArbolLimpio(git)
 }
@@ -236,9 +239,19 @@ function registro(mensaje) {
 // El exit code es la unica evidencia que cuenta: no se lee ningun numero de tests
 // auto-reportado por el implementador. Un timeout o un fallo del spawn deja code
 // distinto de 0, que evaluarGateTests trata como rojo (bloquea).
+//
+// Corre en la raíz del proyecto, donde se descubrió el comando. Solo se usan el código de salida
+// y la cola de stderr: stdout se descarta, y stderr tiene un maxBuffer amplio para que una suite
+// verbosa no se corte con ENOBUFS y pase por roja.
 async function ejecutarTests(comando) {
   const cp = await import('node:child_process')
-  const r = cp.spawnSync(comando.cmd, comando.args, { encoding: 'utf8', timeout: 600000 })
+  const r = cp.spawnSync(comando.cmd, comando.args, {
+    cwd: raizProyecto,
+    encoding: 'utf8',
+    timeout: 600000,
+    stdio: ['ignore', 'ignore', 'pipe'],
+    maxBuffer: 64 * 1024 * 1024,
+  })
   return { code: r.status, err: (r.stderr || '').slice(-400) }
 }
 
@@ -248,20 +261,27 @@ async function ejecutarTests(comando) {
 // concurrente ese listado es justo el dato que F1 contamina: sin acotarlo al
 // ambito de la task, este gate leeria tambien los ficheros que una hermana dejo
 // preparados en el mismo indice compartido.
+//
+// La preparación y el listado usan el mismo pathspec que la revisión y el commit
+// (orq.prepararTask → orq.pathspecDeTask): en secuencial, el proyecto salvo orq.RUTAS_FUERA; en
+// concurrente, solo las rutas del ámbito que cambiaron. Sin rutas cambiadas no hay nada que
+// preparar ni que listar, y el gate decide sobre la lista vacía.
 async function gateTests(task) {
   const ambito = modoParalelo ? await ambitoTask(task) : undefined
-  const pathspec = (ambito && ambito.length > 0) ? ['--'].concat(ambito) : []
 
-  const preparado = await orq.gitVerificado(['add', '-A'].concat(pathspec), git)
+  const preparado = await orq.prepararTask(git, ambito)
   if (!preparado.ok) return { estado: 'FALLIDA', infraestructura: true, nota: preparado.error }
 
-  const listado = await orq.gitVerificado(['diff', '--cached', '--name-only'].concat(pathspec), git)
-  // Sin listado fiable no se puede decidir la exencion de docs/config: una lista vacia por fallo
-  // de git eximiria a una task que si toca codigo.
-  if (!listado.ok) return { estado: 'FALLIDA', infraestructura: true, nota: listado.error }
+  var archivos = []
+  if (preparado.pathspec) {
+    const listado = await orq.gitVerificado(['diff', '--cached', '--name-only'].concat(preparado.pathspec), git)
+    // Sin listado fiable no se puede decidir la exencion de docs/config: una lista vacia por fallo
+    // de git eximiria a una task que si toca codigo.
+    if (!listado.ok) return { estado: 'FALLIDA', infraestructura: true, nota: listado.error }
 
-  const archivos = listado.out
-    .split('\n').map(function(s) { return s.trim() }).filter(Boolean)
+    archivos = listado.out
+      .split('\n').map(function(s) { return s.trim() }).filter(Boolean)
+  }
 
   const comando = orq.descubrirComandoTest(raizProyecto)
   var exitCode = null
@@ -370,19 +390,21 @@ for (var w = 0; w < niveles.length; w++) {
   log('Nivel ' + (w + 1) + ': ' + niveles[w].map(function(t) { return t.titulo }).join(', '))
 }
 
-// El árbol tiene que estar limpio fuera de ai_docs/ antes de implementar: en secuencial, el `add
-// -A` de la primera task absorberia esos cambios en su commit, y apartar el trabajo de una task
-// fallida se los llevaría con él. Los documentos de plan quedan fuera: el guard también los exime.
+// El árbol tiene que estar limpio fuera de orq.RUTAS_FUERA antes de implementar: en secuencial, el
+// `add -A` de la primera task absorberia esos cambios en su commit, y apartar el trabajo de una
+// task fallida se los llevaría con él. Quedan fuera los documentos de plan (el guard también los
+// exime) y el registro de sesiones, que se reescribe en cada arranque. ai_docs/core/ no: sucio, el
+// mensaje propone commitearlo antes de lanzar.
 const estadoInicial = await orq.comprobarArbolLimpio(git)
 if (!estadoInicial.limpio) {
   return { spec: specPath, error: orq.mensajeArbolSucio(estadoInicial) }
 }
 
 // ── Fase 2: Implementacion (con revision por task antes del commit) ───────────
-// Las tasks se implementan una tras otra en orden topologico: cada nivel de
-// dependencia antes que el siguiente y, dentro de un nivel, una task despues de
-// otra. Por cada task: el implementador deja los cambios en el working tree (no
-// commitea); el workflow revisa ESE diff con un agente aparte (contexto limpio);
+// Las tasks se implementan en orden de dependencias; con `--parallel`, a la vez dentro de cada
+// nivel: cada nivel de dependencia antes que el siguiente. Por cada task: el implementador
+// deja los cambios en el working tree (no commitea); el workflow revisa ESE diff con un
+// agente aparte (contexto limpio);
 // si la revision aprueba, emite la senal atada al diff y crea el commit. Asi cada
 // unidad se valida antes de avanzar a la siguiente.
 phase('Implementacion')
@@ -400,7 +422,7 @@ Task a implementar: ' + task.path + '\n\
 Spec madre: ' + specPath + '\n\
 \n\
 CONTEXTO DEL WORKFLOW:\n' + deps + '\n\
-- Las tasks se implementan una tras otra en orden; sus dependencias ya estan completadas.\n\
+- Tus dependencias ya están completadas; con `--parallel`, otras tasks del mismo nivel trabajan a la vez en el mismo árbol: no toques ficheros fuera de tu tabla.\n\
 - Escribe SOLO los archivos declarados en la tabla "Archivos afectados" de tu task.\n\
 \n\
 PROCESO OBLIGATORIO:\n\
@@ -443,8 +465,6 @@ Lee la task en: ' + task.path + '\n\
 Lee ai_docs/core/ para contexto del proyecto.\n\
 \n\
 POSTURA OBLIGATORIA:\n\
-- Tu trabajo es ENCONTRAR PROBLEMAS en esta task, no confirmar que todo esta bien.\n\
-- Asume que hay bugs hasta demostrar lo contrario.\n\
 - NO modifiques codigo. Solo analiza y reporta.\n\
 - NO hagas preguntas. Trabaja con lo que hay.\n\
 \n\
@@ -489,6 +509,7 @@ REGLAS:\n\
 // en orquestacion.js, donde se prueba con dobles; aqui solo se cablean las piezas
 // que hablan con el mundo exterior. El ambito solo se calcula (y se pasa) en modo
 // concurrente: en secuencial no hay hermanas que contaminen el indice compartido.
+// Tras la pasada de correccion, el gate de tests se vuelve a pasar antes de re-revisar.
 async function revisarYComitear(task, resultado) {
   const ambito = modoParalelo ? await ambitoTask(task) : undefined
   return orq.revisarYComitear(task, resultado, {
@@ -498,11 +519,12 @@ async function revisarYComitear(task, resultado) {
     corregir: corregirTask,
     emitirSenal: emitirSenalRevision,
     descartar: apartarTrabajo,
+    gateTests: gateTests,
     ambito: ambito,
   })
 }
 
-// Ejecuta una task completa: gate de dependencias fallidas, implementacion, gate de
+// Ejecuta una task completa: gate de dependencias no completadas, implementacion, gate de
 // tests y, si pasa, revision + commit. El gate de tests corre la suite real y lee su
 // exit code: rojo bloquea el commit y aparta el trabajo de la task; la falta de
 // comando bloquea solo si la task toca codigo. SDD_GUARD_SKIP=1 degrada ese bloqueo a
@@ -546,7 +568,8 @@ async function verificarConvergencia() {
 Aplica solo el Paso 4bis de ai_docs/dev_templates/revision_adversarial.md en modo\n\
 standalone contra la spec ' + specPath + ' y sus tasks.\n\
 No repitas Pasos 1-3/5. No toques codigo.\n\
-Si hay brechas BLOQUEANTES, genera tasks de convergencia via scripts/next-task-number.sh.\n\
+No crees ficheros ni tasks: devuelve en `tasks_generadas` una línea por brecha BLOQUEANTE,\n\
+con la forma `brecha: <criterio> — <hallazgo>`.\n\
 Emite el veredicto.', {
     label: 'convergencia',
     phase: 'Convergencia',
