@@ -24,6 +24,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { pathToFileURL } = require('node:url');
 
 const RAIZ = path.join(__dirname, '..');
 const CLI = path.join(RAIZ, 'bin', 'cli.js');
@@ -119,6 +120,69 @@ for (const [backend, contexto] of Object.entries(CONTEXTO_POR_BACKEND)) {
     assert.ok(leerJson(path.join(destino, 'package.json')).scripts.test, 'falta scripts.test');
   });
 }
+
+// Un proyecto destino con `"type": "module"` en su package.json raíz hace que
+// Node trate como ESM cualquier `.js` sin un package.json más cercano. Los
+// módulos de `.claude/workflows/lib/` son CommonJS y los workflows los cargan
+// con `import()`, así que solo funcionan si su marcador de ámbito viaja con la
+// instalación. Los hooks cableados se ejecutan como lo hace Claude Code.
+test('la via del CLI de claude funciona en un destino ESM', async (t) => {
+  const destino = fs.mkdtempSync(path.join(os.tmpdir(), 'install-claude-esm-'));
+  t.after(() => fs.rmSync(destino, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(destino, 'package.json'), JSON.stringify({ name: 'destino-esm', type: 'module' }));
+
+  const instalacion = spawnSync(process.execPath, [CLI, 'install', '--backend', 'claude'], {
+    cwd: destino,
+    encoding: 'utf8',
+  });
+  assert.strictEqual(instalacion.status, 0, `install --backend claude falló: ${instalacion.stderr}`);
+  assert.strictEqual(leerJson(path.join(destino, 'package.json')).type, 'module', 'el instalador cambió el tipo del destino');
+
+  const lib = path.join(destino, '.claude', 'workflows', 'lib');
+  for (const marcador of [lib, path.join(destino, 'scripts')]) {
+    assert.deepStrictEqual(leerJson(path.join(marcador, 'package.json')), { type: 'commonjs' }, `falta el marcador de ${marcador}`);
+  }
+
+  const modulos = fs.readdirSync(lib).filter(f => f.endsWith('.js'));
+  assert.ok(modulos.includes('orquestacion.js'), 'falta orquestacion.js en el destino');
+  for (const modulo of modulos) {
+    const cargado = await import(pathToFileURL(path.join(lib, modulo)).href);
+    assert.ok(Object.keys(cargado.default ?? {}).length > 0, `${modulo} no exporta nada al cargarse como CommonJS`);
+  }
+
+  // Control negativo: la misma biblioteca sin su marcador falla como en un
+  // destino ESM real. Va en una copia porque Node cachea, dentro del proceso,
+  // la resolución del package.json de cada directorio ya visitado.
+  const sinMarcador = path.join(destino, '.claude', 'workflows', 'lib_sin_marcador');
+  fs.cpSync(lib, sinMarcador, { recursive: true });
+  fs.rmSync(path.join(sinMarcador, 'package.json'));
+  await assert.rejects(
+    import(pathToFileURL(path.join(sinMarcador, 'orquestacion.js')).href),
+    /require is not defined/,
+  );
+
+  const settings = leerJson(path.join(destino, '.claude', 'settings.json'));
+  const scripts = new Set();
+  for (const grupos of Object.values(settings.hooks)) {
+    for (const { hooks } of grupos) {
+      for (const { command } of hooks) {
+        const ruta = /^node "\$CLAUDE_PROJECT_DIR\/(.+)"$/.exec(command);
+        assert.ok(ruta, `orden de hook con forma no reconocida: ${command}`);
+        scripts.add(ruta[1]);
+      }
+    }
+  }
+  assert.ok(scripts.size >= 3, `settings.json cablea ${scripts.size} hooks`);
+  for (const script of scripts) {
+    const resultado = spawnSync(process.execPath, [path.join(destino, script)], {
+      cwd: destino,
+      input: '{}',
+      encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: destino },
+    });
+    assert.strictEqual(resultado.status, 0, `${script} terminó con ${resultado.status} en un destino ESM: ${resultado.stderr}`);
+  }
+});
 
 test('la via nativa de Gemini entrega el mismo archivo de contexto que la via del CLI', (t) => {
   const manifiesto = leerJson(path.join(RAIZ, 'gemini-extension.json'));
