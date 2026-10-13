@@ -84,6 +84,9 @@ const AUDIT_SCHEMA = {
     huecos: { type: 'array', items: { type: 'string' } },
     incoherencias: { type: 'array', items: { type: 'string' } },
     dependencias_problematicas: { type: 'array', items: { type: 'string' } },
+    // Dudas sin evidencia (WARNING): se informan pero no bloquean. Opcional, para que
+    // una duda no tenga que meterse en huecos o incoherencias, que sí bloquean.
+    avisos: { type: 'array', items: { type: 'string' } },
     resumen: { type: 'string' }
   },
   required: ['veredicto', 'cobertura', 'overlaps', 'huecos', 'incoherencias', 'dependencias_problematicas', 'resumen']
@@ -282,18 +285,36 @@ const taskPaths = taskList.map(function(t) { return t.path }).join(', ')
 // El fan-out parallel() de la revision (Fase 4) se conserva intacto: es el
 // paralelismo de auditoria por task. La pasada se ejecuta hasta dos veces (ver
 // MAX_REVISION_PASSES); solo la primera marca las fases, la segunda solo registra.
-async function pasadaRevisionAuditoria(numeroPasada) {
-  if (numeroPasada === 1) phase('Revision')
-  else log('Segunda pasada: re-revision paralela de las tasks corregidas')
+//
+// La primera pasada revisa todas las tasks. La segunda recibe las revisiones de la
+// primera (alineadas con taskList, null donde fallaron) y los índices a revisar de
+// nuevo: solo esos se relanzan, con sus hallazgos previos en el prompt; el resto
+// conserva su revisión. La auditoría cruzada se repite siempre completa.
+function hallazgosPreviosTexto(previa) {
+  if (!previa) return ''
+  const problemas = (previa.problemas || []).length ? previa.problemas.join('\n- ') : 'ninguno'
+  const ajustes = (previa.ajustes_propuestos || []).length ? previa.ajustes_propuestos.join('\n- ') : 'ninguno'
+  return '\nRevisión previa de esta task (veredicto ' + previa.veredicto + '). Comprueba si cada '
+    + 'problema quedó resuelto en el documento actual y busca los que la corrección haya introducido.\n'
+    + 'Problemas previos:\n- ' + problemas + '\nAjustes propuestos previos:\n- ' + ajustes + '\n'
+}
 
-  const reviews = await parallel(
-    taskList.map((task, i) => () =>
-      agent(`
+async function pasadaRevisionAuditoria(numeroPasada, reviewsPrevias, indicesARevisar) {
+  const indices = indicesARevisar || taskList.map(function(_, i) { return i })
+  if (numeroPasada === 1) phase('Revision')
+  else log('Segunda pasada: re-revision paralela de ' + indices.length + ' de ' + taskList.length
+    + ' tasks (no listas, sin revision o tocadas por la correccion)')
+
+  const nuevas = indices.length === 0 ? [] : await parallel(
+    indices.map((i) => () => {
+      const task = taskList[i]
+      const previa = reviewsPrevias ? reviewsPrevias[i] : null
+      return agent(`
 Lee ai_docs/dev_templates/revisar_tarea.md y sigue TODOS sus pasos sin saltar ninguno.
 Lee la task en: ${task.path}
 Lee la spec madre en: ${specPath}
 Lee ai_docs/core/ para contexto del proyecto.
-
+${hallazgosPreviosTexto(previa)}
 POSTURA OBLIGATORIA:
 - Tu trabajo es ENCONTRAR PROBLEMAS, no confirmar que todo esta bien.
 - Asume que hay errores hasta demostrar lo contrario.
@@ -316,12 +337,19 @@ Retorna tu veredicto estructurado con problemas y ajustes concretos.
         phase: 'Revision',
         schema: REVIEW_SCHEMA
       })
-    )
+    })
   )
 
+  // Revisiones alineadas con taskList: las conservadas de la pasada previa y, encima,
+  // las nuevas. Una re-revisión que falla deja null (la previa ya no vale para un
+  // documento que se volvió a revisar por algo): cuenta como task sin revisión.
+  const reviews = reviewsPrevias ? reviewsPrevias.slice() : taskList.map(function() { return null })
+  indices.forEach(function(i, k) { reviews[i] = nuevas[k] || null })
+
   const validReviews = reviews.filter(Boolean)
-  if (validReviews.length < taskList.length) {
-    log('ADVERTENCIA: ' + (taskList.length - validReviews.length) + ' de ' + taskList.length + ' revisiones fallaron')
+  const tasksSinRevision = taskList.filter(function(_, i) { return !reviews[i] }).map(function(t) { return t.path })
+  if (tasksSinRevision.length) {
+    log('ADVERTENCIA: ' + tasksSinRevision.length + ' de ' + taskList.length + ' tasks sin revision: ' + tasksSinRevision.join(', '))
   }
   const listos = validReviews.filter(r => r.veredicto === 'LISTO_PARA_IMPLEMENTAR').length
   const ajustes = validReviews.filter(r => r.veredicto === 'NECESITA_AJUSTES').length
@@ -381,13 +409,46 @@ Ejecuta todas las verificaciones:
 Si hay criterios de aceptacion sin cobertura, el veredicto es NECESITA_AJUSTES minimo.
 Si hay contratos producer/consumer rotos, el veredicto es NECESITA_AJUSTES minimo.
 Si hay problemas estructurales graves, el veredicto es NECESITA_REPLANTEAMIENTO.
+Las dudas sin evidencia (WARNING) van en avisos: se informan y no bloquean. En huecos,
+incoherencias y cobertura.sin_cobertura solo hallazgos con evidencia: cualquiera de ellos
+impide un APROBADO.
 
 Retorna tu veredicto estructurado.
 `, { label: 'auditoria-cruzada-p' + numeroPasada, phase: 'Auditoria', schema: AUDIT_SCHEMA })
 
   // Un contrato roto no puede quedar aprobado aunque el auditor no lo reflejara:
-  // se incorpora como incoherencia y fuerza un veredicto adverso.
-  return { audit: aud.incorporarContratosRotos(auditResult, contratosRotos), reviews: validReviews }
+  // se incorpora como incoherencia y fuerza un veredicto adverso. Lo mismo un
+  // APROBADO que se contradice con sus propias listas de hallazgos, y una task que
+  // se quedó sin revisión: ninguno de los dos aprueba el plan.
+  let audit = aud.incorporarContratosRotos(auditResult, contratosRotos)
+  audit = aud.normalizarAprobado(audit)
+  audit = aud.incorporarRevisionesAusentes(audit, tasksSinRevision)
+  return { audit: audit, reviews: reviews }
+}
+
+// Huella del plan en disco: hash del contenido de la spec y de cada task doc. Se toma
+// antes y después de corregirTasks para saber, sin fiarse del agente, qué cambió. Un
+// documento ilegible da null, que tasksTocadas trata como tocado. Las rutas se
+// resuelven UNA vez, antes de corregir; la huella posterior hashea esas mismas rutas
+// absolutas sin volver a resolverlas, para que un documento borrado no se confunda
+// con una copia homónima en un directorio antecesor. Una ruta absoluta o que sale
+// del proyecto con '..' no se resuelve: queda null y cuenta como tocada.
+async function resolverRutasPlan() {
+  const path = await import('node:path')
+  async function resolver(ruta) {
+    return aud.rutaPlanAdmisible(ruta, path) ? await resolverEnProyecto(ruta) : null
+  }
+  const tasks = {}
+  for (const t of taskList) tasks[t.path] = await resolver(t.path)
+  return { spec: await resolver(specPath), tasks: tasks }
+}
+
+async function huellaPlan(rutasPlan) {
+  const crypto = await import('node:crypto')
+  const fs = await import('node:fs')
+  return aud.huellaDocumentos(rutasPlan, function(absoluta) {
+    return crypto.createHash('sha256').update(fs.readFileSync(absoluta)).digest('hex')
+  })
 }
 
 // Corrige las tasks segun los hallazgos de la auditoria adversa, en el sitio, para
@@ -419,20 +480,25 @@ REGLAS:
 
 // Presupuesto de pasadas: MAX_REVISION_PASSES, una simple constante. Primera pasada
 // siempre; si su veredicto es adverso y queda presupuesto, se corrigen las tasks y se
-// hace UNA segunda pasada sobre el plan corregido. No hay tercera.
+// hace UNA segunda pasada sobre el plan corregido. No hay tercera. La segunda solo
+// re-revisa lo pendiente (no listas, sin revisión, tocadas por la corrección).
 let pasadas = 1
 let resultado = await pasadaRevisionAuditoria(pasadas)
 let auditPrevia = null
 
 if (aud.necesitaOtraPasada(resultado.audit ? resultado.audit.veredicto : 'ERROR', pasadas, MAX_REVISION_PASSES)) {
+  const rutasPlan = await resolverRutasPlan()
+  const huellaAntes = await huellaPlan(rutasPlan)
   await corregirTasks(resultado.audit, pasadas)
+  const tocadas = aud.tasksTocadas(huellaAntes, await huellaPlan(rutasPlan))
+  const indicesARevisar = aud.tasksARevisar(taskList, resultado.reviews, tocadas)
   auditPrevia = resultado.audit
   pasadas = 2
-  resultado = await pasadaRevisionAuditoria(pasadas)
+  resultado = await pasadaRevisionAuditoria(pasadas, resultado.reviews, indicesARevisar)
 }
 
 const auditFinal = resultado.audit
-const validReviews = resultado.reviews
+const validReviews = resultado.reviews.filter(Boolean)
 const veredicto = auditFinal ? auditFinal.veredicto : 'ERROR'
 log('Auditoria final tras ' + pasadas + ' pasada' + (pasadas > 1 ? 's' : '') + ': ' + veredicto)
 

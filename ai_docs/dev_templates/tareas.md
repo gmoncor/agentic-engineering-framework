@@ -79,6 +79,16 @@ Para cada task, usa este formato:
 
 <1-2 frases: que se implementa y por que. Referencia a la spec, no repitas el contexto completo.>
 
+## Premisas verificadas
+
+Cada hecho del código o del entorno del que depende el plan, con su evidencia:
+
+- <premisa 1> — `ruta/archivo.ext:línea` (o el comando que la acredita)
+- <premisa 2> — no verificada: <motivo por el que no se pudo comprobar>
+
+Una premisa sin evidencia se marca «no verificada» con su motivo; nunca se da por
+cierta en silencio.
+
 ## Archivos afectados
 
 | Archivo | Accion | Descripcion del cambio |
@@ -130,6 +140,11 @@ Minimo 3, todos verificables (test, comando o inspeccion concreta):
 - [ ] <criterio medible 2>
 - [ ] <criterio medible 3>
 
+Un criterio de ausencia («no aparece», «0 líneas», «no se bloquea») se acredita
+también con un control positivo y otro negativo: el mismo comando detecta el caso
+cuando existe (por ejemplo, revirtiendo el cambio de forma temporal) y deja de
+detectarlo tras el cambio.
+
 ## Casos limite minimos
 
 Minimo 3:
@@ -146,13 +161,15 @@ Minimo 3:
 - [ ] Sin dead/legacy code.
 - [ ] DRY/KISS/early returns aplicados.
 - [ ] TDD reutilizando infra existente.
+- [ ] Si la task añade o cambia un test, un hook o un job de CI: punto del ciclo en que corre, quién espera su resultado y coste medido (tiempo, procesos lanzados).
+- [ ] Si la task toca acceso a datos: volumen esperado, índice para cada filtro nuevo, plan de ejecución de la consulta y secuencia add → backfill → drop si cambia el esquema.
 ```
 
 **Reglas para cada task:**
 - El titulo debe ser accionable: "Crear endpoint de registro" no "Registro"
 - Minimo 3 casos limite por task si involucra logica de negocio
 - El tamano estimado debe ser realista. Si supera 400 lineas, divide la task
-- Cada task aprobada genera al menos un commit; las tasks fallidas (revision adversarial no superada) se descartan sin commit
+- Cada task aprobada genera al menos un commit; las tasks fallidas (revision adversarial no superada) no se commitean
 
 ---
 
@@ -232,6 +249,6 @@ El siguiente paso es revisar cada task individualmente con `revisar_tarea.md`.
 3. **Cada task tiene un alcance acotado** — si depende de otra, la dependencia debe estar documentada
 4. **NUNCA repitas el contexto completo de la spec** en cada task — referencia la spec madre
 5. **Si dos tasks tocan el mismo archivo**, una depende de la otra — documentar el orden
-6. **Cada task aprobada genera al menos un commit** — las tasks fallidas (revision adversarial no superada) se descartan sin commit; si una task aprobada es tan pequena que no justifica commit, fusionarla con otra
+6. **Cada task aprobada genera al menos un commit** — las tasks fallidas (revision adversarial no superada) no se commitean; si una task aprobada es tan pequena que no justifica commit, fusionarla con otra
 7. **Minimo 3 casos limite** por task que involucre logica de negocio
 8. **`**Actualizado:**` se refresca en TODA edicion posterior a la creacion** — no solo al crear el archivo. `**Creado:**` es inmutable: fijalo una vez y no lo vuelvas a escribir

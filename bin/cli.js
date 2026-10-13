@@ -132,6 +132,8 @@ Actualiza el framework instalado en el directorio actual: copia las rutas del ba
 Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).
 --skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing, pr); solo aplica al backend claude.
 --reset-protected sobrescribe cualquier archivo del framework con ediciones locales detectadas (no solo los archivos nucleares como CLAUDE.md o hooks/config.json) y refresca el sidecar de hashes al final.
+Un cambio solo de fin de línea (CRLF frente a LF) no cuenta como edición local: el archivo se actualiza igual. Un archivo que ya coincide con la versión nueva se informa como convergido y se actualiza su hash.
+Si .claude/settings.json o hooks/config.json se saltan por cambios locales, update avisa de los hooks y claves de la versión nueva que les faltan, con la entrada exacta a añadir.
 --dry-run muestra que ficheros se copiarian/saltarian sin escribir nada en disco.
 --force si hay archivos no protegidos que se sobrescribirian, salta la confirmacion (util en CI/pipe). No afecta a los archivos protegidos con ediciones locales: para esos sigue haciendo falta --reset-protected.`);
 }
@@ -287,10 +289,28 @@ function advertirSiGeminiLayoutAntiguo(backend) {
   );
 }
 
-/** SHA-256 hexadecimal del contenido de un archivo, o null si no existe. */
+/**
+ * SHA-256 hexadecimal del contenido de un archivo, o null si no existe.
+ *
+ * Un fichero de texto (sin ningún byte 0) se hashea con cada par `\r\n`
+ * sustituido por `\n`: un checkout con `core.autocrlf=true` deja en CRLF todo
+ * lo instalado y, con el hash de los bytes crudos, `update` lo tomaría entero
+ * por editado localmente. Un `\r` aislado no se toca. Un fichero sin `\r\n`
+ * produce el mismo hash que antes, así que los sidecars existentes siguen
+ * valiendo. Un fichero con algún byte 0 se trata como binario y se hashea en
+ * crudo.
+ */
 function hashFile(rutaAbsoluta) {
   if (!fs.existsSync(rutaAbsoluta)) return null;
-  return crypto.createHash('sha256').update(fs.readFileSync(rutaAbsoluta)).digest('hex');
+  return hashContenido(fs.readFileSync(rutaAbsoluta));
+}
+
+/** Hash de `hashFile` sobre un buffer ya leído. */
+function hashContenido(buffer) {
+  const normalizado = buffer.includes(0)
+    ? buffer
+    : Buffer.from(buffer.toString('latin1').replace(/\r\n/g, '\n'), 'latin1');
+  return crypto.createHash('sha256').update(normalizado).digest('hex');
 }
 
 /**
@@ -492,8 +512,13 @@ async function confirmarColisiones(colisiones) {
  * anterior a su introduccion), compara contra el hash del archivo de origen:
  * si coinciden, no hay edicion local (siembra la entrada en el sidecar);
  * si difieren -- o el origen ya no existe -- se protege por defecto.
+ *
+ * Si el destino difiere del hash instalado pero ya es igual al origen nuevo
+ * (el usuario lo dejó como la versión que se va a instalar), no es una
+ * edición: se anota en `convergidas` y se copia, de modo que el sidecar se
+ * refresca y deja de señalarse en cada `update`.
  */
-function editadaLocalmente(rutaRelativa, hashesInstalados) {
+function editadaLocalmente(rutaRelativa, hashesInstalados, convergidas = []) {
   const hashActual = hashFile(path.join(DEST, rutaRelativa));
   if (hashActual === null) return false;
   if (hashesInstalados[rutaRelativa] === undefined) {
@@ -502,7 +527,12 @@ function editadaLocalmente(rutaRelativa, hashesInstalados) {
     hashesInstalados[rutaRelativa] = hashActual;
     return false;
   }
-  return hashesInstalados[rutaRelativa] !== hashActual;
+  if (hashesInstalados[rutaRelativa] === hashActual) return false;
+  if (hashFile(origenDe(rutaRelativa)) === hashActual) {
+    convergidas.push(rutaRelativa);
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -516,7 +546,7 @@ function editadaLocalmente(rutaRelativa, hashesInstalados) {
  * reporta por consola lo que habria pasado y se retorna el mismo resultado
  * que produciria el run real.
  */
-function copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, resetProtected, dryRun, generalizado) {
+function copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, resetProtected, dryRun, generalizado, convergidas = []) {
   const origen = origenDe(ruta);
   if (!fs.existsSync(origen)) {
     return { ruta, copiada: false };
@@ -526,7 +556,7 @@ function copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, resetProtected, 
   const candidatas = generalizado ? archivosDe(ruta) : protegidasEn(ruta);
   const editadas = resetProtected
     ? []
-    : candidatas.filter(archivo => editadaLocalmente(archivo, hashesInstalados));
+    : candidatas.filter(archivo => editadaLocalmente(archivo, hashesInstalados, convergidas));
   editadas.forEach(archivo => saltadasPorEdicion.push(archivo));
 
   const esDirectorio = fs.statSync(origen).isDirectory();
@@ -783,6 +813,7 @@ function copiarRutasFramework(backend, skip, opciones = {}) {
 
   const hashesInstalados = loadInstalledHashes(DEST);
   const saltadasPorEdicion = [];
+  const convergidas = [];
 
   if (!opciones.dryRun) crearLockfileInstalacion(backend);
 
@@ -802,7 +833,9 @@ function copiarRutasFramework(backend, skip, opciones = {}) {
     for (const ruta of rutas) {
       try {
         resultados.push(
-          copiarRuta(ruta, hashesInstalados, saltadasPorEdicion, opciones.resetProtected, opciones.dryRun, opciones.generalizado),
+          copiarRuta(
+            ruta, hashesInstalados, saltadasPorEdicion, opciones.resetProtected, opciones.dryRun, opciones.generalizado, convergidas,
+          ),
         );
       } catch (err) {
         fallidas.push({ ruta, error: err.message });
@@ -825,7 +858,15 @@ function copiarRutasFramework(backend, skip, opciones = {}) {
 
     if (fallidas.length) reportarRutasFallidas(fallidas);
 
-    return { copiadas, saltadas, creados, saltadasPorEdicion, fallidas, dirsFallidos };
+    // Solo cuenta como convergido lo que de verdad se copio: una ruta fallida
+    // no refresco su hash en el sidecar.
+    const convergidasCopiadas = convergidas.filter(
+      archivo => copiadas.some(ruta => archivo === ruta || archivo.startsWith(`${ruta}/`)),
+    );
+
+    return {
+      copiadas, saltadas, creados, saltadasPorEdicion, convergidas: convergidasCopiadas, fallidas, dirsFallidos,
+    };
   } finally {
     // El lockfile se borra siempre al terminar, con exito o con fallo: dejarlo
     // huerfano tras un fallo bloquearia el siguiente intento legitimo con el
@@ -878,6 +919,108 @@ function reportarArchivosProtegidos(saltadasPorEdicion) {
   if (!saltadasPorEdicion.length) return;
   console.log('Archivos con cambios locales, no se sobrescribieron (revisa el diff manualmente):');
   saltadasPorEdicion.forEach(ruta => console.log(`  - ${ruta}`));
+}
+
+/** Archivos que el usuario ya había dejado iguales a la versión nueva: no son ediciones locales. */
+function reportarConvergidas(convergidas, dryRun) {
+  if (!convergidas.length) return;
+  const sidecar = dryRun ? 'su hash se refrescaría sin --dry-run' : 'su hash se ha refrescado';
+  console.log(`Archivos convergidos (ya coincidían con la versión nueva; ${sidecar}):`);
+  convergidas.forEach(ruta => console.log(`  - ${ruta}`));
+}
+
+// Ficheros protegidos cuyo cableado se compara con la plantilla cuando
+// `update` los salta por edición local.
+const SETTINGS_CLAUDE = '.claude/settings.json';
+const CONFIG_HOOKS = 'hooks/config.json';
+
+/**
+ * Diferencia de cableado entre la plantilla y el destino de un fichero
+ * protegido, sobre los objetos JSON ya parseados. Pura: no lee ni escribe.
+ *
+ * - `.claude/settings.json`: cada hook de la plantilla, identificado por
+ *   evento, matcher y comando, que no está en el destino. Devuelve
+ *   `{ evento, matcher, hook }` con el objeto `hook` de la plantilla tal cual.
+ * - `hooks/config.json`: cada clave de primer nivel de la plantilla ausente
+ *   en el destino, sin las claves `_comment*`, que solo documentan. Devuelve
+ *   `{ clave, valor }`.
+ *
+ * Una estructura inesperada (no objeto, `hooks` ausente) cuenta como vacía.
+ */
+function diferenciaCableado(ruta, plantilla, destino) {
+  const esObjeto = valor => valor !== null && typeof valor === 'object' && !Array.isArray(valor);
+  if (ruta === CONFIG_HOOKS) {
+    if (!esObjeto(plantilla)) return [];
+    const claves = esObjeto(destino) ? destino : {};
+    return Object.keys(plantilla)
+      .filter(clave => !clave.startsWith('_comment') && !Object.prototype.hasOwnProperty.call(claves, clave))
+      .map(clave => ({ clave, valor: plantilla[clave] }));
+  }
+  if (ruta !== SETTINGS_CLAUDE) return [];
+
+  const hooksDe = config => (esObjeto(config) && esObjeto(config.hooks) ? config.hooks : {});
+  const gruposDe = (hooks, evento) => (Array.isArray(hooks[evento]) ? hooks[evento].filter(esObjeto) : []);
+  const matcherDe = grupo => (typeof grupo.matcher === 'string' ? grupo.matcher : '');
+  const comandosDe = grupo => (Array.isArray(grupo.hooks)
+    ? grupo.hooks.filter(hook => esObjeto(hook) && typeof hook.command === 'string')
+    : []);
+  const claveDe = (grupo, hook) => `${matcherDe(grupo)}\n${hook.command}`;
+
+  const hooksPlantilla = hooksDe(plantilla);
+  const hooksDestino = hooksDe(destino);
+  const ausentes = [];
+  for (const evento of Object.keys(hooksPlantilla)) {
+    const presentes = new Set(
+      gruposDe(hooksDestino, evento).flatMap(grupo => comandosDe(grupo).map(hook => claveDe(grupo, hook))),
+    );
+    for (const grupo of gruposDe(hooksPlantilla, evento)) {
+      for (const hook of comandosDe(grupo)) {
+        if (presentes.has(claveDe(grupo, hook))) continue;
+        ausentes.push({ evento, matcher: matcherDe(grupo), hook });
+      }
+    }
+  }
+  return ausentes;
+}
+
+/**
+ * Para `.claude/settings.json` y `hooks/config.json` saltados por edición
+ * local, avisa de los hooks y claves de la plantilla que quedan sin cablear
+ * en el destino. Solo avisa: no fusiona ni escribe nada. Un JSON ilegible en
+ * la plantilla o en el destino se reduce a un aviso genérico.
+ */
+function reportarCableadoAusente(saltadasPorEdicion) {
+  for (const ruta of [SETTINGS_CLAUDE, CONFIG_HOOKS]) {
+    if (!saltadasPorEdicion.includes(ruta)) continue;
+    let ausentes;
+    try {
+      const plantilla = JSON.parse(fs.readFileSync(origenDe(ruta), 'utf8'));
+      const destino = JSON.parse(fs.readFileSync(path.join(DEST, ruta), 'utf8'));
+      ausentes = diferenciaCableado(ruta, plantilla, destino);
+    } catch (err) {
+      console.log(
+        `Aviso: no se pudo comparar ${ruta} con la plantilla (${err.message}); `
+          + 'revisa a mano si le faltan hooks o claves de la versión nueva.',
+      );
+      continue;
+    }
+    if (!ausentes.length) continue;
+
+    if (ruta === SETTINGS_CLAUDE) {
+      console.log(`Hooks de la plantilla sin cablear en ${ruta} (tiene cambios locales y no se actualizó):`);
+      for (const { evento, matcher, hook } of ausentes) {
+        const entrada = matcher ? { matcher, hooks: [hook] } : { hooks: [hook] };
+        console.log(`  - evento ${evento}, matcher ${matcher ? `"${matcher}"` : '(sin matcher)'}, comando: ${hook.command}`);
+        console.log(`    añade a hooks.${evento}: ${JSON.stringify(entrada)}`);
+      }
+    } else {
+      console.log(`Claves de la plantilla ausentes en ${ruta} (tiene cambios locales y no se actualizó):`);
+      for (const { clave, valor } of ausentes) {
+        console.log(`  - ${clave}: añade ${JSON.stringify({ [clave]: valor })}`);
+      }
+    }
+    console.log(`  O ejecuta update con --reset-protected para sustituir ${ruta} por la plantilla (descarta tus cambios en él).`);
+  }
 }
 
 /**
@@ -935,7 +1078,7 @@ function reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, sc
 }
 
 /** Reporta el resultado de update. Mismo criterio que reportarInstalacion: `huboFallos` decide el mensaje final. */
-function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version, scriptsTestMergeado, huboFallos) {
+function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, convergidas, version, scriptsTestMergeado, huboFallos, dryRun) {
   if (copiadas.length) {
     console.log('Rutas actualizadas:');
     copiadas.forEach(ruta => console.log(`  - ${ruta}`));
@@ -945,6 +1088,8 @@ function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version, 
     saltadas.forEach(ruta => console.log(`  - ${ruta}`));
   }
   reportarArchivosProtegidos(saltadasPorEdicion);
+  reportarCableadoAusente(saltadasPorEdicion);
+  reportarConvergidas(convergidas, dryRun);
   if (scriptsTestMergeado) {
     console.log('Anadido scripts.test a package.json para correr los tests de los hooks.');
   }
@@ -985,7 +1130,7 @@ async function cmdUpdate(args) {
   advertirSiBackendEquivocado(backend);
   advertirSiGeminiLayoutAntiguo(backend);
   await ejecutarPreflight(backend, skip, dryRun, force);
-  const { copiadas, saltadas, saltadasPorEdicion, fallidas, dirsFallidos } = copiarRutasFramework(backend, skip, {
+  const { copiadas, saltadas, saltadasPorEdicion, convergidas, fallidas, dirsFallidos } = copiarRutasFramework(backend, skip, {
     crearDirsUsuario: false,
     resetProtected,
     dryRun,
@@ -995,7 +1140,7 @@ async function cmdUpdate(args) {
   const version = obtenerVersion();
   if (!dryRun) sincronizarMarcadores(backend, copiadas, version);
   const huboFallos = fallidas.length > 0 || dirsFallidos.length > 0;
-  reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, version, scriptsTestMergeado, huboFallos);
+  reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, convergidas, version, scriptsTestMergeado, huboFallos, dryRun);
   escribirEcosistema(backend, dryRun);
   if (huboFallos) process.exit(1);
 }
@@ -1050,7 +1195,12 @@ async function main() {
   process.exit(1);
 }
 
-main().catch(err => {
-  process.stderr.write(`Error inesperado: ${err.message}\n`);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(err => {
+    process.stderr.write(`Error inesperado: ${err.message}\n`);
+    process.exit(1);
+  });
+}
+
+// Funciones puras expuestas para los tests en proceso.
+module.exports = { hashContenido, diferenciaCableado };

@@ -12,7 +12,10 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { resolveRepoPath } = require('./sdd-plan-state');
-const { invocacionesDe, usaFlag } = require('./sdd-git-command');
+const { invocacionesDe, usaFlag, tokenizar } = require('./sdd-git-command');
+
+// Separadores de shell sin comillas: cierran la invocación en curso al buscar el fichero de -F.
+const SEPARADORES_SHELL = new Set(['&&', '||', ';', '|', '&', '\n']);
 
 const VALID_TYPES = ['feat', 'fix', 'update', 'refactor', 'create', 'optimize', 'remove', 'rename', 'docs', 'test', 'style', 'chore'];
 const SUBJECT_MAX_LEN = 72;
@@ -172,7 +175,64 @@ function extractCommitMessage(cmd) {
     let m;
     while ((m = re.exec(cmd)) !== null) parts.push(m[1]);
   }
-  return parts.length > 0 ? parts.join('\n\n') : null;
+  if (parts.length > 0) return parts.join('\n\n');
+
+  return messageFromFile(cmd);
+}
+
+/**
+ * Mensaje de un `git commit -F <ruta>` (también `-F<ruta>`, `--file <ruta>` y `--file=<ruta>`).
+ *
+ * La ruta relativa se resuelve contra el directorio en curso del hook, como `stagedFiles`. Límite
+ * conocido: en `cd sub && git commit -F m.txt` git lee `sub/m.txt` y aquí se busca `m.txt` en el
+ * directorio del hook; el módulo no sigue los `cd` del comando. Con `-F -` el mensaje llega por
+ * stdin y no hay fichero que leer. Tampoco se expanden variables (`-F "$TMP/m.txt"` busca el texto
+ * literal `$TMP/m.txt`) ni se analiza el script de un `bash -c` anidado: el mismo límite que
+ * declara `sdd-git-command.js`, que no ejecuta nada. Cualquier fallo de lectura devuelve null: sin mensaje no hay
+ * aviso de formato, y un aviso nunca justifica romper el commit.
+ */
+function messageFromFile(cmd) {
+  const ruta = commitFileArg(cmd);
+  if (!ruta || ruta === '-') return null;
+  try {
+    const contenido = fs.readFileSync(path.resolve(ruta), 'utf8').replace(/\r\n/g, '\n');
+    // git descarta las líneas en blanco iniciales: el asunto es la primera línea con texto.
+    return contenido.replace(/^(?:[ \t]*\n)+/, '') || null;
+  } catch {
+    return null;
+  }
+}
+
+// Recorre los tokens reales (sin texto entrecomillado de otros flags) de cada segmento del
+// comando y devuelve el valor de -F/--file de la primera invocación de `git ... commit`.
+function commitFileArg(cmd) {
+  let tokens;
+  try {
+    tokens = tokenizar(cmd);
+  } catch {
+    return null;
+  }
+
+  let vistoGit = false;
+  let enCommit = false;
+  for (let i = 0; i < tokens.length; i += 1) {
+    const { valor, entrecomillado } = tokens[i];
+    if (!entrecomillado && SEPARADORES_SHELL.has(valor)) {
+      vistoGit = false;
+      enCommit = false;
+      continue;
+    }
+    if (!enCommit) {
+      if (!entrecomillado && valor === 'git') vistoGit = true;
+      else if (vistoGit && !entrecomillado && valor === 'commit') enCommit = true;
+      continue;
+    }
+    if (entrecomillado) continue;
+    if (valor === '-F' || valor === '--file') return tokens[i + 1] ? tokens[i + 1].valor : null;
+    if (valor.startsWith('--file=')) return valor.slice('--file='.length);
+    if (valor.startsWith('-F')) return valor.slice(2);
+  }
+  return null;
 }
 
 function extractPrBody(cmd) {

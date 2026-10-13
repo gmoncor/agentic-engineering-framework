@@ -144,9 +144,10 @@ async function raizDelProyecto() {
   return path.dirname(path.dirname(await resolverEnProyecto('.claude/workflows')))
 }
 
-// ── Ambito de la task: acota su commit a sus propios ficheros en modo concurrente ──
+// ── Ámbito de la task: acota su commit y su apartado en modo concurrente ──────
 // En modo concurrente todas las tasks de un nivel comparten arbol e indice: sin acotar, `git add
-// -A` prepara tambien el trabajo sin commitear de una hermana en curso (F1 de orquestacion.js). El
+// -A` prepara también el trabajo sin commitear de una hermana en curso (F1 de orquestacion.js), y
+// apartar el trabajo de una task fallida se llevaría también el de sus hermanas. El
 // ambito es la lista de ficheros que la TASK DECLARA en su propia tabla "Archivos afectados"
 // (parser SSOT hooks/sdd-task-files.js, el mismo que usa el guard de pipeline), no el auto-reporte
 // del implementador: con el guard activo coinciden por construccion.
@@ -154,7 +155,8 @@ async function raizDelProyecto() {
 // Mismo patron de carga que emitirSenalRevision: resolverEnProyecto + comprobacion de existencia +
 // cargarModulo. Si el proyecto no tiene el parser instalado, o la task no tiene una tabla legible,
 // el ambito degrada a una lista vacia con el motivo registrado — orquestacion.js decide entonces
-// que hacer con un ambito vacio (conserva `add -A` sin acotar, ver diffPreparado).
+// qué hacer con un ámbito vacío (no lo usa como pathspec, ver diffPreparado; y no aparta
+// nada, ver apartarTrabajo).
 //
 // Se calcula una sola vez por task (no en cada llamada a git): el resultado se cachea por su path.
 const ambitoCache = new Map()
@@ -190,9 +192,11 @@ async function calcularAmbitoTask(task) {
 // El workflow controla el commit de cada task (el implementador ya no commitea):
 // primero se revisa el diff, y solo si la revision aprueba se emite la senal y se
 // commitea. Se ejecuta git por child_process para no depender del shell del agente.
+// Corre en la raíz del proyecto: las rutas del ámbito y el pathspec "." del commit, del apartado
+// y de la comprobación de árbol limpio son relativos a ella, no al directorio en curso.
 async function git(argv) {
   const cp = await import('node:child_process')
-  const r = cp.spawnSync('git', argv, { encoding: 'utf8', timeout: 15000 })
+  const r = cp.spawnSync('git', argv, { cwd: raizProyecto, encoding: 'utf8', timeout: 15000 })
   // Un spawn que no llega a arrancar (git ausente) o que agota su tiempo deja status en null y el
   // motivo en r.error, no en stderr: sin recogerlo, el fallo se queda sin causa que reportar.
   return { code: r.status, out: r.stdout || '', err: r.stderr || (r.error ? r.error.message : '') }
@@ -204,10 +208,22 @@ async function git(argv) {
 // Un fallo de infraestructura pasaba por veredicto, se registraba la constancia de revision del
 // diff vacio y el gate denegaba el commit despues sin explicacion.
 
-// Deshace el trabajo sin commitear de una task descartada. git clean respeta .gitignore.
-async function descartarTrabajo() {
-  await git(['reset', '--hard', 'HEAD'])
-  await git(['clean', '-fd'])
+// Aparta, sin destruirlo, el trabajo sin commitear de una task que no se commitea: queda en
+// `git stash` con nombre y se recupera con `git stash pop`. En secuencial, todo el árbol salvo
+// ai_docs/; en concurrente, solo el ámbito de la task. El criterio vive en
+// orquestacion.apartarTrabajo, probado con dobles y con git real.
+async function apartarTrabajo(task) {
+  return orq.apartarTrabajo(task, {
+    spawnGit: git,
+    log: registro,
+    modoParalelo: modoParalelo,
+    ambito: modoParalelo ? await ambitoTask(task) : undefined,
+  })
+}
+
+// Antes de cada task del recorrido secuencial: el árbol tiene que seguir limpio fuera de ai_docs/.
+async function arbolLimpio() {
+  return orq.comprobarArbolLimpio(git)
 }
 
 // El registro del flujo se pasa a orquestacion.js como dependencia.
@@ -354,6 +370,14 @@ for (var w = 0; w < niveles.length; w++) {
   log('Nivel ' + (w + 1) + ': ' + niveles[w].map(function(t) { return t.titulo }).join(', '))
 }
 
+// El árbol tiene que estar limpio fuera de ai_docs/ antes de implementar: en secuencial, el `add
+// -A` de la primera task absorberia esos cambios en su commit, y apartar el trabajo de una task
+// fallida se los llevaría con él. Los documentos de plan quedan fuera: el guard también los exime.
+const estadoInicial = await orq.comprobarArbolLimpio(git)
+if (!estadoInicial.limpio) {
+  return { spec: specPath, error: orq.mensajeArbolSucio(estadoInicial) }
+}
+
 // ── Fase 2: Implementacion (con revision por task antes del commit) ───────────
 // Las tasks se implementan una tras otra en orden topologico: cada nivel de
 // dependencia antes que el siguiente y, dentro de un nivel, una task despues de
@@ -473,27 +497,29 @@ async function revisarYComitear(task, resultado) {
     revisar: revisarDiff,
     corregir: corregirTask,
     emitirSenal: emitirSenalRevision,
-    descartar: descartarTrabajo,
+    descartar: apartarTrabajo,
     ambito: ambito,
   })
 }
 
 // Ejecuta una task completa: gate de dependencias fallidas, implementacion, gate de
 // tests y, si pasa, revision + commit. El gate de tests corre la suite real y lee su
-// exit code: rojo bloquea el commit y descarta el trabajo de la task; la falta de
+// exit code: rojo bloquea el commit y aparta el trabajo de la task; la falta de
 // comando bloquea solo si la task toca codigo. SDD_GUARD_SKIP=1 degrada ese bloqueo a
 // aviso (escape puntual para un fallo ajeno a la task), pero nunca el fallo de git.
 //
 // El orden y las decisiones viven en orquestacion.js, probados con dobles; aqui se
 // cablean las piezas con efecto: el agente implementador, el gate que spawnea la
-// suite, la revision + commit y el descarte del trabajo.
+// suite, la revisión + commit y el apartado del trabajo. En secuencial, además, la comprobación
+// de árbol limpio antes de cada task: ninguna empieza con el residuo de la anterior.
 async function ejecutarTask(task, resultadosPrevios) {
   return orq.ejecutarTask(task, resultadosPrevios, {
     log: registro,
     implementar: implementarTask,
     gateTests: gateTests,
     revisarYComitear: revisarYComitear,
-    descartar: descartarTrabajo,
+    descartar: apartarTrabajo,
+    arbolLimpio: modoParalelo ? undefined : arbolLimpio,
   })
 }
 

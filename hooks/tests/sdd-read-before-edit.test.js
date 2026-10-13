@@ -150,3 +150,51 @@ test('la lectura persiste en el rastreador por sesion, no en el mensaje de commi
   const rutas = fs.readFileSync(tracker, 'utf8').trim().split('\n').map((linea) => JSON.parse(linea));
   assert.ok(rutas.includes(path.resolve(e.existente)), 'la ruta leida consta en el rastreador');
 });
+
+const claudeEdit = (file, session) => ({ tool_name: 'Edit', tool_input: { file_path: file }, session_id: session });
+
+test('Claude Code: Write que crea un fichero y Edit posterior del mismo -> silencio', () => {
+  const e = entorno(CONFIG_ON);
+  const nuevo = path.join(e.dir, 'creado.js');
+
+  const escritura = runHook(HOOK, claudeWrite(nuevo, SESSION), e.env);
+  assert.strictEqual(escritura.decision, null);
+  // El hook corre antes de la herramienta: el fichero lo crea el Write real, no el hook.
+  writeFile(nuevo, 'contenido escrito por el agente');
+
+  const r = runHook(HOOK, claudeEdit(nuevo, SESSION), e.env);
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null, 'el agente conoce lo que él mismo escribió');
+});
+
+test('Claude Code: Edit de un fichero existente nunca leído ni escrito -> avisa', () => {
+  const e = entorno(CONFIG_ON);
+  const r = runHook(HOOK, claudeEdit(e.existente, SESSION), e.env);
+
+  assert.strictEqual(r.decision.decision, 'warn');
+  assert.match(r.decision.reason, /sin haberlo leido/);
+});
+
+test('Claude Code: Write sobre un existente no leído avisa; el Edit siguiente ya no', () => {
+  const e = entorno(CONFIG_ON);
+
+  const escritura = runHook(HOOK, claudeWrite(e.existente, SESSION), e.env);
+  assert.strictEqual(escritura.decision.decision, 'warn', 'sobrescribir sin leer sigue avisando');
+
+  const r = runHook(HOOK, claudeEdit(e.existente, SESSION), e.env);
+  assert.strictEqual(r.decision, null, 'tras sobrescribirlo, el contenido es del agente');
+});
+
+test('backend sin lecturas registradas: una escritura completa no registra la ruta ni activa el aviso', () => {
+  // Si la escritura se registrara, hasAnyRead pasaría a verdadero y el hook avisaría sobre
+  // ficheros cuya lectura este backend nunca le entrega.
+  const e = entorno(CONFIG_ON);
+  const nuevo = path.join(e.dir, 'creado.js');
+  runHook(HOOK, agyWrite(nuevo, SESSION), e.env);
+
+  const tracker = path.join(e.dir, 'sdd-reads-' + SESSION + '.jsonl');
+  assert.strictEqual(fs.existsSync(tracker), false);
+
+  const r = runHook(HOOK, agyWrite(e.existente, SESSION), e.env);
+  assert.strictEqual(r.decision, null);
+});

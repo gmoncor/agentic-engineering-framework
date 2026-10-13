@@ -8,9 +8,10 @@
 // reglas sin llamar al modelo.
 //
 // El presupuesto de pasadas es una simple constante en el workflow, no un motor de
-// convergencia: como mucho una segunda pasada sobre las tasks corregidas. Aqui solo
+// convergencia: como mucho una segunda pasada sobre las tasks pendientes. Aqui solo
 // viven las decisiones puras (adverso o no, hace falta otra pasada, cual hallazgo es
-// el mas severo, como reflejar contratos rotos), separadas del runtime de workflows.
+// el mas severo, como reflejar contratos rotos y revisiones ausentes, qué tasks se
+// vuelven a revisar), separadas del runtime de workflows.
 
 const APROBADO = 'APROBADO';
 const NECESITA_AJUSTES = 'NECESITA_AJUSTES';
@@ -68,6 +69,121 @@ function incorporarContratosRotos(audit, contratosRotos) {
   return Object.assign({}, base, { veredicto, incoherencias });
 }
 
+function esObjeto(valor) {
+  return !!valor && typeof valor === 'object' && !Array.isArray(valor);
+}
+
+// Una task sin revisión individual (el revisor cayó o no devolvió nada) no puede
+// acabar en un plan aprobado: nadie la ha mirado. Cada task sin revisión se nombra
+// en los huecos y fuerza como mínimo NECESITA_AJUSTES. Una auditoría ausente (null)
+// se devuelve tal cual: el llamador ya la trata como ERROR, que tampoco aprueba.
+function incorporarRevisionesAusentes(audit, tasksSinRevision) {
+  if (!tasksSinRevision || tasksSinRevision.length === 0) return audit;
+  if (!esObjeto(audit)) return audit;
+
+  const huecos = Array.isArray(audit.huecos) ? audit.huecos.slice() : [];
+  for (const ruta of tasksSinRevision) {
+    const linea = 'Task sin revisión individual: ' + ruta;
+    if (!huecos.includes(linea)) huecos.push(linea);
+  }
+  const veredicto = audit.veredicto === NECESITA_REPLANTEAMIENTO ? NECESITA_REPLANTEAMIENTO : NECESITA_AJUSTES;
+  return Object.assign({}, audit, { veredicto, huecos });
+}
+
+function noVacia(lista) {
+  return Array.isArray(lista) && lista.length > 0;
+}
+
+// Un APROBADO que convive con criterios sin cobertura, huecos o incoherencias se
+// contradice a sí mismo: se normaliza a NECESITA_AJUSTES. El veredicto del auditor
+// se conserva en veredicto_original y la causa en causa_normalizacion, para que se
+// vea que la rebaja es mecánica y no del auditor. Cualquier otro veredicto, o un
+// APROBADO coherente, pasa intacto.
+function normalizarAprobado(audit) {
+  if (!esObjeto(audit) || audit.veredicto !== APROBADO) return audit;
+
+  const abiertas = [];
+  if (noVacia(audit.cobertura && audit.cobertura.sin_cobertura)) abiertas.push('cobertura.sin_cobertura');
+  if (noVacia(audit.huecos)) abiertas.push('huecos');
+  if (noVacia(audit.incoherencias)) abiertas.push('incoherencias');
+  if (abiertas.length === 0) return audit;
+
+  return Object.assign({}, audit, {
+    veredicto: NECESITA_AJUSTES,
+    veredicto_original: APROBADO,
+    causa_normalizacion: 'veredicto contradictorio: APROBADO con ' + abiertas.join(', ') + ' no vacíos',
+  });
+}
+
+// Qué tasks tocó la corrección entre pasadas. No se fía del autoinforme del agente
+// corrector: compara el hash del contenido de cada task doc (y de la spec) antes y
+// después. Cada lado es { spec: hash|null, tasks: { [ruta]: hash|null } }, con null
+// para un documento ilegible. Fallo seguro, nunca menos: si la spec cambió o no se
+// pudo leer, todas cuentan como tocadas; una task ilegible en cualquiera de los dos
+// momentos, o ausente de uno de ellos, también.
+function tasksTocadas(hashesAntes, hashesDespues) {
+  const antes = (hashesAntes && hashesAntes.tasks) || {};
+  const despues = (hashesDespues && hashesDespues.tasks) || {};
+  const rutas = Array.from(new Set(Object.keys(antes).concat(Object.keys(despues))));
+
+  const specAntes = hashesAntes ? hashesAntes.spec : null;
+  const specDespues = hashesDespues ? hashesDespues.spec : null;
+  if (!specAntes || !specDespues || specAntes !== specDespues) return rutas;
+
+  return rutas.filter(function (ruta) {
+    const a = antes[ruta];
+    const d = despues[ruta];
+    return !a || !d || a !== d;
+  });
+}
+
+// Una ruta de plan solo se hashea si es relativa y no sale del proyecto con '..'.
+// Una ruta absoluta o que escapa no se resuelve: su huella es null y cuenta como
+// tocada (fallo seguro). Recibe el módulo path para seguir siendo pura.
+function rutaPlanAdmisible(ruta, path) {
+  if (typeof ruta !== 'string' || ruta.trim() === '') return false;
+  if (path.isAbsolute(ruta) || path.win32.isAbsolute(ruta)) return false;
+  const normalizada = path.posix.normalize(ruta.replace(/\\/g, '/'));
+  return normalizada !== '..' && !normalizada.startsWith('../');
+}
+
+// Huella { spec, tasks } a partir de rutas YA resueltas una sola vez (absolutas, o
+// null si no eran admisibles). Las dos huellas, antes y después de la corrección,
+// hashean las mismas rutas absolutas: si un documento desaparece, su hash es null
+// aunque exista una copia con la misma ruta relativa en un directorio antecesor.
+// hashDe(rutaAbsoluta) devuelve el hash o lanza; un fallo de lectura da null.
+function huellaDocumentos(rutasResueltas, hashDe) {
+  function hash(absoluta) {
+    if (!absoluta) return null;
+    try {
+      return hashDe(absoluta) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+  const origen = (rutasResueltas && rutasResueltas.tasks) || {};
+  const tasks = {};
+  for (const ruta of Object.keys(origen)) tasks[ruta] = hash(origen[ruta]);
+  return { spec: hash(rutasResueltas && rutasResueltas.spec), tasks };
+}
+
+// Índices de taskList que la segunda pasada vuelve a revisar: las que no salieron
+// LISTO_PARA_IMPLEMENTAR, las que no tuvieron revisión y las que la corrección tocó.
+// reviewsPrevias está alineado con taskList (null donde la revisión falló). Una task
+// LISTO no tocada conserva su revisión y no se repite.
+function tasksARevisar(taskList, reviewsPrevias, tocadas) {
+  const previas = Array.isArray(reviewsPrevias) ? reviewsPrevias : [];
+  const tocadasSet = new Set(tocadas || []);
+  const indices = [];
+  (taskList || []).forEach(function (task, i) {
+    const previa = previas[i];
+    if (!previa || previa.veredicto !== 'LISTO_PARA_IMPLEMENTAR' || tocadasSet.has(task && task.path)) {
+      indices.push(i);
+    }
+  });
+  return indices;
+}
+
 module.exports = {
   APROBADO,
   NECESITA_AJUSTES,
@@ -77,4 +193,10 @@ module.exports = {
   necesitaOtraPasada,
   auditoriaMasSevera,
   incorporarContratosRotos,
+  incorporarRevisionesAusentes,
+  normalizarAprobado,
+  tasksTocadas,
+  tasksARevisar,
+  rutaPlanAdmisible,
+  huellaDocumentos,
 };

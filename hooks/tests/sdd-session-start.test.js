@@ -117,21 +117,31 @@ test('payload SessionStart malformado (JSON invalido) -> linea con campos inferi
   assert.strictEqual(linea.cwd, process.cwd());
 });
 
-test('provenance.jsonl de solo lectura -> avisa por stderr y exit 0, no bloquea la sesion', { skip: process.getuid && process.getuid() === 0 }, () => {
+// El fallo de escritura se provoca sin depender de permisos, que root ignora: el destino es
+// un directorio existente, así que el append falla con EISDIR para cualquier uid.
+test('provenance.jsonl no escribible -> avisa por stderr y exit 0, no bloquea la sesion', () => {
   const e = entorno();
-  fs.mkdirSync(path.dirname(e.provenanceFile), { recursive: true });
-  fs.writeFileSync(e.provenanceFile, '');
-  fs.chmodSync(e.provenanceFile, 0o444);
-  fs.chmodSync(path.dirname(e.provenanceFile), 0o555);
+  fs.mkdirSync(e.provenanceFile, { recursive: true });
 
-  try {
-    const r = runHook(HOOK, payload(), e.env);
-    assert.strictEqual(r.code, 0);
-    assert.match(r.stderr, /no se pudo escribir/);
-  } finally {
-    fs.chmodSync(path.dirname(e.provenanceFile), 0o755);
-    fs.chmodSync(e.provenanceFile, 0o644);
-  }
+  const r = runHook(HOOK, payload(), e.env);
+  assert.strictEqual(r.code, 0);
+  assert.match(r.stderr, /no se pudo escribir provenance/);
+  assert.match(r.stderr, /EISDIR/);
+  assert.ok(fs.statSync(e.provenanceFile).isDirectory(), 'el destino no debe sustituirse');
+});
+
+// Si el directorio de provenance no se puede crear porque un ancestro es un fichero regular,
+// el hook avisa igual (ENOTDIR para cualquier uid) en vez de salir en silencio.
+test('directorio de provenance imposible de crear -> avisa por stderr y exit 0', () => {
+  const e = entorno();
+  const ancestro = path.dirname(path.dirname(e.provenanceFile));
+  fs.writeFileSync(ancestro, '');
+
+  const r = runHook(HOOK, payload(), e.env);
+  assert.strictEqual(r.code, 0);
+  assert.match(r.stderr, /no se pudo crear el directorio de provenance/);
+  assert.match(r.stderr, /ENOTDIR/);
+  assert.ok(fs.statSync(ancestro).isFile(), 'el fichero ancestro no debe sustituirse');
 });
 
 test('sin session_id en el payload, genera uno via randomUUID', () => {

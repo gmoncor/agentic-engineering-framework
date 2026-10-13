@@ -439,9 +439,28 @@ El framework lanza a la vez las tasks de un nivel y reporta el resultado de cada
 
 - **No hay un unico escritor por fichero.** Dos tasks del mismo nivel pueden escribir el mismo archivo.
 - **No detecta colisiones** entre tasks que tocan los mismos archivos, ni reparte el trabajo por ellas.
-- **No aisla el arbol de trabajo.** Todas las tasks de un nivel comparten el mismo working tree mientras se implementan. Si una falla su gate de tests o su revision, el descarte de sus cambios (`git reset --hard` + `git clean -fd`) se lleva por delante todo cambio sin commitear en ese instante, incluido el de una task hermana aun en curso.
+- **No aisla el arbol de trabajo.** Todas las tasks de un nivel comparten el mismo working tree mientras se implementan. Si una falla su gate de tests o su revisión, sus ficheros de la tabla "Archivos afectados" que cambiaron se apartan en `git stash` y salen del árbol: lo que las hermanas tienen en el árbol no se toca, salvo en un fichero que declaren las dos. La entrada del stash guarda, eso sí, todo lo que hubiera preparado en el índice en ese momento, también lo de una hermana: para recuperar solo lo de la task, usa `git restore --source=stash@{N} -- <rutas>` (ver más abajo). Si falla una task sin tabla legible, no se aparta nada: su trabajo se queda sin commitear en el árbol, y lo dice la nota de su resultado.
 
 Evitar que dos tasks hermanas se pisen es **responsabilidad del invocador**, no del framework: pide `--parallel` solo cuando las tasks de cada nivel tocan archivos disjuntos, y si necesitas aislamiento real, separa el trabajo en specs distintas y corre cada una en su propio worktree de git (ver "Aislamiento por worktree" en `/implementar-spec`).
+
+### Árbol limpio y trabajo apartado
+
+`/implementar-spec` no arranca si hay cambios sin commitear fuera de `ai_docs/`: el commit de la primera task se los llevaría. Commitéalos, apártalos con `git stash push --include-untracked`, o lanza la spec en un worktree limpio. En modo secuencial lo comprueba también antes de cada task, y se detiene si encuentra residuo.
+
+Ninguna ruta del workflow ejecuta `git reset --hard` ni `git clean`. El trabajo de una task que no se commitea (tests en rojo, revisión adversa o implementador fallido) se aparta en una entrada de `git stash` llamada `sdd-apartado: <título de la task>`: en secuencial, todo el árbol salvo `ai_docs/`; en `--parallel`, del árbol solo salen sus ficheros, aunque la entrada guarde también lo preparado en el índice por una hermana. Si el apartado falla, no se destruye nada y, en secuencial, el recorrido se detiene. Los ficheros ignorados por `.gitignore` no se tocan.
+
+Para recuperarlo:
+
+```bash
+git stash list                      # las entradas sdd-apartado: <task>
+git stash show -p --include-untracked stash@{N}
+git stash pop stash@{N}             # lo devuelve al árbol
+git restore --source=stash@{N} -- <rutas>   # solo esas rutas, si la entrada trae más
+git restore --source='stash@{N}^3' -- <rutas>   # ídem, para ficheros nuevos (sin seguimiento)
+git stash drop stash@{N}            # o lo retira si ya no lo quieres
+```
+
+Las entradas se acumulan mientras no las recuperes o retires.
 
 ---
 
@@ -456,7 +475,7 @@ agentic-engineering-framework/
 ├── CHANGELOG.md                 # Historial de cambios por version
 ├── SECURITY.md                  # Reporte de vulnerabilidades y alcance
 ├── LICENSE                      # CC BY 4.0
-├── package.json                 # Metadatos + engines (Node >= 20)
+├── package.json                 # Metadatos + engines (Node >= 20.11)
 ├── .github/                     # Plantillas de issue y de Pull Request
 │
 ├── .claude/                     # Configuracion Claude Code
@@ -577,7 +596,7 @@ Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohibe esos mismos com
 
 **Limite honesto de la senal de revision:** el hash que `sdd-review-gate.js` contrasta protege contra commits accidentales sin revision, no contra una falsificacion deliberada. El diff cacheado es visible para cualquier proceso con acceso a shell en la misma sesion, asi que ese mismo proceso puede recalcular el hash y escribir la senal directamente, sin haber pasado la revision adversarial. No es una limitacion cerrable mezclando un secreto en el hash: para que el gate lo verifique de forma mecanica, el secreto tendria que persistir en un sitio (disco, variable de entorno) igual de accesible para quien intenta falsificar la senal, lo que anula la proteccion que se buscaba anadir. La senal ata el diff a "hubo una revision", no autentica quien la emitio. Para una frontera dura frente a falsificacion deliberada, usa proteccion de rama y CI, no este hook.
 
-**Tests:** `npm test` ejecuta los tests de contrato de los hooks (Node >= 20, sin dependencias).
+**Tests:** `npm test` ejecuta los tests de contrato de los hooks (Node >= 20.11, sin dependencias).
 
 **Modelo por defecto (Claude Code):** `.claude/settings.json` fija `"model": "claude-opus-4-8"`. Opus 4.8 es el modelo mas capaz para planificacion y revision exhaustiva. Override puntual con `/model sonnet` si necesitas velocidad en tareas mecanicas.
 

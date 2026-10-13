@@ -6,7 +6,7 @@ Gracias por tu interes en mejorar el framework. Este documento explica como repo
 
 ## Antes de empezar
 
-- **Node.js >= 20** — requerido por los hooks (`hooks/*.js`). Verifica con `node --version`
+- **Node.js >= 20.11** — requerido por los hooks (`hooks/*.js`). Verifica con `node --version`
 - Lee `CLAUDE.md` — define el estilo, el flujo SDD y los limites del framework. Todo cambio debe ser coherente con ellos
 - **Tests:** `npm test` ejecuta los tests de contrato de los hooks. Todo cambio en `hooks/` llega con sus tests en el mismo commit
 - **Deriva:** `npm run check-drift` verifica que las superficies **generadas** coinciden con su fuente. Ejecutalo antes del push si tocas `.claude/` o `docs-src/`. No cubre las superficies que se mantienen a mano, y son mas de las que parece: lee "Artefactos generados y deriva" antes de dar por portado un cambio
@@ -113,6 +113,37 @@ Una skill no es el comando con otro nombre, y el transform lo tiene en cuenta:
 | El procedimiento entero, cuando el comando delega en el motor de workflows que solo tiene Claude Code | `source-body: omit` en el fragmento, que entonces aporta el cuerpo completo. Solo lo usan `planificar` e `implementar-spec`, la misma excepcion que ya tenian esos dos comandos para Gemini |
 
 El modelo de un artefacto generado nunca sale del fichero fuente: lo fija `scripts/model-policy.json`.
+
+### Autoría de skills, comandos y agentes
+
+**La `description` de una skill** es lo único que el modelo lee para decidir si la activa. Se escribe con tres piezas, en este orden:
+
+1. La condición observable que la dispara: un estado del trabajo que el modelo puede ver (hay un fallo reproducible, se ha creado un documento de task, la implementación de una spec ha terminado), no una lista de frases del usuario.
+2. Qué hace la skill, en una frase.
+3. La frontera con la skill vecina cuando dos pueden confundirse: qué casos no son suyos y a cuál van.
+
+Sin frases literales entrecomilladas: atan la activación a unas palabras concretas y dejan fuera las equivalentes. Una sola línea, 240 caracteres como máximo y distinta de la de cualquier otra skill.
+
+**`disable-model-invocation: true`** solo en una skill cuya ejecución tiene un efecto externo que no debe dispararse sin que el usuario lo pida (publicar, abrir una PR, escribir fuera del repositorio). Una skill que solo lee o propone no lo lleva.
+
+**Campos admitidos por tipo.** Un campo fuera de esta tabla es un error, no un aviso:
+
+| Tipo | Campos |
+|---|---|
+| Skill (`.claude/skills/<nombre>/SKILL.md`) | `name` (igual a la carpeta), `description`, `argument-hint`, `disable-model-invocation`. Nunca `model`: el modelo lo fija la política |
+| Fragmento de skill (`docs-src/skills/<nombre>.md` con frontmatter) | Los de una skill, con `name` igual al nombre del fichero, más `source-body` |
+| Comando (`.claude/commands/<nombre>.md`) | `description`, `argument-hint` |
+| Agente (`.claude/agents/<nombre>.md`) | `name` (igual al nombre del fichero), `description`, `model`, `tools` |
+
+Si una capacidad nueva necesita otro campo, se amplía la lista en el test con su motivo; la regla no se desactiva.
+
+**Los tokens que leen los hooks se escriben en ASCII**, aunque la prosa que los rodea lleve acentos: `Estado`, `APROBADA`, `Archivos afectados`, `Spec madre`, `CREAR`, `MODIFICAR`. `sdd-pipeline-guard.js` las busca tal cual en specs y tasks (los parsers viven en `hooks/sdd-plan-state.js` y `hooks/sdd-task-files.js`); con una variante acentuada o reformulada el hook deja de reconocer el documento.
+
+```bash
+node --test tests/frontmatter.test.js   # valida el frontmatter de skills, fragmentos, comandos y agentes
+```
+
+El test comprueba además que ningún campo exclusivo de Claude Code (los que `skill-to-backend` retira, como `argument-hint`) aparece en `.agents/skills/`.
 
 ## Paridad entre CLIs
 

@@ -215,8 +215,8 @@ Los comentarios deben explicar POR QUE, nunca QUE. Si necesitas un comentario pa
 
 | Code smell | Solucion tipica |
 |------------|----------------|
-| Funcion de mas de 50 lineas | Dividir en funciones mas pequenas con nombres descriptivos |
-| Archivo de mas de 300 lineas | Extraer modulos/componentes |
+| Función de más de 50 líneas (señal, no regla) | Inspecciona si mezcla responsabilidades; divide en funciones con nombres descriptivos solo si separa responsabilidades distintas o hace el código más fácil de leer y probar |
+| Archivo de más de 300 líneas (señal, no regla) | Inspecciona si agrupa responsabilidades sin relación; extrae módulos o componentes solo si esas partes cambian por motivos distintos |
 | Parametro que se pasa 3+ niveles | Usar contexto, inyeccion de dependencias o composicion |
 | Multiples `if/else` anidados (3+ niveles) | Early returns o patron strategy |
 | Codigo duplicado en 3+ lugares | Extraer a funcion compartida |

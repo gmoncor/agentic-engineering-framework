@@ -21,8 +21,9 @@ if (!motorDeWorkflowsInstalado()) {
 function ejecutarTests() {
   const { parseTranscript, computeMetrics, hookIdentifierFromCommand, rutaNativa, PRICING_USD_PER_MTOK } = require('../../.claude/workflows/lib/session-analyzer');
 
-function assistantEvent(timestamp, model, usage) {
-  return JSON.stringify({ type: 'assistant', timestamp, message: { model, usage } });
+function assistantEvent(timestamp, model, usage, id) {
+  const message = id ? { id, model, usage } : { model, usage };
+  return JSON.stringify({ type: 'assistant', timestamp, message });
 }
 
 // Forma REAL observada en transcripciones nativas de Claude Code para adjuntos de
@@ -224,6 +225,188 @@ test('todos los modelos con tarifa conocida: unpricedModels vacio', () => {
 
   const metrics = computeMetrics(parseTranscript(file));
   assert.deepStrictEqual(metrics.unpricedModels, []);
+});
+
+// ── Una respuesta, una cuenta ────────────────────────────────────────────────
+// Durante el streaming Claude Code escribe una línea `assistant` por bloque de contenido,
+// todas con el mismo `message.id` y el `usage` de la misma respuesta. Sumarlas multiplica
+// los tokens por el número de bloques.
+
+test('tres líneas con el mismo message.id cuentan una vez', () => {
+  const dir = tempDir('session-analyzer-');
+  const usage = { input_tokens: 10, output_tokens: 100, cache_read_input_tokens: 1000, cache_creation_input_tokens: 500 };
+  const file = writeFile(path.join(dir, 'streaming.jsonl'), [
+    assistantEvent('2026-08-02T10:00:00.000Z', 'claude-sonnet-5', usage, 'msg_01'),
+    assistantEvent('2026-08-02T10:00:01.000Z', 'claude-sonnet-5', usage, 'msg_01'),
+    assistantEvent('2026-08-02T10:00:02.000Z', 'claude-sonnet-5', usage, 'msg_01'),
+  ].join('\n'));
+
+  const tokens = parseTranscript(file).usageByModel['claude-sonnet-5'];
+
+  assert.deepStrictEqual(
+    [tokens.inputTokens, tokens.outputTokens, tokens.cacheReadTokens, tokens.cacheCreationTokens],
+    [10, 100, 1000, 500]);
+});
+
+test('de las líneas de un mismo message.id manda la última; sin id, cada línea cuenta', () => {
+  const dir = tempDir('session-analyzer-');
+  const file = writeFile(path.join(dir, 'ultima.jsonl'), [
+    assistantEvent('2026-08-02T10:00:00.000Z', 'claude-sonnet-5', { input_tokens: 10, output_tokens: 1 }, 'msg_01'),
+    assistantEvent('2026-08-02T10:00:01.000Z', 'claude-sonnet-5', { input_tokens: 10, output_tokens: 7 }, 'msg_01'),
+    assistantEvent('2026-08-02T10:00:02.000Z', 'claude-sonnet-5', { input_tokens: 3, output_tokens: 2 }, 'msg_02'),
+    assistantEvent('2026-08-02T10:00:03.000Z', 'claude-sonnet-5', { input_tokens: 1, output_tokens: 1 }),
+    assistantEvent('2026-08-02T10:00:04.000Z', 'claude-sonnet-5', { input_tokens: 1, output_tokens: 1 }),
+  ].join('\n'));
+
+  const tokens = parseTranscript(file).usageByModel['claude-sonnet-5'];
+
+  assert.strictEqual(tokens.inputTokens, 10 + 3 + 1 + 1);
+  assert.strictEqual(tokens.outputTokens, 7 + 2 + 1 + 1);
+});
+
+// ── Subagentes ───────────────────────────────────────────────────────────────
+
+test('el uso de <sesión>/subagents/*.jsonl se agrega al de la sesión', () => {
+  const dir = tempDir('session-analyzer-');
+  const file = writeFile(path.join(dir, 'sesion.jsonl'), [
+    assistantEvent('2026-08-02T10:00:00.000Z', 'claude-sonnet-5', { input_tokens: 10, output_tokens: 5 }, 'msg_principal'),
+  ].join('\n'));
+  writeFile(path.join(dir, 'sesion', 'subagents', 'agent-a.jsonl'), [
+    assistantEvent('2026-08-02T10:01:00.000Z', 'claude-sonnet-5', { input_tokens: 20, output_tokens: 7 }, 'msg_sub_a'),
+    assistantEvent('2026-08-02T10:01:01.000Z', 'claude-sonnet-5', { input_tokens: 20, output_tokens: 7 }, 'msg_sub_a'),
+    realHookAttachment('2026-08-02T10:01:02.000Z', 'hook_error', {
+      hookEvent: 'PreToolUse',
+      matcher: '*',
+      command: 'node "/proj/hooks/sdd-turn-budget.js"',
+      stdout: JSON.stringify({ decision: 'warn', code: 'TURN_BUDGET_WARN' }) + '\n',
+    }),
+  ].join('\n'));
+  writeFile(path.join(dir, 'sesion', 'subagents', 'agent-b.jsonl'), [
+    assistantEvent('2026-08-02T10:03:00.000Z', 'claude-haiku-4-5', { input_tokens: 100, output_tokens: 50 }, 'msg_sub_b'),
+  ].join('\n'));
+  // Otra sesión del mismo directorio no se mezcla.
+  writeFile(path.join(dir, 'otra', 'subagents', 'agent-c.jsonl'), [
+    assistantEvent('2026-08-02T11:00:00.000Z', 'claude-sonnet-5', { input_tokens: 9999, output_tokens: 9999 }, 'msg_otra'),
+  ].join('\n'));
+
+  const parsed = parseTranscript(file);
+  const metrics = computeMetrics(parsed);
+
+  assert.strictEqual(parsed.subagentTranscripts, 2);
+  assert.strictEqual(parsed.usageByModel['claude-sonnet-5'].inputTokens, 30);
+  assert.strictEqual(parsed.usageByModel['claude-sonnet-5'].outputTokens, 12);
+  assert.strictEqual(parsed.usageByModel['claude-haiku-4-5'].inputTokens, 100);
+  assert.strictEqual(metrics.duration, 3 * 60 * 1000);
+  assert.deepStrictEqual(metrics.frictionByHook, {
+    'sdd-turn-budget.js': { total: 1, byCode: { TURN_BUDGET_WARN: 1 } },
+  });
+});
+
+test('sin directorio de subagentes: solo la transcripción principal', () => {
+  const dir = tempDir('session-analyzer-');
+  const file = writeFile(path.join(dir, 'sola.jsonl'), [
+    assistantEvent('2026-08-02T10:00:00.000Z', 'claude-sonnet-5', { input_tokens: 10, output_tokens: 5 }, 'msg_01'),
+  ].join('\n'));
+
+  const parsed = parseTranscript(file);
+  assert.strictEqual(parsed.subagentTranscripts, 0);
+  assert.strictEqual(parsed.usageByModel['claude-sonnet-5'].inputTokens, 10);
+});
+
+// ── Tarifas de caché ─────────────────────────────────────────────────────────
+
+function cercano(real, esperado) {
+  assert.ok(Math.abs(real - esperado) < 1e-9, `${real} != ${esperado}`);
+}
+
+test('escritura (5 min y 1 h) y lectura de caché tienen precio', () => {
+  const dir = tempDir('session-analyzer-');
+  const price = PRICING_USD_PER_MTOK['claude-sonnet-5'];
+  const file = writeFile(path.join(dir, 'cache.jsonl'), [
+    assistantEvent('2026-08-02T10:00:00.000Z', 'claude-sonnet-5', {
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_creation_input_tokens: 3000000,
+      cache_creation: { ephemeral_5m_input_tokens: 1000000, ephemeral_1h_input_tokens: 2000000 },
+      cache_read_input_tokens: 1000000,
+    }, 'msg_01'),
+  ].join('\n'));
+
+  const metrics = computeMetrics(parseTranscript(file));
+
+  for (const campo of ['cacheWrite5m', 'cacheWrite1h', 'cacheRead']) {
+    assert.ok(price[campo] > 0, campo);
+  }
+  cercano(metrics.cost, price.cacheWrite5m + 2 * price.cacheWrite1h + price.cacheRead);
+});
+
+test('escritura en caché sin desglose por duración: se tarifica como de 5 minutos', () => {
+  const dir = tempDir('session-analyzer-');
+  const price = PRICING_USD_PER_MTOK['claude-sonnet-5'];
+  const file = writeFile(path.join(dir, 'cache-antigua.jsonl'), [
+    assistantEvent('2026-08-02T10:00:00.000Z', 'claude-sonnet-5', { cache_creation_input_tokens: 1000000 }, 'msg_01'),
+  ].join('\n'));
+
+  cercano(computeMetrics(parseTranscript(file)).cost, price.cacheWrite5m);
+});
+
+test('un identificador con fecha tiene la tarifa de su alias; un modelo sin tarifa queda fuera del coste', () => {
+  const dir = tempDir('session-analyzer-');
+  const price = PRICING_USD_PER_MTOK['claude-haiku-4-5'];
+  const file = writeFile(path.join(dir, 'alias.jsonl'), [
+    assistantEvent('2026-08-02T10:00:00.000Z', 'claude-haiku-4-5-20251001', { input_tokens: 1000000, output_tokens: 1000000 }, 'msg_01'),
+    assistantEvent('2026-08-02T10:00:01.000Z', 'claude-haiku-3-5', { input_tokens: 1000000, output_tokens: 1000000 }, 'msg_02'),
+  ].join('\n'));
+
+  const metrics = computeMetrics(parseTranscript(file));
+
+  cercano(metrics.cost, price.input + price.output);
+  assert.deepStrictEqual(metrics.unpricedModels, ['claude-haiku-3-5']);
+});
+
+test('claude-haiku-5-5: cada petición paga el tramo de su propio prompt', () => {
+  const dir = tempDir('session-analyzer-');
+  const price = PRICING_USD_PER_MTOK['claude-haiku-5-5'];
+  const largo = price.promptLargo;
+  const file = writeFile(path.join(dir, 'tramos.jsonl'), [
+    // Prompt de 100.000 tokens justos: tramo base.
+    assistantEvent('2026-08-02T10:00:00.000Z', 'claude-haiku-5-5', { input_tokens: 40000, cache_read_input_tokens: 60000, output_tokens: 1000 }, 'msg_01'),
+    // Prompt de 100.001 tokens: toda la petición, salida incluida, paga el tramo largo.
+    assistantEvent('2026-08-02T10:00:01.000Z', 'claude-haiku-5-5', { input_tokens: 1, cache_creation_input_tokens: 40000, cache_read_input_tokens: 60000, output_tokens: 1000 }, 'msg_02'),
+  ].join('\n'));
+
+  const metrics = computeMetrics(parseTranscript(file));
+
+  assert.strictEqual(largo.umbral, 100000);
+  assert.ok(largo.input > price.input);
+  cercano(metrics.cost,
+    (40000 * price.input + 60000 * price.cacheRead + 1000 * price.output) / 1e6
+    + (1 * largo.input + 40000 * largo.cacheWrite5m + 60000 * largo.cacheRead + 1000 * largo.output) / 1e6);
+  assert.deepStrictEqual(metrics.unpricedModels, []);
+});
+
+// ── Sesiones reanudadas ──────────────────────────────────────────────────────
+
+test('un Set compartido en seenMessageIds cuenta una vez un mensaje repetido entre transcripciones', () => {
+  const dir = tempDir('session-analyzer-');
+  const original = writeFile(path.join(dir, 'original.jsonl'), [
+    assistantEvent('2026-08-02T10:00:00.000Z', 'claude-sonnet-5', { input_tokens: 10, output_tokens: 5 }, 'msg_01'),
+  ].join('\n'));
+  const reanudada = writeFile(path.join(dir, 'reanudada.jsonl'), [
+    assistantEvent('2026-08-02T10:00:00.000Z', 'claude-sonnet-5', { input_tokens: 10, output_tokens: 5 }, 'msg_01'),
+    assistantEvent('2026-08-02T11:00:00.000Z', 'claude-sonnet-5', { input_tokens: 3, output_tokens: 2 }, 'msg_02'),
+  ].join('\n'));
+
+  const vistos = new Set();
+  const a = parseTranscript(original, { seenMessageIds: vistos }).usageByModel['claude-sonnet-5'];
+  const b = parseTranscript(reanudada, { seenMessageIds: vistos }).usageByModel['claude-sonnet-5'];
+  assert.strictEqual(a.inputTokens + b.inputTokens, 13);
+  assert.deepStrictEqual([...vistos].sort(), ['msg_01', 'msg_02']);
+
+  // Sin el Set, cada transcripción se deduplica por separado y el mensaje repetido cuenta dos veces.
+  const sueltaA = parseTranscript(original).usageByModel['claude-sonnet-5'];
+  const sueltaB = parseTranscript(reanudada).usageByModel['claude-sonnet-5'];
+  assert.strictEqual(sueltaA.inputTokens + sueltaB.inputTokens, 23);
 });
 
 test('path inexistente: lanza error claro con el path, no un ENOENT generico', () => {

@@ -37,6 +37,10 @@ Antes de revisar la task, verificar que es coherente con la spec aprobada:
 | El objetivo de la task contribuye a un criterio de aceptacion de la spec | SI / NO |
 | La task no implementa nada excluido en "No incluye" de la spec | SI / NO |
 | Los archivos afectados son coherentes con el alcance de la spec | SI / NO |
+| Cada premisa de «Premisas verificadas» trae `archivo:línea` (o comando) que la acredita, o se marca «no verificada» con su motivo | SI / NO |
+| Cada criterio de ausencia de «Criterios de exito» trae su control positivo y su control negativo | SI / NO |
+
+Comprueba por tu cuenta al menos una premisa citada: abre el `archivo:línea` y confirma que dice lo que la task afirma. Una premisa desmentida por el código invalida el plan que se apoya en ella.
 
 **Si alguna verificacion falla:** DETENTE y comunica el problema. La task puede estar desalineada con la spec.
 
@@ -138,10 +142,15 @@ Presenta al usuario un resumen de la revision:
 ```
 ## Resultado de la revision
 
+### Veredicto
+[LISTO_PARA_IMPLEMENTAR / NECESITA_AJUSTES / NECESITA_REPLANTEAMIENTO]
+
 **Task:** [Titulo de la task]
 **Spec madre:** [Titulo de la spec]
 
 **Coherencia con spec:** [OK / Desalineada — detallar]
+**Premisas verificadas:** [OK / Hay N premisas sin evidencia o desmentidas — detallar]
+**Criterios de ausencia:** [OK / Hay N sin control positivo y negativo — detallar]
 **Alcance:** [OK / Necesita ajustes — detallar]
 **Dependencias:** [OK / Faltan pre-requisitos — detallar]
 **Edge cases:** [OK / Hay N casos no contemplados — detallar]
@@ -152,10 +161,9 @@ Presenta al usuario un resumen de la revision:
 ### Ajustes propuestos al documento de task
 - [Ajuste 1 — que cambiar y por que]
 - [Ajuste 2 — que cambiar y por que]
-
-### Veredicto
-[LISTO_PARA_IMPLEMENTAR / NECESITA_AJUSTES / NECESITA_REPLANTEAMIENTO]
 ```
+
+El veredicto va primero: quien lee el resultado decide con la primera línea y solo baja al detalle si lo necesita.
 
 **PUNTO DE ESPERA (uso manual):**
 - DETENTE aqui y espera la respuesta del usuario

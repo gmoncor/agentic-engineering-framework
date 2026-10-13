@@ -1,6 +1,6 @@
 # Plantilla de Commit Git
 
-> **Cuando usar:** Cuando quieras guardar tus cambios en Git con un commit limpio y ordenado. En el flujo SDD, cada task aprobada genera al menos un commit; las tasks fallidas (revision adversarial no superada) se descartan sin commit.
+> **Cuando usar:** Cuando quieras guardar tus cambios en Git con un commit limpio y ordenado. En el flujo SDD, cada task aprobada genera al menos un commit; las tasks fallidas (revision adversarial no superada) no se commitean.
 > **Como usar:** Copia este documento completo y pegalo en tu asistente de IA. Luego dile que quieres hacer commit.
 
 ---
@@ -21,7 +21,7 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 - NUNCA uses `git add .` ni `git add -A` sin revisar que se esta incluyendo.
 - NUNCA incluyas archivos sensibles (.env, credenciales, tokens, claves API).
 - NUNCA incluyas archivos de configuracion de IDE (.cursor/) en el commit.
-- SIEMPRE presenta el mensaje de commit para aprobacion antes de ejecutar.
+- SIEMPRE muestra el mensaje de commit antes de ejecutar. Si el usuario ya pidió el commit de forma explícita («haz el commit», «commitea esto»), esa petición es la autorización: muestra el mensaje y commitea sin pedir una segunda confirmación. Si solo pidió preparar o proponer el commit, pide aprobación antes de ejecutar.
 - En el flujo SDD, cada commit debe corresponder a una task o sub-tarea logica. No mezclar cambios de tasks distintas en un mismo commit.
 
 ---
@@ -117,7 +117,7 @@ esas relecturas sin arriesgar servir datos obsoletos.
 
 ---
 
-## Paso 4: Presentar al usuario para aprobacion
+## Paso 4: Presentar al usuario
 
 ```
 Commit propuesto:
@@ -131,14 +131,16 @@ Mensaje:
 Proceder? (S/n)
 ```
 
-**ESPERAR aprobacion explicita antes de ejecutar.**
+**Si el usuario ya pidió el commit de forma explícita**, su petición es la autorización: muestra el bloque sin la línea `Proceder?` y pasa al Paso 5 sin esperar otra confirmación.
+
+**Si solo pidió preparar o proponer el commit**, espera su aprobación explícita antes de ejecutar.
 
 ---
 
 ## Paso 5: Ejecutar y verificar
 
 1. Anadir archivos: `git add <archivos-especificos>`
-2. Crear commit: `git commit -m "[mensaje]"`
+2. Crear commit: escribe el mensaje completo (asunto, línea en blanco y cuerpo) en un fichero temporal fuera del árbol de trabajo y pásalo con `git commit -F <fichero>`, escribiendo la ruta como ruta absoluta literal, sin variables (`$TMP`, `~`): el hook de commit no expande variables y solo puede leer una ruta escrita tal cual. Un mensaje multilínea o con comillas citado en la orden se rompe; desde un fichero llega intacto y el hook de commit también lo revisa. Borra el fichero tras el commit
 3. Verificar: `git log --oneline -1` para confirmar
 
 **Si falla por un pre-commit hook:**

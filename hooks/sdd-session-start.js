@@ -223,7 +223,12 @@ function ensureDir(dir) {
   try {
     fs.mkdirSync(dir, { recursive: true });
     return true;
-  } catch {
+  } catch (err) {
+    try {
+      fs.writeSync(2, '[SDD] no se pudo crear el directorio de provenance en ' + dir + ': ' + err.message + '\n');
+    } catch {
+      // stderr roto: nada más que hacer.
+    }
     return false;
   }
 }

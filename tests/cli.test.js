@@ -2406,3 +2406,217 @@ test('con .claude/settings.json invalido en el paquete de origen, la nota se omi
   assert.doesNotMatch(stderr, /Error inesperado/);
   assert.doesNotMatch(stdout, /modelo de sesion \(tier capaz/);
 });
+
+// --- Fin de línea, ficheros convergidos y cableado sin actualizar ---------
+//
+// El hash del sidecar normaliza CRLF a LF en los ficheros de texto: con
+// `core.autocrlf=true` todo lo instalado queda en CRLF y, con el hash crudo,
+// `update` lo daría entero por editado. Un fichero que el usuario ya dejó igual
+// a la versión nueva tampoco es una edición. Y si `.claude/settings.json` o
+// `hooks/config.json` se saltan por edición local, `update` avisa de lo que la
+// plantilla trae y el destino no tiene.
+
+const { hashContenido, diferenciaCableado } = require(CLI);
+
+function sha256Crudo(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+test('hashContenido: un texto en LF da el mismo hash que el hash crudo (los sidecars existentes siguen valiendo)', () => {
+  const texto = Buffer.from('linea 1\nlinea 2\n');
+  assert.strictEqual(hashContenido(texto), sha256Crudo(texto));
+  assert.strictEqual(hashContenido(Buffer.alloc(0)), sha256Crudo(Buffer.alloc(0)));
+});
+
+test('hashContenido: CRLF se normaliza a LF; un \\r aislado y el resto del EOL mixto no', () => {
+  assert.strictEqual(hashContenido(Buffer.from('a\r\nb\r\n')), hashContenido(Buffer.from('a\nb\n')));
+  assert.strictEqual(hashContenido(Buffer.from('a\r\nb\rc\n')), sha256Crudo(Buffer.from('a\nb\rc\n')));
+  assert.notStrictEqual(hashContenido(Buffer.from('a\rb')), hashContenido(Buffer.from('a\nb')));
+});
+
+test('hashContenido: un fichero con algún byte 0 se hashea en crudo, sin normalizar CRLF', () => {
+  const binario = Buffer.from([0x50, 0x0d, 0x0a, 0x00, 0x01]);
+  const sinCr = Buffer.from([0x50, 0x0a, 0x00, 0x01]);
+  assert.strictEqual(hashContenido(binario), sha256Crudo(binario));
+  assert.notStrictEqual(hashContenido(binario), hashContenido(sinCr));
+});
+
+test('update: CRLF sin otra edición se actualiza, una edición real en CRLF se preserva y un fichero convergido refresca el sidecar', () => {
+  const v1 = { a: 'uno\ndos\n', b: 'tres\ncuatro\n', c: 'cinco\n' };
+  const v2 = { a: 'uno\ndos\nnuevo\n', b: 'tres\ncuatro\nnuevo\n', c: 'cinco\nnuevo\n' };
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: [] },
+    { 'hooks/a.js': v2.a, 'hooks/b.js': v2.b, 'hooks/c.js': v2.c },
+  );
+  const proyecto = dirTemporal();
+  // Estado tras un install de la versión anterior: sidecar con el hash de v1.
+  escribirArchivo(proyecto, '.sdd-installed-hashes.json', JSON.stringify({
+    'hooks/a.js': sha256Crudo(Buffer.from(v1.a)),
+    'hooks/b.js': sha256Crudo(Buffer.from(v1.b)),
+    'hooks/c.js': sha256Crudo(Buffer.from(v1.c)),
+  }));
+  // a: el checkout lo dejó en CRLF, sin otro cambio.
+  escribirArchivo(proyecto, 'hooks/a.js', v1.a.replace(/\n/g, '\r\n'));
+  // b: edición real del usuario, guardada en CRLF.
+  const editadoB = 'tres\ncuatro\nmio\n'.replace(/\n/g, '\r\n');
+  escribirArchivo(proyecto, 'hooks/b.js', editadoB);
+  // c: el usuario ya lo dejó igual a la versión nueva.
+  escribirArchivo(proyecto, 'hooks/c.js', v2.c);
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'hooks', 'a.js'), 'utf8'), v2.a,
+    'un cambio solo de fin de línea no debe proteger el fichero');
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'hooks', 'b.js'), 'utf8'), editadoB,
+    'una edición real guardada en CRLF debe preservarse');
+  const protegidos = stdout.split('Archivos con cambios locales')[1] || '';
+  assert.match(protegidos, /hooks\/b\.js/);
+  assert.doesNotMatch(stdout, /- hooks\/a\.js/);
+  assert.match(stdout, /convergidos[^\n]*\n {2}- hooks\/c\.js/);
+  assert.doesNotMatch(protegidos.split('convergidos')[0], /hooks\/c\.js/);
+  const sidecar = JSON.parse(fs.readFileSync(path.join(proyecto, '.sdd-installed-hashes.json'), 'utf8'));
+  assert.strictEqual(sidecar['hooks/c.js'], sha256Crudo(Buffer.from(v2.c)), 'el sidecar del convergido debe refrescarse');
+  assert.strictEqual(sidecar['hooks/a.js'], sha256Crudo(Buffer.from(v2.a)));
+  assert.strictEqual(sidecar['hooks/b.js'], sha256Crudo(Buffer.from(v1.b)), 'el editado conserva su hash previo');
+});
+
+test('diferenciaCableado: settings.json nombra el hook ausente y el de matcher cambiado; nada si están todos', () => {
+  const hook = comando => ({ type: 'command', command: comando });
+  const plantilla = {
+    hooks: {
+      SessionStart: [{ hooks: [hook('node inicio.js')] }],
+      PreToolUse: [
+        { matcher: 'Write|Edit|NotebookEdit', hooks: [hook('node guard.js')] },
+        { matcher: 'Bash', hooks: [hook('node commit.js'), hook('node nuevo.js')] },
+      ],
+    },
+  };
+  const destino = {
+    model: 'otro',
+    hooks: {
+      SessionStart: [{ hooks: [hook('node inicio.js')] }],
+      PreToolUse: [
+        { matcher: 'Write|Edit', hooks: [hook('node guard.js')] },
+        { matcher: 'Bash', hooks: [hook('node commit.js'), hook('node propio.js')] },
+      ],
+    },
+  };
+  assert.deepStrictEqual(diferenciaCableado('.claude/settings.json', plantilla, destino), [
+    { evento: 'PreToolUse', matcher: 'Write|Edit|NotebookEdit', hook: hook('node guard.js') },
+    { evento: 'PreToolUse', matcher: 'Bash', hook: hook('node nuevo.js') },
+  ]);
+  assert.deepStrictEqual(diferenciaCableado('.claude/settings.json', plantilla, plantilla), []);
+  assert.strictEqual(diferenciaCableado('.claude/settings.json', plantilla, { hooks: 'roto' }).length, 4);
+});
+
+test('diferenciaCableado: hooks/config.json nombra las claves de primer nivel ausentes, sin las _comment', () => {
+  const plantilla = { _comment: 'x', a: { enabled: true }, _comment_b: 'y', b: { n: 1 } };
+  assert.deepStrictEqual(
+    diferenciaCableado('hooks/config.json', plantilla, { a: { enabled: false } }),
+    [{ clave: 'b', valor: { n: 1 } }],
+  );
+  assert.deepStrictEqual(diferenciaCableado('hooks/config.json', plantilla, { a: 1, b: 2 }), []);
+});
+
+/** Proyecto con settings.json y config.json instalados (v1) y luego editados por el usuario. */
+function proyectoConProtegidosEditados(paquete, settingsDestino, configDestino) {
+  const proyecto = dirTemporal();
+  escribirArchivo(proyecto, '.sdd-installed-hashes.json', JSON.stringify({
+    '.claude/settings.json': sha256Crudo(Buffer.from('{"version":1}')),
+    'hooks/config.json': sha256Crudo(Buffer.from('{"version":1}')),
+  }));
+  escribirArchivo(proyecto, '.claude/settings.json', settingsDestino);
+  escribirArchivo(proyecto, 'hooks/config.json', configDestino);
+  return proyecto;
+}
+
+const SETTINGS_PLANTILLA = JSON.stringify({
+  hooks: {
+    PreToolUse: [
+      { matcher: 'Bash', hooks: [{ type: 'command', command: 'node hooks/commit.js' }] },
+      { matcher: 'Read|Write', hooks: [{ type: 'command', command: 'node hooks/nuevo.js' }] },
+    ],
+  },
+});
+const CONFIG_PLANTILLA = JSON.stringify({ existente: { enabled: true }, seccion_nueva: { enabled: true } });
+
+test('update avisa de los hooks y claves de la plantilla ausentes en settings.json y config.json editados', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: ['.claude/settings.json'] },
+    { '.claude/settings.json': SETTINGS_PLANTILLA, 'hooks/config.json': CONFIG_PLANTILLA },
+  );
+  const settingsUsuario = JSON.stringify({
+    model: 'propio',
+    hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'node hooks/commit.js' }] }] },
+  });
+  const configUsuario = JSON.stringify({ existente: { enabled: false } });
+  const proyecto = proyectoConProtegidosEditados(paquete, settingsUsuario, configUsuario);
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /evento PreToolUse, matcher "Read\|Write", comando: node hooks\/nuevo\.js/);
+  assert.match(stdout, /hooks\.PreToolUse: \{"matcher":"Read\|Write","hooks":\[\{"type":"command","command":"node hooks\/nuevo\.js"\}\]\}/);
+  assert.doesNotMatch(stdout, /comando: node hooks\/commit\.js/);
+  assert.match(stdout, /--reset-protected/);
+  assert.match(stdout, /- seccion_nueva: /);
+  assert.doesNotMatch(stdout, /- existente: /);
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, '.claude', 'settings.json'), 'utf8'), settingsUsuario);
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'hooks', 'config.json'), 'utf8'), configUsuario);
+});
+
+test('update con settings.json editado que conserva todos los hooks y JSON de config.json inválido: sin aviso de cableado ni excepción', () => {
+  const paquete = crearPaqueteFixture(
+    { common: ['hooks'], claude: ['.claude/settings.json'] },
+    { '.claude/settings.json': SETTINGS_PLANTILLA, 'hooks/config.json': CONFIG_PLANTILLA },
+  );
+  const settingsUsuario = JSON.stringify({ ...JSON.parse(SETTINGS_PLANTILLA), model: 'propio' });
+  const configUsuario = '{ esto no es json';
+  const proyecto = proyectoConProtegidosEditados(paquete, settingsUsuario, configUsuario);
+
+  const { codigo, stdout, stderr } = ejecutar(['update', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.doesNotMatch(stderr, /Error inesperado/);
+  assert.doesNotMatch(stdout, /Hooks de la plantilla sin cablear/);
+  assert.match(stdout, /no se pudo comparar hooks\/config\.json con la plantilla/);
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, '.claude', 'settings.json'), 'utf8'), settingsUsuario);
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, 'hooks', 'config.json'), 'utf8'), configUsuario);
+});
+
+test('update --dry-run con un fichero convergido: lo informa en condicional y no escribe el sidecar', () => {
+  const paquete = crearPaqueteFixture({ common: ['hooks'], claude: [] }, { 'hooks/c.js': 'cinco\nnuevo\n' });
+  const proyecto = dirTemporal();
+  const sidecarPrevio = JSON.stringify({ 'hooks/c.js': sha256Crudo(Buffer.from('cinco\n')) });
+  escribirArchivo(proyecto, '.sdd-installed-hashes.json', sidecarPrevio);
+  escribirArchivo(proyecto, 'hooks/c.js', 'cinco\nnuevo\n');
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'claude', '--dry-run'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /convergidos \(ya coincidían con la versión nueva; su hash se refrescaría sin --dry-run\):\n {2}- hooks\/c\.js/);
+  assert.doesNotMatch(stdout, /su hash se ha refrescado/);
+  assert.strictEqual(fs.readFileSync(path.join(proyecto, '.sdd-installed-hashes.json'), 'utf8'), sidecarPrevio);
+});
+
+test('diferenciaCableado: un hook sin command en la plantilla no se informa como ausente', () => {
+  const plantilla = {
+    hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command' }, { type: 'command', command: 'node a.js' }] }] },
+  };
+  assert.deepStrictEqual(diferenciaCableado('.claude/settings.json', plantilla, { hooks: {} }), [
+    { evento: 'PreToolUse', matcher: 'Bash', hook: { type: 'command', command: 'node a.js' } },
+  ]);
+});
