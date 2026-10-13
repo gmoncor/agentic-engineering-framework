@@ -6,5 +6,5 @@ argument-hint: "[numero de PR | create]"
 
 Ejecuta el flujo de PR siguiendo `ai_docs/dev_templates/revision_pr.md`.
 
-Sigue todos los pasos de la plantilla sin saltarte ninguno.
+Aplica los pasos de la plantilla pertinentes al riesgo del cambio; declara los omitidos con su motivo.
 En el flujo SDD, la PR referencia la spec y las tasks que cierra.

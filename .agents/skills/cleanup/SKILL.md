@@ -1,9 +1,9 @@
 ---
 name: cleanup
-description: "Se activa cuando el usuario pide limpiar, refactorizar o revisar calidad de codigo. Revision de codigo muerto, seguridad, tipos, rendimiento y legibilidad."
+description: "Cuando se pide limpiar o refactorizar código que ya funciona: código muerto, tipos, seguridad y legibilidad con `limpieza_de_codigo.md`. Un fallo: bugfix; revisar contra la spec: revision."
 ---
 
 Ejecuta la revision de calidad siguiendo `ai_docs/dev_templates/limpieza_de_codigo.md`.
 
-Sigue todos los pasos de la plantilla sin saltarte ninguno.
+Aplica los pasos de la plantilla pertinentes al riesgo del cambio; declara los omitidos con su motivo.
 Presenta el plan de cambios al usuario y espera confirmacion antes de modificar codigo.

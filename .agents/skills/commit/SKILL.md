@@ -1,11 +1,11 @@
 ---
 name: commit
-description: "Se activa cuando el usuario quiere commitear, hacer commit o guardar cambios en git. Analiza cambios, excluye ai_docs/ y archivos sensibles, y crea commits limpios."
+description: "Cuando hay cambios listos para guardar en git: excluye `ai_docs/` y ficheros sensibles y propone el mensaje `<tipo>: <descripcion>`. Resumir cambios: diff; la PR: pr. Misma plantilla que el comando homónimo, donde el backend lo tiene."
 ---
 
 Ejecuta el flujo de commit siguiendo `ai_docs/dev_templates/hacer_commit.md`.
 
-Sigue todos los pasos de la plantilla sin saltarte ninguno.
+Aplica los pasos de la plantilla pertinentes al riesgo del cambio; declara los omitidos con su motivo.
 Presenta el mensaje de commit para aprobacion antes de ejecutar.
 
 ## Uso a peticion explicita

@@ -1,6 +1,6 @@
 ---
 name: diff
-description: "Se activa cuando el usuario pregunta 'que cambie', 'que he tocado', 'resumen de cambios', 'que se ha modificado'. Analiza los cambios pendientes y genera un resumen legible."
+description: "Cuando hace falta resumir qué cambió en el árbol de trabajo: agrupa el diff por módulo y explica el porqué deducible. No revisa calidad (cleanup) ni crea el commit (commit)."
 ---
 
 Analiza los cambios actuales del repositorio y presenta un resumen:
