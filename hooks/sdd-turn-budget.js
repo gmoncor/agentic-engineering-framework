@@ -72,7 +72,8 @@ const {
 } = require('./sdd-hook-utils');
 const { esInvocacion } = require('./sdd-git-command');
 
-const SHELL_TOOLS = new Set(['Bash', 'run_command', 'shell']);
+// Claude Code, Gemini CLI, Antigravity CLI, Codex.
+const SHELL_TOOLS = new Set(['Bash', 'run_shell_command', 'run_command', 'shell']);
 
 // Firmas estables (ver hooks/gate-signatures.json): distinguen el mensaje que deniega (hilo
 // principal en modo enforce) del que solo avisa (warn_at, modo advisory, o subagente).

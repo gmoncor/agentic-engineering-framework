@@ -56,7 +56,7 @@ const READ_RELIABLE_WRITE_TOOLS = new Set(['Write', 'Edit']);
 
 const WRITE_TOOLS = new Set([
   'Write', 'Edit',              // Claude Code
-  'write_file', 'edit_file',    // Gemini CLI
+  'write_file', 'replace',      // Gemini CLI (replace es parcial: no va en FULL_WRITE_TOOLS)
   'write_to_file',              // Antigravity CLI
   'replace_file_content',
   'multi_replace_file_content',
@@ -64,7 +64,7 @@ const WRITE_TOOLS = new Set([
 ]);
 
 // Escrituras que fijan el contenido entero del fichero (crear o sobrescribir), frente a las
-// parciales (Edit, replace_*), que modifican un contenido que el agente puede no conocer.
+// parciales (Edit, replace, replace_*), que modifican un contenido que el agente puede no conocer.
 const FULL_WRITE_TOOLS = new Set([
   'Write',          // Claude Code
   'write_file',     // Gemini CLI

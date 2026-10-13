@@ -17,7 +17,8 @@
  * Herramientas de escritura por CLI (el payload se normaliza en sdd-hook-utils.js):
  *   - Claude Code:     PreToolUse matcher "Write|Edit|NotebookEdit"; la ruta llega en
  *                      tool_input.file_path (Write/Edit) o tool_input.notebook_path (NotebookEdit)
- *   - Gemini CLI:      BeforeTool matcher "write_file|edit_file"
+ *   - Gemini CLI:      BeforeTool matcher "write_file|replace"; la ruta llega en
+ *                      tool_input.file_path (replace es la edición parcial)
  *   - Antigravity CLI: PreToolUse matcher "write_to_file|replace_file_content|
  *                      multi_replace_file_content|create_file"; la ruta llega en args.TargetFile
  *   - Codex:           ver sdd-pipeline-guard-codex.js (el payload de apply_patch es distinto)
@@ -28,7 +29,7 @@ const { isInsideAiDocs, findTasksDir, denialReason, resolveRepoPath } = require(
 
 const WRITE_TOOLS = new Set([
   'Write', 'Edit', 'NotebookEdit', // Claude Code
-  'write_file', 'edit_file',       // Gemini CLI
+  'write_file', 'replace',         // Gemini CLI: escribe el archivo entero / sustituye fragmentos
   'write_to_file',                 // Antigravity CLI: escribe el archivo entero
   'replace_file_content',          // Antigravity CLI: sustituye fragmentos de un archivo
   'multi_replace_file_content',    // Antigravity CLI: sustituye fragmentos de varios archivos
