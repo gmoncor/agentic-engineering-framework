@@ -584,7 +584,7 @@ Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json
 | Hook | Evento | Que hace | Modo |
 |------|--------|----------|------|
 | `sdd-pipeline-guard-codex.js` | `apply_patch` | **Deniega** aplicar un parche sobre un archivo que ninguna task de una spec APROBADA declara | Bloqueante |
-| `sdd-commit-guard-codex.js` | `shell` | **Deniega** `git commit --no-verify` y `git push --no-verify`; avisa de commits mal formados | Bloqueante + advisory |
+| `sdd-commit-guard-codex.js` | `Bash` (shell) | **Deniega** `git commit --no-verify` y `git push --no-verify`; avisa de commits mal formados | Bloqueante + advisory |
 
 Ademas del par de guards, `.codex/hooks.json` cablea el registro de sesiones (`sdd-session-start.js`), que es el mismo codigo compartido con los demas backends.
 

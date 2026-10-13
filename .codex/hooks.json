@@ -1,37 +1,31 @@
 {
-  "_comment": "Hooks SDD para Codex. Son un guardarrail, no una frontera completa de enforcement: no cubren todas las rutas de escritura ni todas las llamadas al shell (procesos hijos, herramientas externas). El refuerzo adicional vive en .codex/rules/; el resto lo sostiene la disciplina del flujo mas la comprobacion manual previa al push.",
-  "_trust": "Codex pide confirmar (trust) los hooks del proyecto la primera vez que los ejecuta y cada vez que cambia su contenido. Revisa el codigo de hooks/ antes de confiar en el.",
-  "_sin_review_gate": "sdd-review-gate.js NO se cablea aqui: la senal de revision que lo silencia la emite el motor de workflows, que solo existe en el backend de Claude Code. En este backend el aviso no podria satisfacerse por ninguna via legitima.",
   "hooks": {
     "SessionStart": [
       {
-        "_comment": "Advisory: escribe 1 linea de provenance por sesion. Nunca bloquea el arranque.",
         "hooks": [
           {
             "type": "command",
-            "command": "node ./hooks/sdd-session-start.js"
+            "command": "node -e \"const p=require('path'),f=require('fs'),c=require('child_process');const M=[['.git'],['.codex','hooks.json'],['hooks','hooks.json']];let d=process.cwd(),r=null;for(let i=0;i<11;i++){if(M.some(m=>f.existsSync(p.join(d,...m)))){r=d;break}const u=p.dirname(d);if(u===d)break;d=u}const h=r&&p.join(r,'hooks','sdd-session-start.js');if(h&&f.existsSync(h)){const s=c.spawnSync(process.execPath,[h],{cwd:r,stdio:'inherit'});process.exit(s.status===null?1:s.status)}console.error('[SDD] hooks/ no encontrado desde '+process.cwd());process.exit(0)\""
           }
         ]
       }
     ],
     "PreToolUse": [
       {
-        "_comment": "Bloqueante: deniega aplicar un parche sobre un archivo que ninguna task de una spec APROBADA declara.",
         "matcher": "apply_patch",
         "hooks": [
           {
             "type": "command",
-            "command": "node ./hooks/sdd-pipeline-guard-codex.js"
+            "command": "node -e \"const p=require('path'),f=require('fs'),c=require('child_process');const M=[['.git'],['.codex','hooks.json'],['hooks','hooks.json']];let d=process.cwd(),r=null;for(let i=0;i<11;i++){if(M.some(m=>f.existsSync(p.join(d,...m)))){r=d;break}const u=p.dirname(d);if(u===d)break;d=u}const h=r&&p.join(r,'hooks','sdd-pipeline-guard-codex.js');if(h&&f.existsSync(h)){const s=c.spawnSync(process.execPath,[h],{cwd:r,stdio:'inherit'});process.exit(s.status===null?1:s.status)}console.error('[SDD] hooks/ no encontrado desde '+process.cwd());process.exit(0)\""
           }
         ]
       },
       {
-        "_comment": "Bloqueante: deniega git commit/push con --no-verify. Avisa de commits mal formados.",
-        "matcher": "shell",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "node ./hooks/sdd-commit-guard-codex.js"
+            "command": "node -e \"const p=require('path'),f=require('fs'),c=require('child_process');const M=[['.git'],['.codex','hooks.json'],['hooks','hooks.json']];let d=process.cwd(),r=null;for(let i=0;i<11;i++){if(M.some(m=>f.existsSync(p.join(d,...m)))){r=d;break}const u=p.dirname(d);if(u===d)break;d=u}const h=r&&p.join(r,'hooks','sdd-commit-guard-codex.js');if(h&&f.existsSync(h)){const s=c.spawnSync(process.execPath,[h],{cwd:r,stdio:'inherit'});process.exit(s.status===null?1:s.status)}console.error('[SDD] hooks/ no encontrado desde '+process.cwd());process.exit(0)\""
           }
         ]
       }
