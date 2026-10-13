@@ -1,5 +1,4 @@
 {
-  "_comment": "Las rutas se resuelven desde la raiz del proyecto: 'hooks/' tiene que estar copiado ahi, tambien al instalar la extension. Anclarlas al directorio de la extension solo funcionaria en esa via de instalacion y dejaria la manual con los hooks apuntando a archivos inexistentes.",
   "_sin_review_gate": "sdd-review-gate.js NO se cablea aqui: su senal la emite el motor de workflows, que solo existe en el backend de Claude Code. Cablearlo en este backend daria un aviso que nada puede silenciar de forma legitima.",
   "hooks": {
     "SessionStart": [
@@ -8,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node hooks/sdd-session-start.js"
+            "command": "node -e \"const p=require('path'),f=require('fs'),c=require('child_process');const M=[['.git'],['.codex','hooks.json'],['hooks','hooks.json']];let d=process.cwd(),r=null;for(let i=0;i<11;i++){if(M.some(m=>f.existsSync(p.join(d,...m)))){r=d;break}const u=p.dirname(d);if(u===d)break;d=u}const h=r&&p.join(r,'hooks','sdd-session-start.js');if(h&&f.existsSync(h)){const s=c.spawnSync(process.execPath,[h],{cwd:r,stdio:'inherit'});process.exit(s.status===null?1:s.status)}console.error('[SDD] hooks/ no encontrado desde '+process.cwd());process.exit(0)\""
           }
         ]
       }
@@ -16,41 +15,41 @@
     "BeforeTool": [
       {
         "_comment": "Bloqueante: impide escribir codigo no declarado en una task de la spec aprobada.",
-        "matcher": "write_file|edit_file",
+        "matcher": "write_file|replace",
         "hooks": [
           {
             "type": "command",
-            "command": "node hooks/sdd-pipeline-guard.js"
+            "command": "node -e \"const p=require('path'),f=require('fs'),c=require('child_process');const M=[['.git'],['.codex','hooks.json'],['hooks','hooks.json']];let d=process.cwd(),r=null;for(let i=0;i<11;i++){if(M.some(m=>f.existsSync(p.join(d,...m)))){r=d;break}const u=p.dirname(d);if(u===d)break;d=u}const h=r&&p.join(r,'hooks','sdd-pipeline-guard.js');if(h&&f.existsSync(h)){const s=c.spawnSync(process.execPath,[h],{cwd:r,stdio:'inherit'});process.exit(s.status===null?1:s.status)}console.error('[SDD] hooks/ no encontrado desde '+process.cwd());process.exit(0)\""
           }
         ]
       },
       {
         "_comment": "Bloqueante en --no-verify (git commit/push): saltarse los ganchos de calidad no tiene uso legitimo. Advisory en el resto: verifica formato de commit y previene fugas de andamiaje.",
-        "matcher": "run_command",
+        "matcher": "run_shell_command",
         "hooks": [
           {
             "type": "command",
-            "command": "node hooks/sdd-commit-guard.js"
+            "command": "node -e \"const p=require('path'),f=require('fs'),c=require('child_process');const M=[['.git'],['.codex','hooks.json'],['hooks','hooks.json']];let d=process.cwd(),r=null;for(let i=0;i<11;i++){if(M.some(m=>f.existsSync(p.join(d,...m)))){r=d;break}const u=p.dirname(d);if(u===d)break;d=u}const h=r&&p.join(r,'hooks','sdd-commit-guard.js');if(h&&f.existsSync(h)){const s=c.spawnSync(process.execPath,[h],{cwd:r,stdio:'inherit'});process.exit(s.status===null?1:s.status)}console.error('[SDD] hooks/ no encontrado desde '+process.cwd());process.exit(0)\""
           }
         ]
       },
       {
         "_comment": "Advisory: avisa al escribir un archivo existente sin haberlo leido antes. Rastrea las lecturas via read_file; si esta CLI no dispara BeforeTool para read_file, el rastreador no se alimenta y el hook se autolimita a silencio (sin falsos positivos).",
-        "matcher": "read_file|write_file|edit_file",
+        "matcher": "read_file|write_file|replace",
         "hooks": [
           {
             "type": "command",
-            "command": "node hooks/sdd-read-before-edit.js"
+            "command": "node -e \"const p=require('path'),f=require('fs'),c=require('child_process');const M=[['.git'],['.codex','hooks.json'],['hooks','hooks.json']];let d=process.cwd(),r=null;for(let i=0;i<11;i++){if(M.some(m=>f.existsSync(p.join(d,...m)))){r=d;break}const u=p.dirname(d);if(u===d)break;d=u}const h=r&&p.join(r,'hooks','sdd-read-before-edit.js');if(h&&f.existsSync(h)){const s=c.spawnSync(process.execPath,[h],{cwd:r,stdio:'inherit'});process.exit(s.status===null?1:s.status)}console.error('[SDD] hooks/ no encontrado desde '+process.cwd());process.exit(0)\""
           }
         ]
       },
       {
-        "_comment": "Advisory: cuenta las acciones sin commit y avisa al superar cada umbral. El matcher amplio incluye run_command para detectar el commit que resetea el contador. Si esta CLI no expone session_id, el hook se autolimita a silencio (sin donde persistir el contador).",
-        "matcher": "read_file|write_file|edit_file|run_command",
+        "_comment": "Advisory: cuenta las acciones sin commit y avisa al superar cada umbral. El matcher amplio incluye run_shell_command para detectar el commit que resetea el contador. Si esta CLI no expone session_id, el hook se autolimita a silencio (sin donde persistir el contador).",
+        "matcher": "read_file|write_file|replace|run_shell_command",
         "hooks": [
           {
             "type": "command",
-            "command": "node hooks/sdd-turn-budget.js"
+            "command": "node -e \"const p=require('path'),f=require('fs'),c=require('child_process');const M=[['.git'],['.codex','hooks.json'],['hooks','hooks.json']];let d=process.cwd(),r=null;for(let i=0;i<11;i++){if(M.some(m=>f.existsSync(p.join(d,...m)))){r=d;break}const u=p.dirname(d);if(u===d)break;d=u}const h=r&&p.join(r,'hooks','sdd-turn-budget.js');if(h&&f.existsSync(h)){const s=c.spawnSync(process.execPath,[h],{cwd:r,stdio:'inherit'});process.exit(s.status===null?1:s.status)}console.error('[SDD] hooks/ no encontrado desde '+process.cwd());process.exit(0)\""
           }
         ]
       }

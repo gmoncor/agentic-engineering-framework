@@ -2,7 +2,7 @@
 name: planificador
 description: "Crea specs y las parte en tasks granulares. Se despacha cuando el usuario describe algo que construir, cambiar o corregir, o pide una spec, sus tasks o una planificación completa."
 model: gemini-2.5-pro
-tools: [read_file, write_file, edit_file, run_command, grep_search, glob]
+tools: [read_file, write_file, replace, run_shell_command, grep_search, glob]
 ---
 
 # Planificador

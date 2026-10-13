@@ -306,6 +306,33 @@ test('codex: cada matcher casa con el tool_name medido de su herramienta', () =>
   }
 });
 
+// tool_name medidos con gemini-cli 0.63.0: escribir es write_file, editar es
+// replace y el shell es run_shell_command (edit_file y run_command no existen).
+const TOOL_NAME_MEDIDO_GEMINI = {
+  'pipeline-guard': ['write_file', 'replace'],
+  'commit-guard': ['run_shell_command'],
+  'read-before-edit': ['write_file', 'replace'],
+  'turn-budget': ['write_file', 'replace', 'run_shell_command']
+};
+
+test('gemini: adopta la plantilla del lanzador (figura en launcher.backends)', () => {
+  assert.ok(MAPEO.launcher.backends.includes('gemini'),
+    'gemini debe figurar en launcher.backends para que su wiring se compare con la plantilla');
+});
+
+test('gemini: cada matcher casa con los tool_name medidos de sus herramientas', () => {
+  for (const [accion, toolNames] of Object.entries(TOOL_NAME_MEDIDO_GEMINI)) {
+    const { matcher } = MAPEO.actions[accion].gemini;
+    for (const toolName of toolNames) {
+      assert.ok(matcherCasa(matcher, toolName), `"${accion}": el matcher "${matcher}" no casa con "${toolName}"`);
+    }
+  }
+});
+
+test('canario: el matcher write_file|edit_file no casa con el tool_name medido "replace"', () => {
+  assert.strictEqual(matcherCasa('write_file|edit_file', 'replace'), false);
+});
+
 test('canario: el matcher shell no casa con el tool_name medido "Bash"', () => {
   assert.strictEqual(matcherCasa('shell', TOOL_NAME_MEDIDO_CODEX['commit-guard']), false);
 });

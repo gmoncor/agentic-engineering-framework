@@ -2,7 +2,7 @@
 name: revisor
 description: "Despáchalo para revisar una task antes de implementarla, auditar una spec con sus tasks o hacer la revisión adversarial de un diff ya escrito. Reporta hallazgos y veredicto; no escribe."
 model: gemini-2.5-pro
-tools: [read_file, run_command, grep_search, glob]
+tools: [read_file, run_shell_command, grep_search, glob]
 ---
 
 # Revisor

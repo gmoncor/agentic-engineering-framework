@@ -2,7 +2,7 @@
 name: asesor
 description: "Analiza un problema, evalúa opciones y recomienda una solución con sus trade-offs, sin escribir. Se despacha en el análisis previo a una planificación, o cuando el usuario duda entre enfoques o pide una segunda opinión."
 model: gemini-2.5-pro
-tools: [read_file, run_command, grep_search, glob]
+tools: [read_file, run_shell_command, grep_search, glob]
 ---
 
 # Asesor

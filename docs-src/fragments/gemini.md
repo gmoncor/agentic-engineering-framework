@@ -40,13 +40,15 @@ Los 4 agentes (`asesor`, `implementador`, `planificador`, `revisor`) fijan `mode
 
 | Hook | Evento | Que enforcea | Modo |
 |------|--------|-------------|------|
-| `sdd-pipeline-guard.js` | write_file/edit_file | **Bloquea** escribir un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de la spec APROBADA activa | Bloqueante |
-| `sdd-commit-guard.js` | run_command (git commit/push) | **Bloquea** `--no-verify`; warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Bloqueante en `--no-verify`, advisory en el resto |
-| `sdd-read-before-edit.js` | write_file/edit_file | Warn al escribir un archivo existente sin haberlo leido antes en la sesion. Se autolimita a silencio en backends que no exponen el evento de lectura | Advisory |
+| `sdd-pipeline-guard.js` | write_file/replace | **Bloquea** escribir un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de la spec APROBADA activa | Bloqueante |
+| `sdd-commit-guard.js` | run_shell_command (git commit/push) | **Bloquea** `--no-verify`; warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Bloqueante en `--no-verify`, advisory en el resto |
+| `sdd-read-before-edit.js` | write_file/replace | Warn al escribir un archivo existente sin haberlo leido antes en la sesion. Se autolimita a silencio en backends que no exponen el evento de lectura | Advisory |
 | `sdd-turn-budget.js` | Todas las tool calls | Cuenta las acciones sin commit y avisa al superar cada umbral (warn/block/hard_stop). `git commit` resetea el contador | Advisory (default) |
 | `sdd-session-start.js` | SessionStart | No enforcea nada: **escribe**. Anade una linea al registro de sesiones (`ai_docs/audits/provenance.jsonl`) con directorio de trabajo, rama, commit, modelo de la sesion y hashes de los componentes instalados | Registro (activo por defecto) |
 
-Configurados en `hooks/hooks.json`. Las rutas se resuelven desde la raiz del proyecto, asi que `hooks/` tiene que estar copiado ahi (tambien si instalas la extension).
+Configurados en `hooks/hooks.json`. La columna Evento usa los nombres reales de las herramientas de Gemini CLI (`write_file`, `replace`, `run_shell_command`). Cada hook se lanza desde la raíz del proyecto aunque Gemini arranque en un subdirectorio: el lanzador sube hasta el primer directorio con `.git` o `hooks/hooks.json` y ejecuta el hook de ahí, así que `hooks/` tiene que estar copiado en la raíz (también si instalas la extensión).
+
+**Aviso de skills duplicadas con `--backend all`.** Si instalas todos los backends, Gemini lee las skills de `.agents/skills` y de `.gemini/skills` e informa `Skill conflict detected: "<skill>" ... is overriding ...`. Es inocuo: las dos copias salen de la misma fuente. Para evitarlo, instala solo el backend que usas (`--backend gemini`).
 
 **El registro de sesiones se apaga con una clave.** `sdd-session-start.js` viene activo y escribe una linea por arranque de sesion en un fichero dentro de tu repositorio. Para que deje de escribir: `sdd_session_start.enabled: false` en `hooks/config.json`; con `false` no escribe nada, ni la linea ni el fichero. Para cambiar el destino o anadir campos propios sin tocar ficheros que la actualizacion sobreescribe: `docs/extension-config-schema.md`.
 

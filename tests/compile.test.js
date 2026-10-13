@@ -720,7 +720,11 @@ test('6.3 la politica manda sobre el modelo de la fuente y traduce las herramien
 
   assert.ok(markdown.includes('model: gemini-2.5-pro'), 'el modelo debe salir de la politica');
   assert.ok(!markdown.includes('opus-4-6'), 'el modelo declarado en la fuente no debe llegar a la salida');
-  assert.ok(markdown.includes('tools: [read_file, run_command, grep_search, glob]'), 'las herramientas deben ir traducidas');
+  // Nombres medidos con gemini-cli 0.63.0. replace y run_shell_command son los
+  // tool_name con los que llegan la edición y el shell en una sesión real;
+  // grep_search y glob se midieron contra el validador de agentes de esa versión
+  // (los acepta como herramientas integradas), no en una sesión con modelo.
+  assert.ok(markdown.includes('tools: [read_file, run_shell_command, grep_search, glob]'), 'las herramientas deben ir traducidas');
   assert.ok(markdown.includes('Cuerpo largo'), 'Gemini si comparte el cuerpo del fichero de Claude');
 });
 
