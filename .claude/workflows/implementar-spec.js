@@ -395,7 +395,7 @@ Proceso:
 IMPORTANTE: Retorna las dependencias como paths exactos de archivos, no como titulos ni descripciones.
 
 Retorna el path de la spec, su titulo, y la lista completa de tasks.
-`, { label: 'descubrir-tasks', phase: 'Descubrimiento', schema: DISCOVER_SCHEMA })
+`, { agentType: 'asesor', label: 'descubrir-tasks', phase: 'Descubrimiento', schema: DISCOVER_SCHEMA })
 
 const taskList = (discovery && discovery.tasks) ? discovery.tasks : []
 if (taskList.length === 0) {
@@ -484,6 +484,7 @@ commit_message, commit_cuerpo, hallazgos fuera de alcance.'
 
 async function implementarTask(task) {
   return agent(promptImplementacion(task), {
+    agentType: 'implementador',
     label: 'impl-' + task.titulo.substring(0, 25),
     phase: 'Implementacion',
     schema: IMPL_SCHEMA
@@ -530,6 +531,7 @@ En problemas_criticos van solo los hallazgos BLOQUEANTES: son los únicos que ab
 Los WARNING van en problemas_menores: no bloquean el commit y viajan en su cuerpo.\n\
 Para cada crítico, propón su corrección en correcciones_propuestas.\n\
 Emite tu veredicto: APROBADA, NECESITA_CORRECCIONES o RECHAZADA.', {
+    agentType: 'revisor',
     label: 'revision-' + task.titulo.substring(0, 20),
     phase: 'Implementacion',
     schema: REVISION_SCHEMA
@@ -556,6 +558,7 @@ REGLAS:\n\
 - Deja los cambios en el working tree. NO hagas git add ni git commit.\n\
 - Ejecuta los tests y asegurate de que pasan.\n\
 - NO hagas preguntas.', {
+    agentType: 'implementador',
     label: 'correccion-' + task.titulo.substring(0, 18),
     phase: 'Implementacion',
     schema: IMPL_SCHEMA
@@ -635,6 +638,7 @@ No crees ficheros; reporta. Devuelve cada brecha en `brechas` con:\n\
 - `evidencia`: lo que la acredita, con archivo:línea cuando aplique;\n\
 - `severidad`: BLOQUEANTE o WARNING.\n\
 Sin brechas, `brechas` va vacía. Emite el veredicto.', {
+    agentType: 'revisor',
     label: 'convergencia',
     phase: 'Convergencia',
     schema: CONVERGENCIA_SCHEMA
@@ -657,6 +661,7 @@ REGLAS:\n\
 - Si next-task-number.sh no está disponible, no crees nada y explica el motivo en `error`.\n\
 - NO hagas preguntas.\n\
 Devuelve en `tasks_creadas` la ruta de cada task creada.', {
+    agentType: 'planificador',
     label: 'crear-convergencia',
     phase: 'Convergencia',
     schema: CREACION_CONVERGENCIA_SCHEMA

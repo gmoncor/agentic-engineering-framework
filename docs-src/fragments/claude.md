@@ -28,9 +28,9 @@
 
 ## Modelo por defecto
 
-`settings.json` trae `"model": "claude-opus-4-8"` como default **sugerido** de sesion: Opus 4.8 es el modelo mas capaz para planificacion y revision exhaustiva. Pero ningun modelo esta impuesto por el framework — el default es tuyo y lo ajustas a tu presupuesto (`/model sonnet` para velocidad puntual, o edita `settings.json`).
+El modelo de la sesión lo fija la clave `model` de `.claude/settings.json`. Es un default **sugerido**: ningún modelo lo impone el framework, y lo ajustas a tu presupuesto (`/model` para un cambio puntual, o edita `settings.json`).
 
-Los agentes heredan ese default salvo el `implementador`, fijado a `model: sonnet`: ejecuta trabajo mecanico (codigo + tests) donde el modelo mas caro no aporta, asi que el patron es **capaz para el gate, barato para ejecutar**. `planificador` y `revisor` heredan el default capaz, del que depende su razonamiento. Si prefieres un unico modelo para todo, devuelve el implementador a `model: inherit`.
+El modelo de cada rol lo fija el campo `model` del frontmatter de su agente en `.claude/agents/`; `inherit` toma el de la sesión. Los workflows `/planificar` y `/implementar-spec` despachan cada paso con su agente (`agentType`): intake y descubrimiento con `asesor`; spec, tasks, su corrección y las tasks de convergencia con `planificador`; implementación y corrección con `implementador`; revisiones, auditoría y verificación de convergencia con `revisor`. Cada paso corre así con el modelo y las herramientas de su rol. Para cambiar el modelo de un rol, edita el frontmatter de su agente: el workflow no guarda otra copia.
 
 Ver tambien "Ahorro de tokens" en README.md.
 
@@ -77,7 +77,7 @@ Contrato de la senal de revision (emisor `/implementar-spec`, consumidor `sdd-re
 │   ├── commands/       # 13 comandos SDD
 │   ├── skills/         # 9 skills (auto-activacion; auditar-sesion es exclusiva de este backend)
 │   ├── workflows/      # planificar.js + implementar-spec.js + lib/ (orquestacion)
-│   └── settings.json   # model default sugerido: claude-opus-4-8 + hooks
+│   └── settings.json   # modelo de sesión sugerido + hooks
 ├── hooks/              # 6 hooks (pipeline-guard + review-gate + commit-guard + read-before-edit + turn-budget + session-start)
 ├── scripts/            # next-task-number.sh (numeracion de tasks sin colisiones)
 <!-- /hueco -->

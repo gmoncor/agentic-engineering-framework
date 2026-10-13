@@ -183,7 +183,7 @@ REGLAS:
    "alternativa". Recomienda; la decision es del usuario.
 
 Solicitud del usuario: ${args}
-`, { label: 'intake', phase: 'Intake', schema: INTAKE_SCHEMA })
+`, { agentType: 'asesor', label: 'intake', phase: 'Intake', schema: INTAKE_SCHEMA })
 
 const decision = evaluarIntake(intakeResult)
 if (!decision.continuar) {
@@ -226,7 +226,7 @@ ${contextoIntake}
 
 Guarda la spec en ai_docs/tasks/spec_<descriptor>.md (snake_case, sin acentos).
 Retorna SOLO el path del archivo creado (ej: ai_docs/tasks/spec_autenticacion.md).
-`, { label: 'crear-spec', phase: 'Spec' })
+`, { agentType: 'planificador', label: 'crear-spec', phase: 'Spec' })
 
 const specPath = (typeof specResult === 'string' ? specResult : '').trim()
 if (!specPath || specPath.length < 5) {
@@ -254,7 +254,7 @@ IMPORTANTE:
 
 Retorna un JSON con spec_path y la lista de tasks creadas (path, titulo,
 dependencias y contratos que produce o consume).
-`, { label: 'derivar-tasks', phase: 'Tasks', schema: TASKS_SCHEMA })
+`, { agentType: 'planificador', label: 'derivar-tasks', phase: 'Tasks', schema: TASKS_SCHEMA })
 
 const taskList = (tasksResult && tasksResult.tasks) ? tasksResult.tasks : []
 log(taskList.length + ' tasks derivadas')
@@ -335,6 +335,7 @@ Ejecuta todas las verificaciones:
 Retorna tu veredicto estructurado con problemas y ajustes concretos.
 Las dudas sin evidencia van en avisos, no en problemas; no cambian el veredicto.
 `, {
+        agentType: 'revisor',
         label: 'revisar-p' + numeroPasada + '-' + (i + 1) + '-' + task.titulo.substring(0, 22),
         phase: 'Revision',
         schema: REVIEW_SCHEMA
@@ -410,7 +411,7 @@ impide un APROBADO.
 Los \`avisos_no_bloqueantes\` de las revisiones van a tus avisos, no a huecos ni incoherencias.
 
 Retorna tu veredicto estructurado.
-`, { label: 'auditoria-cruzada-p' + numeroPasada, phase: 'Auditoria', schema: AUDIT_SCHEMA })
+`, { agentType: 'revisor', label: 'auditoria-cruzada-p' + numeroPasada, phase: 'Auditoria', schema: AUDIT_SCHEMA })
 
   // Un contrato roto no puede quedar aprobado aunque el auditor no lo reflejara:
   // se incorpora como incoherencia y fuerza un veredicto adverso. Lo mismo un
@@ -471,7 +472,7 @@ REGLAS:
 - Manten la spec en BORRADOR. La aprobacion es del usuario.
 - Si un contrato producer/consumer esta roto, ajusta las dependencias o anade la task productora.
 - NO hagas preguntas. Trabaja con lo que hay.
-`, { label: 'corregir-tasks-p' + numeroPasadaPrevia, phase: 'Auditoria' })
+`, { agentType: 'planificador', label: 'corregir-tasks-p' + numeroPasadaPrevia, phase: 'Auditoria' })
 }
 
 // Presupuesto de pasadas: MAX_REVISION_PASSES, una simple constante. Primera pasada
