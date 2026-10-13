@@ -214,20 +214,18 @@ En modo task, los criterios de la task; en modo integración, los de la spec. Pa
 
 Antes de emitir el veredicto final de la spec:
 
-1. **Reconciliar resultado real por task.** Para cada task del roadmap, verificar su estado final (`COMPLETADA`, `FALLIDA`, `PARCIAL`). Una task `FALLIDA` o `PARCIAL` implica que sus criterios asignados carecen de cobertura, aunque el plan los asignara — el veredicto de la spec DEBE reflejarlo.
+1. **Reconciliar resultado real por task.** Para cada task del roadmap, verificar su estado final (`COMPLETADA`, `FALLIDA`, `PARCIAL`, `BLOQUEADA_REVISION`). Una task `FALLIDA`, `PARCIAL` o `BLOQUEADA_REVISION` implica que sus criterios asignados carecen de cobertura, aunque el plan los asignara — el veredicto de la spec DEBE reflejarlo.
 2. **Recuperar la tabla criterio-task.** Usar la tabla de asignación del Paso 2 de la spec (la que mapea cada criterio de éxito a la task responsable). Si la spec no tiene esa tabla (formato antiguo), reconstruirla a partir de los criterios de éxito y el roadmap de tasks. Confirmar que cada criterio tiene al menos una task `COMPLETADA` que lo cubre. Criterio sin task completada = criterio SIN COBERTURA.
 3. **Barrido de "No incluye".** Verificar contra el código final que las exclusiones declaradas en la spec (sección "No incluye" / "Fuera de alcance") realmente NO se implementaron. Implementación no solicitada es tan grave como omisión. Si la spec no declara exclusiones, este sub-paso se salta.
 
-**Schema de hallazgo.** Cada brecha detectada en los sub-pasos 1-3 se reporta con estos 6 campos:
+**Schema de hallazgo.** Cada brecha detectada en los sub-pasos 1-3 se reporta con estos 4 campos:
 
 | Campo | Descripción |
 |-------|-------------|
-| `id` | Identificador corto, secuencial dentro del pase (ej. `CONV-001`) |
-| `source_ref` | Referencia a la sección de la spec o criterio de aceptación afectado |
-| `gap_type` | `missing` (no implementado) \| `partial` (implementado a medias) \| `contradicts` (contradice la spec) \| `unrequested` (implementado sin pedirse, viola "No incluye") |
+| `criterio` | Sección de la spec o criterio de aceptación afectado |
+| `hallazgo` | La brecha (no implementado, implementado a medias, contradice la spec o implementado sin pedirse) y la corrección sugerida |
+| `evidencia` | Lo que la acredita, con referencia a archivo:línea cuando aplique |
 | `severidad` | `BLOQUEANTE` \| `WARNING` |
-| `evidencia` | Descripción concreta de la brecha, con referencia a archivo:línea cuando aplique |
-| `correccion_sugerida` | Acción concreta para cerrar la brecha |
 
 **Resultado.** El revisor reporta; no escribe ficheros:
 

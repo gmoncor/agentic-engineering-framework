@@ -1,7 +1,8 @@
 'use strict';
 
 // Verifica la seccion "Ahorro de tokens" de README.md/CLAUDE.md y la paridad
-// de cuerpo entre agentes equivalentes de distintos backends.
+// de cuerpo entre agentes equivalentes de distintos backends, y que las salidas
+// de los backends distintos de Claude Code no presenten capacidades suyas.
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -233,3 +234,107 @@ for (const agente of IDENTICAL_AGENTS) {
     );
   });
 }
+
+// ── Capacidades de Claude Code ausentes en los demás backends ───────────────
+//
+// Las salidas de Codex, Antigravity y Gemini no pueden presentar como propio lo
+// que solo existe en Claude Code: la señal de revisión que emite su motor de
+// workflows, su herramienta de subagentes (`Agent(`, `subagent_type`), sus
+// esperas (`run_in_background`, `Monitor`) ni sus rutas `.claude/`. Un agente que
+// lee esa prosa busca una capacidad que no tiene y se salta el paso o lo inventa.
+
+const BACKENDS_NO_CLAUDE = ['codex', 'antigravity', 'gemini', 'agents'];
+
+const CAPACIDADES_AUSENTES = [
+  { nombre: 'señal de revisión', patron: /se[ñn]al/i },
+  { nombre: 'Agent(', patron: /\bAgent\(/ },
+  { nombre: 'run_in_background', patron: /run_in_background/ },
+  { nombre: 'Monitor', patron: /\bMonitor\b/ },
+  { nombre: 'subagent_type', patron: /subagent_type/ },
+  { nombre: 'ruta .claude/', patron: /\.claude\// },
+];
+
+// Excepciones motivadas: líneas que nombran la capacidad para declarar que en ese
+// backend NO existe. Cada una se ata a su fichero y a la frase que la limita.
+const EXCEPCIONES = [
+  {
+    ruta: 'AGENTS.md',
+    capacidad: 'señal de revisión',
+    patron: /solo en el backend de Claude Code: la senal/,
+    motivo: 'explica que la señal del gate de revisión solo la emite el motor de workflows de Claude Code',
+  },
+  {
+    ruta: 'GEMINI.md',
+    capacidad: 'señal de revisión',
+    patron: /solo en el backend de Claude Code: la senal/,
+    motivo: 'explica que la señal del gate de revisión solo la emite el motor de workflows de Claude Code',
+  },
+];
+
+const MIN_SALIDAS_NO_CLAUDE = 40;
+
+/** Salidas que el manifiesto genera para los backends distintos de Claude Code. */
+function salidasNoClaude() {
+  const manifiesto = JSON.parse(leer('scripts/artifact-manifest.json'));
+  const rutas = new Set();
+  for (const entrada of manifiesto.artifacts) {
+    for (const salida of entrada.outputs || []) {
+      if (BACKENDS_NO_CLAUDE.includes(salida.backend)) rutas.add(salida.path);
+    }
+  }
+  return [...rutas].sort();
+}
+
+/** Líneas de `contenido` que nombran una capacidad ausente y no están exceptuadas. */
+function capacidadesAusentes(ruta, contenido, excepciones = EXCEPCIONES) {
+  const hallazgos = [];
+  contenido.split('\n').forEach((linea, indice) => {
+    for (const capacidad of CAPACIDADES_AUSENTES) {
+      // Una excepción solo cubre la capacidad que declara: el resto de la línea se sigue escaneando.
+      const exceptuada = excepciones.some(e => e.ruta === ruta && e.capacidad === capacidad.nombre
+        && e.patron.test(linea));
+      if (!exceptuada && capacidad.patron.test(linea)) {
+        hallazgos.push(`${ruta}:${indice + 1}: ${capacidad.nombre}: ${linea.trim()}`);
+      }
+    }
+  });
+  return hallazgos;
+}
+
+test('el escáner detecta una capacidad de Claude Code presentada como propia', () => {
+  const positivo = 'Solo si aprueba se emite la senal atada al diff y se crea el commit.\n'
+    + 'Lanza Agent({ subagent_type: "revisor", run_in_background: true }) y espera con Monitor.\n'
+    + 'Lee .claude/agents/revisor.md.';
+  const hallazgos = capacidadesAusentes('.agents/skills/ejemplo/SKILL.md', positivo);
+  const nombres = new Set(hallazgos.map(h => h.split(': ')[1]));
+  for (const capacidad of CAPACIDADES_AUSENTES) {
+    assert.ok(nombres.has(capacidad.nombre), `el fixture positivo no dispara "${capacidad.nombre}"`);
+  }
+});
+
+test('el escáner respeta las excepciones motivadas y no dispara sobre prosa limpia', () => {
+  const negativo = 'El agente `revisor` revisa ese diff; solo con APROBADA se commitea.\n'
+    + 'pero se cablea solo en el backend de Claude Code: la senal que lo silencia la emite su motor';
+  assert.deepStrictEqual(capacidadesAusentes('AGENTS.md', negativo), []);
+  // La misma frase fuera del fichero al que se ata la excepción sí dispara.
+  assert.strictEqual(capacidadesAusentes('.agents/skills/ejemplo/SKILL.md', negativo).length, 1);
+  // La excepción no cubre otra capacidad en la misma línea.
+  const mixta = 'se cablea solo en el backend de Claude Code: la senal la emite Agent(';
+  assert.deepStrictEqual(capacidadesAusentes('AGENTS.md', mixta).map(h => h.split(': ')[1]), ['Agent(']);
+});
+
+test('las salidas de Codex, Antigravity y Gemini no presentan capacidades exclusivas de Claude Code', () => {
+  const salidas = salidasNoClaude();
+  assert.ok(
+    salidas.length >= MIN_SALIDAS_NO_CLAUDE,
+    `el manifiesto declara ${salidas.length} salidas fuera de Claude Code, mínimo ${MIN_SALIDAS_NO_CLAUDE}: `
+      + 'una derivación vacía dejaría pasar el escáner sin comprobar nada'
+  );
+  const hallazgos = salidas.flatMap(ruta => {
+    assert.ok(fs.existsSync(path.join(RAIZ, ruta)), `falta la salida declarada ${ruta}`);
+    return capacidadesAusentes(ruta, leer(ruta));
+  });
+  assert.deepStrictEqual(hallazgos, [],
+    'capacidades de Claude Code en salidas de otros backends (corrige la fuente o, si la línea '
+      + 'declara que la capacidad no existe ahí, añade una excepción motivada):\n' + hallazgos.join('\n'));
+});
