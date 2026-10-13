@@ -60,15 +60,15 @@
  *
  * Single-repo: el reset se ata al comando `git commit` observado, sin resolver la
  * raiz del repositorio. Configurable en hooks/config.json (sdd_turn_budget).
- * SDD_TURNS_DIR redirige el directorio del contador (tests, tmp efimero).
+ * SDD_TURNS_DIR redirige el directorio del contador (tests, tmp efímero); sin ella,
+ * la subcarpeta propia del temporal del sistema (hookStateDir en sdd-hook-utils.js).
  */
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const {
-  readPayload, readToolCall, warn, deny, skipRequested, loadConfig, hookEnabled, purgeExpired, runWithFailOpen,
-  sessionStatePath,
+  readPayload, readToolCall, warn, deny, skipRequested, loadConfig, hookEnabled, purgeHookState, runWithFailOpen,
+  sessionStatePath, hookStateDir,
 } = require('./sdd-hook-utils');
 const { esInvocacion } = require('./sdd-git-command');
 
@@ -83,7 +83,7 @@ const DEFAULTS = { warn_at: 30, block_at: 60, hard_stop_at: 90 };
 const TTL_MS = 24 * 60 * 60 * 1000; // 24h: ficheros de sesiones sin actividad reciente se purgan
 
 function turnsDir() {
-  return process.env.SDD_TURNS_DIR || os.tmpdir();
+  return hookStateDir(process.env.SDD_TURNS_DIR);
 }
 
 const AGENT_ID_MAX = 100;
@@ -137,8 +137,8 @@ function appendAction(key) {
     return;
   }
   // Purga oportunista: retira registros de sesiones anteriores sin actividad
-  // en el ultimo TTL. Ver purgeExpired en sdd-hook-utils.js.
-  purgeExpired(turnsDir(), 'sdd-turns-', file, TTL_MS);
+  // en el último TTL. Ver purgeHookState en sdd-hook-utils.js.
+  purgeHookState(turnsDir(), 'sdd-turns-', file, TTL_MS);
 }
 
 // El commit es el checkpoint que el budget vigila: trunca el registro a vacio.
@@ -149,7 +149,7 @@ function resetActions(key) {
   } catch {
     return;
   }
-  purgeExpired(turnsDir(), 'sdd-turns-', file, TTL_MS);
+  purgeHookState(turnsDir(), 'sdd-turns-', file, TTL_MS);
 }
 
 // Umbral configurado, o su default. <= 0 desactiva ese tier.
