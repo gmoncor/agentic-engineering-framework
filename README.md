@@ -588,7 +588,7 @@ Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json
 
 Ademas del par de guards, `.codex/hooks.json` cablea el registro de sesiones (`sdd-session-start.js`), que es el mismo codigo compartido con los demas backends.
 
-Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohibe esos mismos comandos via politica de ejecucion (funcionalidad experimental del CLI; si tu version no la carga, el hook sigue siendo la via principal).
+Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohíbe esos mismos comandos mediante la política de ejecución. En codex-cli 0.162.1 las reglas cargan con `justification` y bloquean `git commit --no-verify`; un parámetro que `prefix_rule` no reconoce impide arrancar Codex. Comprobación: `codex execpolicy check`.
 
 **Limite honesto de los hooks de Codex:** son un **guardarrail**, no una frontera completa de enforcement — asi lo declara el propio fabricante. No interceptan todas las llamadas al shell ni todas las rutas de escritura: un proceso hijo lanzado desde un comando permitido puede escapar al matcher, y el payload de `apply_patch` no tiene esquema publico estable (si el guard no puede leer las rutas del parche, avisa en vez de denegar, porque bloquear a ciegas seria arbitrario). Sirven para que el camino correcto sea el camino por defecto y para que desviarse sea deliberado. Si necesitas una frontera dura, ponla en el CI y en las protecciones de rama.
 

@@ -581,6 +581,7 @@ test('install --backend all no avisa de backend equivocado aunque no haya marcad
   assert.strictEqual(codigo, 0);
   assert.doesNotMatch(stderr, /Aviso/);
   assert.match(stdout, /Nota:.*modelo de sesion/i, 'install --backend all incluye claude, debe avisar del modelo de sesion (sin settings.json en el fixture, sale sin nombre)');
+  assert.match(stdout, /Nota: revisa el modelo de \.codex\/config\.toml; compruébalo con `codex debug models`/, 'install --backend all incluye codex: sin .codex/config.toml en el fixture, la nota sale sin nombre');
 });
 
 test('install --backend codex sobre proyecto con AGENTS.md de antigravity no avisa (comparten archivo)', () => {
@@ -2430,6 +2431,64 @@ test('con .claude/settings.json invalido en el paquete de origen, la nota se omi
   assert.strictEqual(codigo, 0);
   assert.doesNotMatch(stderr, /Error inesperado/);
   assert.doesNotMatch(stdout, /modelo de sesion \(tier capaz/);
+});
+
+test('install --backend codex avisa del modelo que configura el .codex/config.toml instalado', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], codex: ['.codex', 'AGENTS.md'] },
+    {
+      'AGENTS.md': 'contexto',
+      '.codex/config.toml': '# comentario\nmodel = "gpt-modelo-fixture"\n\n[agents]\nmax_depth = 1\n',
+    },
+  );
+  const proyecto = dirTemporal();
+  const { codigo, stdout } = ejecutar(['install', '--backend', 'codex', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /Nota: \.codex\/config\.toml configura gpt-modelo-fixture; compruébalo con `codex debug models`/);
+});
+
+test('update --backend codex nombra el modelo del fichero instalado, aunque el usuario lo haya cambiado', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], codex: ['.codex', 'AGENTS.md'] },
+    { 'AGENTS.md': 'contexto', '.codex/config.toml': 'model = "gpt-del-paquete"\n' },
+  );
+  const proyecto = dirTemporal();
+  const opts = { cwd: proyecto, env: { SDD_FRAMEWORK_ROOT: paquete } };
+  assert.strictEqual(ejecutar(['install', '--backend', 'codex', '--force'], opts).codigo, 0);
+  fs.writeFileSync(path.join(proyecto, '.codex', 'config.toml'), "model = 'gpt-del-usuario'\n");
+
+  const { codigo, stdout } = ejecutar(['update', '--backend', 'codex', '--force'], opts);
+
+  assert.strictEqual(codigo, 0);
+  assert.match(stdout, /config\.toml configura gpt-del-usuario;/);
+});
+
+test('install --backend claude no imprime la nota del modelo de Codex', () => {
+  const paquete = crearPaqueteFixture(
+    { common: [], claude: ['CLAUDE.md'], codex: ['.codex'] },
+    { 'CLAUDE.md': 'contexto', '.codex/config.toml': 'model = "gpt-modelo-fixture"\n' },
+  );
+  const proyecto = dirTemporal();
+  const { codigo, stdout } = ejecutar(['install', '--backend', 'claude', '--force'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.doesNotMatch(stdout, /codex debug models/);
+});
+
+test('extraerModeloToml lee el model de primer nivel y tolera su ausencia', () => {
+  const { extraerModeloToml } = require(CLI);
+  assert.strictEqual(extraerModeloToml('# c\nmodel = "gpt-5.5" # comentario\n'), 'gpt-5.5');
+  assert.strictEqual(extraerModeloToml("model='gpt-x'"), 'gpt-x');
+  assert.strictEqual(extraerModeloToml('[agents]\nmodel = "dentro-de-tabla"\n'), null);
+  assert.strictEqual(extraerModeloToml('model = ""\n'), null);
+  assert.strictEqual(extraerModeloToml('approval_policy = "on-request"\n'), null);
 });
 
 // --- Fin de línea, ficheros convergidos y cableado sin actualizar ---------
