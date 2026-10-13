@@ -62,7 +62,9 @@ const REVIEW_SCHEMA = {
     edge_cases: { type: 'string' },
     riesgos: { type: 'string' },
     problemas: { type: 'array', items: { type: 'string' } },
-    ajustes_propuestos: { type: 'array', items: { type: 'string' } }
+    ajustes_propuestos: { type: 'array', items: { type: 'string' } },
+    // Dudas sin evidencia: se informan al auditor y no cambian el veredicto. Opcional.
+    avisos: { type: 'array', items: { type: 'string' } }
   },
   required: ['task_path', 'task_titulo', 'veredicto', 'problemas', 'ajustes_propuestos']
 }
@@ -331,6 +333,7 @@ Ejecuta todas las verificaciones:
 7. Riesgos (que puede salir mal, reversibilidad, impacto en otros modulos)
 
 Retorna tu veredicto estructurado con problemas y ajustes concretos.
+Las dudas sin evidencia van en avisos, no en problemas; no cambian el veredicto.
 `, {
         label: 'revisar-p' + numeroPasada + '-' + (i + 1) + '-' + task.titulo.substring(0, 22),
         phase: 'Revision',
@@ -358,15 +361,8 @@ Retorna tu veredicto estructurado con problemas y ajustes concretos.
   if (numeroPasada === 1) phase('Auditoria')
   else log('Segunda pasada: re-auditoria cruzada')
 
-  const reviewSummary = JSON.stringify(validReviews.map(function(r) {
-    return {
-      task: r.task_path,
-      titulo: r.task_titulo,
-      veredicto: r.veredicto,
-      problemas: r.problemas,
-      ajustes: r.ajustes_propuestos
-    }
-  }), null, 2)
+  // Los avisos de cada revisión llegan al auditor en avisos_no_bloqueantes.
+  const reviewSummary = JSON.stringify(aud.resumenDeRevisiones(validReviews), null, 2)
 
   // Los contratos rotos detectados mecanicamente se pasan al auditor como hallazgos
   // ya confirmados, para que no los pase por alto.
@@ -411,6 +407,7 @@ Si hay problemas estructurales graves, el veredicto es NECESITA_REPLANTEAMIENTO.
 Las dudas sin evidencia (WARNING) van en avisos: se informan y no bloquean. En huecos,
 incoherencias y cobertura.sin_cobertura solo hallazgos con evidencia: cualquiera de ellos
 impide un APROBADO.
+Los \`avisos_no_bloqueantes\` de las revisiones van a tus avisos, no a huecos ni incoherencias.
 
 Retorna tu veredicto estructurado.
 `, { label: 'auditoria-cruzada-p' + numeroPasada, phase: 'Auditoria', schema: AUDIT_SCHEMA })

@@ -184,6 +184,24 @@ function tasksARevisar(taskList, reviewsPrevias, tocadas) {
   return indices;
 }
 
+// Resumen de las revisiones por task que recibe el auditor. Reenvía veredicto,
+// problemas y ajustes, y además los avisos (dudas sin evidencia) en
+// avisos_no_bloqueantes, separados de problemas: un aviso se informa y no bloquea,
+// así que nunca se mezcla con un problema ni lo sustituye. Una revisión sin avisos
+// da una lista vacía.
+function resumenDeRevisiones(revisiones) {
+  return (Array.isArray(revisiones) ? revisiones : []).filter(esObjeto).map(function (r) {
+    return {
+      task: r.task_path,
+      titulo: r.task_titulo,
+      veredicto: r.veredicto,
+      problemas: Array.isArray(r.problemas) ? r.problemas : [],
+      ajustes: Array.isArray(r.ajustes_propuestos) ? r.ajustes_propuestos : [],
+      avisos_no_bloqueantes: Array.isArray(r.avisos) ? r.avisos : [],
+    };
+  });
+}
+
 module.exports = {
   APROBADO,
   NECESITA_AJUSTES,
@@ -199,4 +217,5 @@ module.exports = {
   tasksARevisar,
   rutaPlanAdmisible,
   huellaDocumentos,
+  resumenDeRevisiones,
 };
