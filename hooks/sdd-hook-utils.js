@@ -117,6 +117,30 @@ function loadConfig(defaultFile) {
 }
 
 /**
+ * Valor de `enabled` que vale cuando la sección del hook no lo declara como booleano (sección
+ * ausente, clave ausente o un valor que no es `true` ni `false`). Es la única tabla: los hooks y
+ * el campo `gates_on` de provenance leen de aquí, así que no pueden discrepar sobre si una puerta
+ * sin `enabled` está encendida.
+ */
+const HOOK_ENABLED_DEFAULTS = Object.freeze({
+  sdd_read_before_edit: true,
+  sdd_review_gate: false,
+  sdd_session_start: true,
+  sdd_turn_budget: true,
+});
+
+/**
+ * Si el hook `name` está encendido según su sección `cfg` de hooks/config.json. Un booleano
+ * explícito manda; si no lo hay, el valor por defecto de HOOK_ENABLED_DEFAULTS. Una sección que
+ * no está en la tabla solo cuenta como encendida con `enabled: true`.
+ */
+function hookEnabled(name, cfg) {
+  const enabled = cfg && typeof cfg === 'object' ? cfg.enabled : undefined;
+  if (typeof enabled === 'boolean') return enabled;
+  return HOOK_ENABLED_DEFAULTS[name] === true;
+}
+
+/**
  * Normaliza la llamada a herramienta de las CLIs soportadas a una forma unica.
  *
  * Dos familias de payload:
@@ -289,6 +313,8 @@ module.exports = {
   readToolCall,
   skipRequested,
   loadConfig,
+  hookEnabled,
+  HOOK_ENABLED_DEFAULTS,
   warn,
   deny,
   purgeExpired,

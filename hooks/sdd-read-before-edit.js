@@ -39,7 +39,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { readPayload, readToolCall, warn, loadConfig } = require('./sdd-hook-utils');
+const { readPayload, readToolCall, warn, loadConfig, hookEnabled } = require('./sdd-hook-utils');
 const { trackRead, hasRead, hasAnyRead } = require('./sdd-read-tracker');
 const { resolveRepoPath } = require('./sdd-plan-state');
 
@@ -86,7 +86,7 @@ async function main() {
   if (!data) process.exit(0);
 
   const cfg = loadConfig(path.join(__dirname, 'config.json')).sdd_read_before_edit || {};
-  if (cfg.enabled === false) process.exit(0);
+  if (!hookEnabled('sdd_read_before_edit', cfg)) process.exit(0);
   if ((cfg.mode || 'advisory') !== 'advisory') {
     if (cfg.mode) {
       try {

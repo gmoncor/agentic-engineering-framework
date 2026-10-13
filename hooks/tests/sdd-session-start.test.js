@@ -154,10 +154,11 @@ test('sin session_id en el payload, genera uno via randomUUID', () => {
   assert.match(linea.session_id, /^[0-9a-f-]{36}$/);
 });
 
-test('gates_on refleja los hooks con enabled:true en hooks/config.json, ordenados', () => {
+test('gates_on refleja los hooks encendidos en hooks/config.json, ordenados', () => {
   // Tres claves encendidas cuyo orden de insercion no es el alfabetico NI su inverso:
   // con solo dos, ordenar e invertir dan la misma lista y la asercion no distingue una
   // de la otra. La entrada aparcada bajo `_` no es una puerta y no puede contarse.
+  // sdd_read_before_edit no tiene sección y aun así cuenta: su valor por defecto es encendido.
   const e = entorno({
     sdd_session_start: { enabled: true },
     sdd_turn_budget: { enabled: true },
@@ -168,7 +169,87 @@ test('gates_on refleja los hooks con enabled:true en hooks/config.json, ordenado
   runHook(HOOK, payload(), e.env);
 
   const [linea] = leerLineas(e.provenanceFile);
-  assert.deepStrictEqual(linea.gates_on, ['sdd_commit_guard', 'sdd_session_start', 'sdd_turn_budget']);
+  assert.deepStrictEqual(
+    linea.gates_on,
+    ['sdd_commit_guard', 'sdd_read_before_edit', 'sdd_session_start', 'sdd_turn_budget'],
+  );
+});
+
+// Coherencia entre `gates_on` y lo que cada hook hace de verdad con la misma configuración. Cada
+// hook se ejecuta una vez con una entrada que, encendido, produce un efecto observable (una
+// decisión por stdout o la línea de provenance); apagado, sale en silencio.
+const HOOKS_CON_INTERRUPTOR = ['sdd_read_before_edit', 'sdd_review_gate', 'sdd_session_start', 'sdd_turn_budget'];
+
+function hooksQueActuan(config) {
+  const dir = tempDir('sdd-gates-coherencia-');
+  const configFile = writeFile(path.join(dir, 'config.json'), JSON.stringify(config));
+  const existente = writeFile(path.join(dir, 'existente.js'), 'contenido previo');
+  const provenanceFile = path.join(dir, 'audits', 'provenance.jsonl');
+  const env = {
+    SDD_CONFIG_PATH: configFile,
+    SDD_PROVENANCE_FILE: provenanceFile,
+    SDD_READS_DIR: dir,
+    SDD_TURNS_DIR: dir,
+    SDD_STAGED_DIFF: '',
+    SDD_GUARD_SKIP: '',
+  };
+  const sesion = 'sesion-coherencia';
+
+  const actuan = [];
+  const lectura = runHook('sdd-read-before-edit.js',
+    { tool_name: 'Write', tool_input: { file_path: existente }, session_id: sesion, cwd: dir }, env);
+  if (lectura.decision) actuan.push('sdd_read_before_edit');
+
+  const revision = runHook('sdd-review-gate.js',
+    { tool_name: 'Bash', tool_input: { command: 'git commit -m "feat: x"' }, session_id: sesion }, env);
+  if (revision.decision) actuan.push('sdd_review_gate');
+
+  runHook(HOOK, payload({ session_id: sesion }), env);
+  if (leerLineas(provenanceFile).length > 0) actuan.push('sdd_session_start');
+
+  const presupuesto = runHook('sdd-turn-budget.js',
+    { tool_name: 'Read', tool_input: { file_path: existente }, session_id: sesion }, env);
+  if (presupuesto.decision) actuan.push('sdd_turn_budget');
+
+  return { actuan, gates: leerLineas(provenanceFile).map((l) => l.gates_on)[0] };
+}
+
+// Umbrales que hacen visible el presupuesto en la primera acción; no tocan `enabled`.
+const UMBRALES = { warn_at: 1, block_at: 1000, hard_stop_at: 1000 };
+
+test('gates_on coincide con los hooks que actúan: secciones sin enabled', () => {
+  const { actuan, gates } = hooksQueActuan({
+    sdd_read_before_edit: { mode: 'advisory' },
+    sdd_review_gate: { ttl_hours: 4 },
+    sdd_session_start: {},
+    sdd_turn_budget: Object.assign({ mode: 'enforce' }, UMBRALES),
+  });
+
+  assert.deepStrictEqual(actuan, ['sdd_read_before_edit', 'sdd_session_start', 'sdd_turn_budget']);
+  assert.deepStrictEqual(gates.filter((g) => HOOKS_CON_INTERRUPTOR.includes(g)), actuan);
+});
+
+test('gates_on coincide con los hooks que actúan: enabled false apaga todos', () => {
+  const config = {
+    sdd_read_before_edit: { enabled: false, mode: 'advisory' },
+    sdd_review_gate: { enabled: false },
+    sdd_session_start: { enabled: false },
+    sdd_turn_budget: Object.assign({ enabled: false }, UMBRALES),
+  };
+  const { actuan } = hooksQueActuan(config);
+  // Con sdd_session_start apagado no hay línea que leer: gates_on se evalúa en proceso.
+  const { gatesOn } = require('../sdd-session-start');
+
+  assert.deepStrictEqual(actuan, []);
+  assert.deepStrictEqual(gatesOn(config), []);
+});
+
+test('gates_on coincide con los hooks que actúan: review-gate sin sección queda apagado', () => {
+  const { actuan, gates } = hooksQueActuan({ sdd_turn_budget: UMBRALES });
+
+  assert.ok(!actuan.includes('sdd_review_gate'), 'review-gate sin sección no debe actuar');
+  assert.deepStrictEqual(actuan, ['sdd_read_before_edit', 'sdd_session_start', 'sdd_turn_budget']);
+  assert.deepStrictEqual(gates, actuan);
 });
 
 // El interruptor tiene que apagar la escritura, no solo el campo que la describe: una linea

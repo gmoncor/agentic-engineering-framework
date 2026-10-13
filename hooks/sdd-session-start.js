@@ -53,7 +53,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { readPayload, loadConfig } = require('./sdd-hook-utils');
+const { readPayload, loadConfig, hookEnabled, HOOK_ENABLED_DEFAULTS } = require('./sdd-hook-utils');
 const { toNativePath, resolveRepoPath, loadExtensionConfig, isPlainObject } = require('./sdd-plan-state');
 
 const SCHEMA_VERSION = 1;
@@ -167,22 +167,28 @@ function resolveClientVersion(env) {
   return null;
 }
 
+/**
+ * Puertas encendidas según el mismo predicado que usa cada hook (`hookEnabled`). Se evalúan las
+ * secciones de la config y también los hooks de la tabla de valores por defecto aunque no tengan
+ * sección: un hook encendido por defecto corre sin ella, y el registro tiene que decirlo.
+ */
 function gatesOn(config) {
-  return Object.keys(config)
+  const cfg = config || {};
+  const keys = new Set([...Object.keys(HOOK_ENABLED_DEFAULTS), ...Object.keys(cfg)]);
+  return [...keys]
     .filter((key) => !key.startsWith('_'))
-    .filter((key) => config[key] && config[key].enabled === true)
+    .filter((key) => hookEnabled(key, cfg[key]))
     .sort();
 }
 
 /**
  * Si este hook debe correr, segun `sdd_session_start.enabled` de hooks/config.json.
- * Ausente o distinto de `false` -> corre; el default es encendido. Con `false` no se escribe
+ * Sin booleano declarado -> corre; el default es encendido (HOOK_ENABLED_DEFAULTS). Con `false` no se escribe
  * ninguna linea: la unica forma de que `gates_on` no pueda mentir sobre esta puerta es que la
  * puerta apagada no produzca registro.
  */
 function sessionStartEnabled(config) {
-  const cfg = (config && config.sdd_session_start) || {};
-  return cfg.enabled !== false;
+  return hookEnabled('sdd_session_start', config && config.sdd_session_start);
 }
 
 /**

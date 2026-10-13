@@ -42,7 +42,9 @@
 
 const { spawnSync } = require('child_process');
 const path = require('path');
-const { readPayload, readToolCall, warn, deny, skipRequested, loadConfig, runWithFailOpen } = require('./sdd-hook-utils');
+const {
+  readPayload, readToolCall, warn, deny, skipRequested, loadConfig, hookEnabled, runWithFailOpen,
+} = require('./sdd-hook-utils');
 const { DEFAULT_TTL_MS, readSignal, hashDiff } = require('./sdd-review-signal');
 const { invocacionesDe } = require('./sdd-git-command');
 
@@ -87,7 +89,7 @@ async function main() {
   if (!invocaGitCommitOMerge(cmd)) process.exit(0);
 
   const config = loadConfig(path.join(__dirname, 'config.json')).sdd_review_gate || {};
-  if (config.enabled !== true) process.exit(0);
+  if (!hookEnabled('sdd_review_gate', config)) process.exit(0);
 
   if (skipRequested()) { warn(SKIP_AVISO, call); return; }
 

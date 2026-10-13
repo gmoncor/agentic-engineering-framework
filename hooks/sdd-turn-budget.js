@@ -52,7 +52,8 @@
  *   principal (sin esos campos) sigue denegado en enforce igual que antes.
  *
  * DEGRADACION SEGURA (nunca rompe por infraestructura):
- *   - Sin config o enabled: false -> silencio.
+ *   - enabled: false -> silencio. Sin `enabled` (o sin config) el hook corre: su valor por
+ *     defecto vive en HOOK_ENABLED_DEFAULTS de sdd-hook-utils.js.
  *   - SDD_GUARD_SKIP=1 -> bypass (escape de emergencia, no cuenta ni avisa).
  *   - Sin session_id: no hay sesion que correlacionar ni donde persistir -> silencio.
  *   - Fichero de contador corrupto o disco de solo lectura -> contador a 0 y sigue.
@@ -66,7 +67,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {
-  readPayload, readToolCall, warn, deny, skipRequested, loadConfig, purgeExpired, runWithFailOpen,
+  readPayload, readToolCall, warn, deny, skipRequested, loadConfig, hookEnabled, purgeExpired, runWithFailOpen,
   sessionStatePath,
 } = require('./sdd-hook-utils');
 const { esInvocacion } = require('./sdd-git-command');
@@ -209,7 +210,7 @@ async function main() {
   if (!data) process.exit(0);
 
   const cfg = loadConfig(path.join(__dirname, 'config.json')).sdd_turn_budget || {};
-  if (cfg.enabled === false) process.exit(0);
+  if (!hookEnabled('sdd_turn_budget', cfg)) process.exit(0);
   if (skipRequested()) process.exit(0);
 
   const sessionId = data.session_id || data.sessionId || '';
