@@ -21,7 +21,9 @@
 const { readPayload, skipRequested, warn, deny, runWithFailOpen } = require('./sdd-hook-utils');
 const { usesNoVerify, isGitCommit, isGhPr, commitWarnings, NO_VERIFY_REASON } = require('./sdd-commit-rules');
 
-const SHELL_TOOLS = new Set(['shell', 'local_shell', 'Bash']);
+// En codex-cli 0.162.1 el shell llega como tool_name "Bash". "exec_command" es el nombre de la
+// herramienta que ve el modelo; como tool_name no se ha observado y se acepta solo como alias defensivo.
+const SHELL_TOOLS = new Set(['shell', 'local_shell', 'Bash', 'exec_command']);
 
 async function main() {
   const data = await readPayload();
