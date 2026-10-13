@@ -310,7 +310,7 @@ async function pasadaRevisionAuditoria(numeroPasada, reviewsPrevias, indicesARev
       const task = taskList[i]
       const previa = reviewsPrevias ? reviewsPrevias[i] : null
       return agent(`
-Lee ai_docs/dev_templates/revisar_tarea.md y sigue TODOS sus pasos sin saltar ninguno.
+Lee ai_docs/dev_templates/revisar_tarea.md y sigue sus pasos pertinentes; declara con motivo los que omites.
 Lee la task en: ${task.path}
 Lee la spec madre en: ${specPath}
 Lee ai_docs/core/ para contexto del proyecto.
@@ -318,7 +318,6 @@ ${hallazgosPreviosTexto(previa)}
 POSTURA OBLIGATORIA:
 - Tu trabajo es ENCONTRAR PROBLEMAS, no confirmar que todo esta bien.
 - Asume que hay errores hasta demostrar lo contrario.
-- Si la evidencia es ambigua, reporta el hallazgo como problema.
 - NO modifiques nada. Solo analiza y reporta.
 - NO hagas preguntas. Trabaja con lo que hay.
 
@@ -382,7 +381,7 @@ Retorna tu veredicto estructurado con problemas y ajustes concretos.
   // Es redundante ahora que la plantilla usa guion_bajo: mantener como red de seguridad
   // frente a variaciones del modelo al generar el veredicto en texto libre.
   const auditResult = await agent(`
-Lee ai_docs/dev_templates/auditar_spec.md y sigue TODOS sus pasos sin saltar ninguno.
+Lee ai_docs/dev_templates/auditar_spec.md y sigue sus pasos pertinentes; declara con motivo los que omites.
 Lee la spec en: ${specPath}
 Lee TODAS las tasks: ${taskPaths}
 Lee ai_docs/core/ para contexto del proyecto.
