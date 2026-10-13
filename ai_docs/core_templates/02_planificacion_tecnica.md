@@ -118,11 +118,13 @@ Tabla: [nombre — el existente si ya estaba en el schema, o uno nuevo]
 Identificar las 2-4 decisiones de datos mas importantes. No enterrarlas en detalles — presentarlas como decisiones claras:
 
 ```
-Decision 1: [Nombre del problema]
+D<n>: [Nombre del problema]
 - Situacion: [Estado actual vs lo que necesitas]
 - Opciones: [Opcion A] vs [Opcion B]
 - Recomendacion: [Opcion X] porque [razon concreta]
 ```
+
+Cada decisión aprobada se registra como fila `VIGENTE` en «Registro de decisiones» del documento final, con su porqué y las alternativas descartadas.
 
 **Temas tipicos que requieren decision:**
 - Modelo de permisos (roles en tabla de usuarios vs tabla separada de roles)
@@ -246,7 +248,7 @@ C) La planificacion esta completa
 
 ## Generar documento final
 
-Si `ai_docs/core/planificacion_tecnica.md` ya existe, leerlo primero. Usarlo como base a actualizar: preservar decisiones y secciones que sigan vigentes, anadir lo nuevo, senalar conflictos entre lo existente y lo nuevo en vez de mezclarlos en silencio. Si no existe, generar desde cero.
+Si `ai_docs/core/planificacion_tecnica.md` ya existe, leerlo primero. Usarlo como base a actualizar: preservar decisiones y secciones que sigan vigentes, anadir lo nuevo, senalar conflictos entre lo existente y lo nuevo en vez de mezclarlos en silencio. Una decisión nueva que contradice una `VIGENTE` no la borra ni la reescribe: la fila antigua pasa a `SUSTITUIDA por D<n>` y la nueva entra como fila propia. Si no existe, generar desde cero.
 
 Solo despues de la aprobacion, generar con este formato. El documento final DEBE incluir al final una seccion `## Registro de revision` con el bloque de autocritica generado (los puntos identificados, incluso si el usuario no los refino) y la eleccion textual del usuario en cada ronda (ej. `Usuario eligio: C — la planificacion esta completa`). Si hubo varias rondas de refinamiento, listarlas todas en orden, no solo la ultima.
 
@@ -283,7 +285,7 @@ Solo despues de la aprobacion, generar con este formato. El documento final DEBE
 ## Modelo de Datos
 
 ### Decisiones Clave
-- [Decision 1]: [opcion elegida y por que]
+- D<n>: [resumen de la decisión de datos; estado, porqué y alternativas en su fila de la tabla de decisiones]
 
 ### Tablas
 - **[nombre_tabla]**: [proposito] — Campos clave: [lista]
@@ -306,7 +308,7 @@ Solo despues de la aprobacion, generar con este formato. El documento final DEBE
 [Diagrama Mermaid o texto]
 
 ### Seguridad
-- [Decisiones de seguridad]
+- D<n>: [resumen de la decisión de seguridad; estado, porqué y alternativas en su fila de «Registro de decisiones»]
 
 ### Deployment
 - [Estrategia de despliegue]
@@ -316,6 +318,16 @@ Solo despues de la aprobacion, generar con este formato. El documento final DEBE
 ## Riesgos Tecnicos Identificados
 - [Riesgo 1]: [estrategia de mitigacion]
 - [Riesgo 2]: [estrategia de mitigacion]
+
+---
+
+## Registro de decisiones
+
+Una fila por decisión tomada en cualquier fase (datos, arquitectura, seguridad, deployment). El estado es `VIGENTE`, `SUSTITUIDA por D<n>` o `DESCARTADA`. Las filas no se borran: una decisión nueva que contradice una vigente entra como fila nueva y la antigua pasa a `SUSTITUIDA por` esa fila.
+
+| ID | Decisión | Estado | Porqué | Alternativas descartadas |
+|----|----------|--------|--------|--------------------------|
+| D1 | [opción elegida] | VIGENTE | [razón concreta] | [opción B: por qué no] |
 
 ---
 
