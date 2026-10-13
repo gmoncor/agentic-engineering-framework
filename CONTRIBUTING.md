@@ -6,7 +6,7 @@ Gracias por tu interes en mejorar el framework. Este documento explica como repo
 
 ## Antes de empezar
 
-- **Node.js >= 20** — requerido por los hooks (`hooks/*.js`). Verifica con `node --version`
+- **Node.js >= 20.11** — requerido por los hooks (`hooks/*.js`). Verifica con `node --version`
 - Lee `CLAUDE.md` — define el estilo, el flujo SDD y los limites del framework. Todo cambio debe ser coherente con ellos
 - **Tests:** `npm test` ejecuta los tests de contrato de los hooks. Todo cambio en `hooks/` llega con sus tests en el mismo commit
 - **Deriva:** `npm run check-drift` verifica que las superficies **generadas** coinciden con su fuente. Ejecutalo antes del push si tocas `.claude/` o `docs-src/`. No cubre las superficies que se mantienen a mano, y son mas de las que parece: lee "Artefactos generados y deriva" antes de dar por portado un cambio

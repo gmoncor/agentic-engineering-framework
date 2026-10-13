@@ -20,10 +20,10 @@
   },
   "homepage": "https://github.com/gmoncor/agentic-engineering-framework#readme",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.11"
   },
   "scripts": {
-    "test": "node --test \"hooks/tests/*.test.js\" \"tests/*.test.js\"",
+    "test": "node --test --test-timeout=120000 hooks/tests/*.test.js tests/*.test.js",
     "check-drift": "node scripts/compile.js --check"
   },
   "keywords": [

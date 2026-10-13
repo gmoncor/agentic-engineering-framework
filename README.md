@@ -456,7 +456,7 @@ agentic-engineering-framework/
 ├── CHANGELOG.md                 # Historial de cambios por version
 ├── SECURITY.md                  # Reporte de vulnerabilidades y alcance
 ├── LICENSE                      # CC BY 4.0
-├── package.json                 # Metadatos + engines (Node >= 20)
+├── package.json                 # Metadatos + engines (Node >= 20.11)
 ├── .github/                     # Plantillas de issue y de Pull Request
 │
 ├── .claude/                     # Configuracion Claude Code
@@ -577,7 +577,7 @@ Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohibe esos mismos com
 
 **Limite honesto de la senal de revision:** el hash que `sdd-review-gate.js` contrasta protege contra commits accidentales sin revision, no contra una falsificacion deliberada. El diff cacheado es visible para cualquier proceso con acceso a shell en la misma sesion, asi que ese mismo proceso puede recalcular el hash y escribir la senal directamente, sin haber pasado la revision adversarial. No es una limitacion cerrable mezclando un secreto en el hash: para que el gate lo verifique de forma mecanica, el secreto tendria que persistir en un sitio (disco, variable de entorno) igual de accesible para quien intenta falsificar la senal, lo que anula la proteccion que se buscaba anadir. La senal ata el diff a "hubo una revision", no autentica quien la emitio. Para una frontera dura frente a falsificacion deliberada, usa proteccion de rama y CI, no este hook.
 
-**Tests:** `npm test` ejecuta los tests de contrato de los hooks (Node >= 20, sin dependencias).
+**Tests:** `npm test` ejecuta los tests de contrato de los hooks (Node >= 20.11, sin dependencias).
 
 **Modelo por defecto (Claude Code):** `.claude/settings.json` fija `"model": "claude-opus-4-8"`. Opus 4.8 es el modelo mas capaz para planificacion y revision exhaustiva. Override puntual con `/model sonnet` si necesitas velocidad en tareas mecanicas.
 
