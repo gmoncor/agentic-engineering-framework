@@ -291,3 +291,128 @@ test('el hook solo se cablea donde el flujo emite la senal: Claude Code', { skip
     'sin motor de workflows no hay emisor de la senal: cablear el gate ahi no tendria via de satisfacerse'
   );
 });
+
+// Raíz del diff: con git real y dos repositorios. El hook debe leer el diff cacheado del
+// repositorio que el commit va a usar (`-C`, `--git-dir`/`--work-tree`, `GIT_DIR=` o, sin
+// nada de eso, el cwd del payload), no el del directorio en el que corre su proceso.
+// Los repositorios viven bajo un HOME inyectado para ejercitar la `~` sin tocar el real.
+const { spawnSync, execFileSync } = require('child_process');
+
+let reposCache = null;
+function dosRepos() {
+  if (reposCache) return reposCache;
+  const home = tempDir('sdd-review-repos-');
+  const crear = (nombre, fichero) => {
+    const dir = path.join(home, nombre);
+    fs.mkdirSync(dir);
+    execFileSync('git', ['init', '-q'], { cwd: dir });
+    fs.writeFileSync(path.join(dir, fichero), 'contenido de ' + nombre + '\n');
+    execFileSync('git', ['add', fichero], { cwd: dir });
+    return { dir, diff: execFileSync('git', ['diff', '--cached'], { cwd: dir, encoding: 'utf8' }) };
+  };
+  reposCache = { home, A: crear('A', 'a.txt'), B: crear('B', 'b.txt') };
+  return reposCache;
+}
+
+// Lanza el hook con el proceso situado en `cwd` y sin SDD_STAGED_DIFF: el diff sale de git.
+function runHookEn(cwd, payload, env) {
+  const childEnv = Object.assign({}, process.env, { HOME: dosRepos().home, USERPROFILE: dosRepos().home }, env);
+  for (const k of ['SDD_STAGED_DIFF', 'SDD_GUARD_SKIP', 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_CONFIG_GLOBAL']) {
+    if (!(env && k in env)) delete childEnv[k];
+  }
+  const r = spawnSync(process.execPath, [path.join(HOOKS_DIR, HOOK)], {
+    cwd, input: JSON.stringify(payload), encoding: 'utf8', timeout: 10000, env: childEnv,
+  });
+  let decision = null;
+  try { decision = JSON.parse((r.stdout || '').trim()); } catch { decision = null; }
+  return decision ? decision.decision : 'silencio';
+}
+
+// Cada caso: [comando, señal revisada, veredicto esperado], con el proceso del hook en A.
+function comprobar(casos) {
+  const { A, B } = dosRepos();
+  for (const [cmd, revisado, esperado] of casos) {
+    const env = entorno(CONFIG_ON);
+    emitirSenal(env, revisado === 'A' ? A.diff : B.diff);
+    assert.strictEqual(runHookEn(A.dir, bashPayload(cmd), env), esperado, cmd + ' (señal de ' + revisado + ')');
+  }
+}
+
+test('git -C <B> commit con el proceso en A: contrasta el diff de B, no el de A', () => {
+  const { B } = dosRepos();
+  comprobar([
+    ['git -C ' + B.dir + ' commit -m x', 'B', 'silencio'],
+    ['git -C ' + B.dir + ' commit -m x', 'A', 'deny'],
+    ['git -C ../B commit -m x', 'B', 'silencio'],
+    ['git -C ~/B commit -m x', 'B', 'silencio'],
+    ['git -C ~/B commit -m x', 'A', 'deny'],
+    ['bash -lc "git -C ' + B.dir + ' commit -m x"', 'B', 'silencio'],
+  ]);
+});
+
+test('-C que depende del shell o no existe: conserva la raíz de partida y deniega lo no revisado', () => {
+  comprobar([
+    ['git -C "$HOME/B" commit -m x', 'B', 'deny'],
+    ['git -C "$HOME/B" commit -m x', 'A', 'silencio'],
+    ['git -C `pwd`/../B commit -m x', 'B', 'deny'],
+    ['git -C /no/existe/B commit -m x', 'B', 'deny'],
+  ]);
+});
+
+test('--git-dir/--work-tree y GIT_DIR=/GIT_WORK_TREE= fijan el repositorio del diff', () => {
+  const { B } = dosRepos();
+  const g = path.join(B.dir, '.git');
+  comprobar([
+    ['git --git-dir=' + g + ' --work-tree=' + B.dir + ' commit -m x', 'B', 'silencio'],
+    ['git --git-dir=' + g + ' --work-tree=' + B.dir + ' commit -m x', 'A', 'deny'],
+    ['git --git-dir ' + g + ' --work-tree ' + B.dir + ' commit -m x', 'B', 'silencio'],
+    ['git --git-dir ' + g + ' --work-tree ' + B.dir + ' commit -m x', 'A', 'deny'],
+    ['GIT_DIR=' + g + ' GIT_WORK_TREE=' + B.dir + ' git commit -m x', 'B', 'silencio'],
+    ['GIT_DIR=' + g + ' GIT_WORK_TREE=' + B.dir + ' git commit -m x', 'A', 'deny'],
+  ]);
+});
+
+test('un "git" que no está en posición de programa no cambia la raíz', () => {
+  const { B } = dosRepos();
+  comprobar([
+    ['echo git -C ' + B.dir + ' commit; git commit -m x', 'A', 'silencio'],
+    ['echo git -C ' + B.dir + ' commit; git commit -m x', 'B', 'deny'],
+  ]);
+});
+
+test('sin -C, el cwd del payload manda sobre el del proceso del hook', () => {
+  const { A, B } = dosRepos();
+  const env = entorno(CONFIG_ON);
+  emitirSenal(env, B.diff);
+
+  const payload = Object.assign(bashPayload('git commit -m x'), { cwd: B.dir });
+  assert.strictEqual(runHookEn(A.dir, payload, env), 'silencio');
+
+  const enA = Object.assign(bashPayload('git commit -m x'), { cwd: A.dir });
+  assert.strictEqual(runHookEn(B.dir, enA, env), 'deny');
+});
+
+test('con un diff.external global, el hook y el emisor calculan el mismo hash: no deniega', () => {
+  const { A } = dosRepos();
+  const home = tempDir('sdd-review-home-');
+  try {
+    const externo = writeFile(path.join(home, 'externo.js'), "process.stdout.write('diff externo\\n');\n");
+    const barras = p => p.split(path.sep).join('/');
+    writeFile(path.join(home, '.gitconfig'),
+      '[diff]\n\texternal = "' + barras(process.execPath) + '" "' + barras(externo) + '"\n');
+    const gitEnv = Object.assign({}, process.env, { HOME: home, USERPROFILE: home });
+    delete gitEnv.GIT_CONFIG_GLOBAL;
+
+    // Mismos argumentos que el emisor de la señal en el flujo por task: `git diff --cached`.
+    const diffDelEmisor = execFileSync('git', ['diff', '--cached'], { cwd: A.dir, env: gitEnv, encoding: 'utf8' });
+    assert.match(diffDelEmisor, /diff externo/, 'el diff.external global debe aplicarse, o el caso no prueba nada');
+
+    const env = entorno(CONFIG_ON, { HOME: home, USERPROFILE: home });
+    emitirSenal(env, diffDelEmisor);
+    assert.strictEqual(runHookEn(A.dir, bashPayload('git commit -m x'), env), 'silencio');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test.after(() => { if (reposCache) fs.rmSync(reposCache.home, { recursive: true, force: true }); });

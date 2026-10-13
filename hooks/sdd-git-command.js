@@ -352,16 +352,20 @@ function parseSegmento(seg, funciones = new Map()) {
   return [{ programa, palabras, flags }];
 }
 
-/** Parte `tokens` en segmentos por separadores de shell no entrecomillados y analiza cada uno. */
-function invocacionesDeTokens(tokens, funciones) {
+/** Parte `tokens` en segmentos por los separadores de shell no entrecomillados. */
+function segmentar(tokens) {
   const segmentos = [[]];
   for (const t of tokens) {
     if (!t.entrecomillado && SEPARADORES.has(t.valor)) segmentos.push([]);
     else segmentos[segmentos.length - 1].push(t);
   }
+  return segmentos;
+}
 
+/** Parte `tokens` en segmentos y analiza cada uno. */
+function invocacionesDeTokens(tokens, funciones) {
   const resultado = [];
-  for (const seg of segmentos) resultado.push(...parseSegmento(seg, funciones));
+  for (const seg of segmentar(tokens)) resultado.push(...parseSegmento(seg, funciones));
   return resultado;
 }
 
@@ -408,4 +412,4 @@ function usaFlag(invocacion, { largo, corto } = {}) {
   return false;
 }
 
-module.exports = { tokenizar, invocaciones, invocacionesDe, esInvocacion, usaFlag };
+module.exports = { tokenizar, segmentar, invocaciones, invocacionesDe, esInvocacion, usaFlag };
