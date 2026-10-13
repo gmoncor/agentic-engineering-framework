@@ -147,7 +147,7 @@ documenta como traer los cambios del framework a un proyecto ya instalado, sin t
 |------|---------|----------|
 | `hooks/sdd-pipeline-guard-codex.js` | Antes de aplicar un parche | **Deniega** escribir un archivo que ninguna task de una spec APROBADA declara |
 | `hooks/sdd-commit-guard-codex.js` | Antes de ejecutar un comando | **Deniega** `git commit --no-verify` y `git push --no-verify`; avisa de commits mal formados |
-| `hooks/sdd-session-start.js` | Al arrancar la sesion | No enforcea nada: **escribe**. Anade una linea al registro de sesiones (`ai_docs/audits/provenance.jsonl`) con directorio de trabajo, rama, commit, modelo de la sesion y hashes de los componentes instalados |
+| `hooks/sdd-session-start.js` | Al arrancar la sesion | No enforcea nada: **escribe**. Anade una linea al registro de sesiones (`ai_docs/audits/provenance.jsonl`) con directorio de trabajo, rama, commit, el modelo de la sesión si el CLI lo envía en el arranque (si no, `null`) y hashes de los componentes instalados |
 
 Registrados en `.codex/hooks.json`. Refuerzo adicional: la regla de politica de ejecucion
 `.codex/rules/sdd-enforcement.rules` prohibe los mismos comandos de bypass; cada regla da su motivo

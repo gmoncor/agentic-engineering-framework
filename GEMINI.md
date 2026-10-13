@@ -113,7 +113,7 @@ Los 4 agentes (`asesor`, `implementador`, `planificador`, `revisor`) fijan `mode
 | `sdd-commit-guard.js` | run_shell_command (git commit/push) | **Bloquea** `--no-verify`; warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Bloqueante en `--no-verify`, advisory en el resto |
 | `sdd-read-before-edit.js` | write_file/replace | Warn al escribir un archivo existente sin haberlo leido antes en la sesion. Se autolimita a silencio en backends que no exponen el evento de lectura | Advisory |
 | `sdd-turn-budget.js` | Todas las tool calls | Cuenta las acciones sin commit y avisa al superar cada umbral (warn/block/hard_stop). `git commit` resetea el contador | Advisory (default) |
-| `sdd-session-start.js` | SessionStart | No enforcea nada: **escribe**. Anade una linea al registro de sesiones (`ai_docs/audits/provenance.jsonl`) con directorio de trabajo, rama, commit, modelo de la sesion y hashes de los componentes instalados | Registro (activo por defecto) |
+| `sdd-session-start.js` | SessionStart | No enforcea nada: **escribe**. Anade una linea al registro de sesiones (`ai_docs/audits/provenance.jsonl`) con directorio de trabajo, rama, commit, el modelo de la sesión si el CLI lo envía en el arranque (si no, `null`) y hashes de los componentes instalados | Registro (activo por defecto) |
 
 Configurados en `hooks/hooks.json`. La columna Evento usa los nombres reales de las herramientas de Gemini CLI (`write_file`, `replace`, `run_shell_command`). Cada hook se lanza desde la raíz del proyecto aunque Gemini arranque en un subdirectorio: el lanzador sube hasta el primer directorio con `.git` o `hooks/hooks.json` y ejecuta el hook de ahí, así que `hooks/` tiene que estar copiado en la raíz (también si instalas la extensión).
 

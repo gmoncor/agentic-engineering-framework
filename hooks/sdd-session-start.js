@@ -42,11 +42,27 @@
  * el escritor de ese fichero); si no existe el fichero o la clave, cae al hash de hooks/ +
  * package.json.
  *
- * cc_version se resuelve leyendo variables de entorno candidatas, nunca lanzando el
- * binario del cliente: medido en un hook hermano, ese lanzamiento tarda mas de 2s y a
- * veces agota el timeout, inaceptable en un hook que corre en cada arranque de sesion.
- * Ninguna de las tres CLIs objetivo documenta hoy una variable de version para hooks:
- * el campo degrada a null hasta que exista una fuente instantanea.
+ * session_model sale del payload de SessionStart y vale null si el CLI no lo envía. El
+ * SessionStart capturado de Claude Code en modo `claude -p` no trae `model`, así que en ese
+ * caso el campo es null. No se rellena desde la clave `model` de `.claude/settings.json`:
+ * es el default sugerido, no el modelo que corre (`/model` o `--model` lo cambian), y el
+ * transcript aún no tiene ningún mensaje del asistente en el arranque. Escribir cualquiera
+ * de los dos sería afirmar lo que el registro no sabe.
+ *
+ * cohort_id es el hash de config, settings, hooks y modelo, con el modelo ausente como ''.
+ * Sin modelo, la cohorte agrupa solo por configuración, y el consumidor distingue ese caso
+ * porque session_model es null. La fórmula no cambia aunque falte el modelo: el consumidor
+ * externo lee cohort_id por nombre y otra fórmula partiría la continuidad de las cohortes
+ * ya escritas; un cohort_id null perdería además la agrupación por configuración.
+ *
+ * cc_version es null mientras no exista una fuente que el propio CLI fije para el hook. El
+ * payload de SessionStart capturado no trae la versión, y ninguna de las tres CLIs objetivo
+ * documenta una variable de versión para hooks. El campo no lee el entorno heredado: una
+ * variable presente ahí mide la versión del proceso que lanzó el CLI, no la del CLI que
+ * lanza el hook, y un valor falso es peor que null porque el consumidor no lo distingue de
+ * uno cierto. Tampoco lanza el binario del cliente: medido en un hook hermano, ese
+ * lanzamiento tarda más de 2 s y a veces agota el timeout. El campo conserva nombre y
+ * posición porque forma parte de los 20 que lee el consumidor externo.
  */
 
 const crypto = require('crypto');
@@ -65,7 +81,6 @@ const SKILL_DIRS = ['.claude/skills', '.gemini/skills', '.agents/skills']
   .map((rel) => path.join(ROOT, rel));
 const WIRING_FILES = ['.claude/settings.json', 'hooks/hooks.json', '.codex/hooks.json', '.agents/hooks.json']
   .map((rel) => path.join(ROOT, rel));
-const VERSION_ENV_CANDIDATES = ['CLAUDE_CODE_VERSION', 'GEMINI_CLI_VERSION', 'CODEX_CLI_VERSION', 'CLI_VERSION'];
 
 function sha256(text) {
   return crypto.createHash('sha256').update(text).digest('hex');
@@ -158,13 +173,6 @@ function resolveFrameworkSource(root) {
   if (/_npx[\\/]/.test(root)) return 'npx';
   if (/[\\/]plugins?[\\/]/i.test(root)) return 'plugin';
   return 'local';
-}
-
-function resolveClientVersion(env) {
-  for (const name of VERSION_ENV_CANDIDATES) {
-    if (env[name]) return env[name];
-  }
-  return null;
 }
 
 /**
@@ -306,7 +314,7 @@ function buildLine(payload, startedAt, configuracion) {
     skills_hash: hashes.skills,
     session_model: sessionModel,
     gates_on: gatesOn(config),
-    cc_version: resolveClientVersion(process.env),
+    cc_version: null,
     cohort_id: cohortId,
     stamp_ms: Date.now() - startedAt,
   });
@@ -363,7 +371,6 @@ module.exports = {
   buildLine,
   hashPaths,
   resolveFrameworkSource,
-  resolveClientVersion,
   gatesOn,
   sessionStartEnabled,
   provenanceDest,
