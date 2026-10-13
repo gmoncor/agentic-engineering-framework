@@ -381,10 +381,17 @@ const raizProyecto = await raizDelProyecto()
 
 // El modo de ejecucion y la ruta de la spec llegan en el mismo argumento.
 // --parallel activa, en la Fase 2, la ejecucion concurrente de las tasks de un
-// mismo nivel de dependencias; el defecto es una task tras otra. Que garantiza
-// ese modo y que no: `recorrerNiveles` en lib/orquestacion.js.
-const { modoParalelo, specPath, error: errorArgs } = orq.parsearArgs(args)
+// mismo nivel de dependencias; el defecto es una task tras otra. --parallel=N fija el tope de
+// tasks en vuelo a la vez (sin N, orq.MAX_CONCURRENCIA). Que garantiza ese modo y que no:
+// `recorrerNiveles` en lib/orquestacion.js.
+const { modoParalelo, concurrencia, specPath, error: errorArgs } = orq.parsearArgs(args)
 if (errorArgs) return { error: errorArgs }
+
+// Exclusión mutua del gate de tests y del git que muta el índice (preparación, commit, apartado):
+// orquestacion.js lo aplica alrededor de cada una de esas operaciones. Y las tasks en vuelo, que
+// recorrerNiveles mantiene: la unión de sus ámbitos es lo que NO cuenta como fuera de alcance.
+const exclusivo = orq.crearMutex()
+const enVuelo = new Set()
 
 const discovery = await agent(`
 Encuentra todas las tasks asociadas a la spec: ${specPath}
@@ -424,7 +431,9 @@ for (var ci = 0; ci < contratosRotos.length; ci++) {
 }
 
 log(taskList.length + ' tasks, ' + niveles.length + ' nivel(es) de dependencia, modo '
-  + (modoParalelo ? 'concurrente (--parallel)' : 'secuencial'))
+  + (modoParalelo
+    ? 'concurrente (--parallel, hasta ' + (concurrencia || orq.MAX_CONCURRENCIA) + ' tasks a la vez)'
+    : 'secuencial'))
 for (var w = 0; w < niveles.length; w++) {
   log('Nivel ' + (w + 1) + ': ' + niveles[w].map(function(t) { return t.titulo }).join(', '))
 }
@@ -518,8 +527,8 @@ Delta desde la revisión anterior (lo que cambió la corrección):\n\
 }
 
 // Bloque del prompt de revisión con la evidencia del workflow: el resultado del gate de tests, que
-// es la única suite completa de la task, y las desviaciones que declararon el implementador y los
-// correctores.
+// es la única suite completa de la task, los ficheros cambiados que no declara ninguna task en
+// vuelo (null: no se calculó) y las desviaciones que declararon el implementador y los correctores.
 function bloqueEvidencia(contexto) {
   const c = contexto || {}
   const g = c.gate
@@ -531,10 +540,17 @@ function bloqueEvidencia(contexto) {
         + (g.exitCode == null ? 'sin código' : g.exitCode) + '. ' + (g.nota || '') + '\n'
         + 'No repitas la suite completa: ejecuta solo pruebas dirigidas a una sospecha concreta.\n'
       : 'Gate de tests del workflow: no corrió ninguna suite. ' + (g.nota || g.estado || '') + '\n'
+  const fuera = c.fuera_de_alcance == null
+    ? ''
+    : c.fuera_de_alcance.length
+      ? 'Ficheros cambiados que no declara ninguna task en vuelo: ' + c.fuera_de_alcance.join(', ') + '.\n'
+        + 'Decide si alguno lo escribió esta task fuera de su alcance (en modo concurrente no entran en su '
+        + 'diff ni en su commit); si es así, es un hallazgo.\n'
+      : 'Ficheros cambiados que no declara ninguna task en vuelo: ninguno.\n'
   const desviaciones = (c.desviaciones || []).length
     ? 'Desviaciones declaradas por quien implementó (contrástalas con el diff):\n- ' + c.desviaciones.join('\n- ') + '\n'
     : 'Desviaciones declaradas: ninguna. Si el diff muestra alguna, es un hallazgo.\n'
-  return '\n' + gate + desviaciones
+  return '\n' + gate + fuera + desviaciones
 }
 
 // Revision adversarial de UNA task: contexto limpio, solo el diff de la task, con la evidencia del
@@ -591,12 +607,26 @@ REGLAS:\n\
   })
 }
 
+// Ficheros que declaran las tasks en vuelo (en secuencial, solo esta): lo que cambie fuera de
+// ellos llega al revisor como fuera de alcance.
+async function alcanceEnVuelo(task) {
+  const tasks = enVuelo.has(task) ? Array.from(enVuelo) : Array.from(enVuelo).concat([task])
+  const union = []
+  for (const t of tasks) {
+    for (const ruta of await ambitoTask(t)) {
+      if (!union.includes(ruta)) union.push(ruta)
+    }
+  }
+  return union
+}
+
 // Revisa el diff de la task y, si aprueba, emite la senal atada al diff y commitea.
 // El criterio (que diff se revisa, cuando se descarta el trabajo, como se lee cada
 // comando de git, y como se acota el ambito del commit en modo concurrente) vive
 // en orquestacion.js, donde se prueba con dobles; aqui solo se cablean las piezas
-// que hablan con el mundo exterior. El ambito solo se calcula (y se pasa) en modo
-// concurrente: en secuencial no hay hermanas que contaminen el indice compartido.
+// que hablan con el mundo exterior. El ámbito del commit solo se calcula (y se pasa) en modo
+// concurrente: en secuencial no hay hermanas que contaminen el índice compartido. El alcance en
+// vuelo (`alcanceEnVuelo`), en cambio, se pasa en ambos modos.
 // En cada ronda de correccion el gate de tests se vuelve a pasar antes de re-revisar.
 async function revisarYComitear(task, resultado) {
   const ambito = modoParalelo ? await ambitoTask(task) : undefined
@@ -609,6 +639,8 @@ async function revisarYComitear(task, resultado) {
     descartar: apartarTrabajo,
     gateTests: gateTests,
     ambito: ambito,
+    alcance: alcanceEnVuelo,
+    exclusivo: exclusivo,
   })
 }
 
@@ -630,14 +662,21 @@ async function ejecutarTask(task, resultadosPrevios) {
     revisarYComitear: revisarYComitear,
     descartar: apartarTrabajo,
     arbolLimpio: modoParalelo ? undefined : arbolLimpio,
+    exclusivo: exclusivo,
   })
 }
 
 // Recorrido topologico: los niveles en orden y, dentro de cada nivel, una task tras
-// otra (defecto) o todas a la vez con --parallel. La frontera de lo que el modo
-// concurrente garantiza y de lo que deja en manos de quien lo pide esta documentada
-// sobre `recorrerNiveles`, en lib/orquestacion.js.
-const allResults = await orq.recorrerNiveles(niveles, ejecutarTask, { modoParalelo })
+// otra (defecto) o, con --parallel, las de ficheros disjuntos a la vez hasta el tope y las que
+// chocan después, en serie. La frontera de lo que el modo concurrente garantiza y de lo que deja
+// en manos de quien lo pide esta documentada sobre `recorrerNiveles`, en lib/orquestacion.js.
+const allResults = await orq.recorrerNiveles(niveles, ejecutarTask, {
+  modoParalelo,
+  concurrencia,
+  ambito: ambitoTask,
+  enVuelo,
+  log: registro,
+})
 
 const { completadas, fallidas } = orq.resumirResultados(allResults)
 log('Implementacion: ' + completadas + ' completadas, ' + fallidas + ' fallidas de ' + taskList.length)

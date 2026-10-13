@@ -414,7 +414,7 @@ La misma spec con el flag `--parallel` en los argumentos:
 Las dos tasks del nivel 1 arrancan a la vez; el nivel 2 espera a que ambas terminen:
 
 ```
-3 tasks, 2 nivel(es) de dependencia, modo concurrente (--parallel)
+3 tasks, 2 nivel(es) de dependencia, modo concurrente (--parallel, hasta 4 tasks a la vez)
 Nivel 1: Modelo de usuario, Cliente HTTP
 Nivel 2: Endpoint de registro
 Implementando: Modelo de usuario
@@ -422,7 +422,7 @@ Implementando: Cliente HTTP
 ...
 ```
 
-El flag se reconoce en cualquier posicion y se retira de los argumentos antes de resolver el path de la spec, asi que `--parallel ai_docs/tasks/spec_registro.md` es equivalente. Tambien puedes pedirlo en lenguaje natural ("implementa la spec en paralelo") para que el asistente lo pase al workflow. El flag es exclusivo de Claude Code, el unico backend con un motor de workflows que lo parsea; en Codex, Antigravity y Gemini el modo concurrente se pide igual, en lenguaje natural, y lo ejecuta el orquestador siguiendo su fichero de instrucciones raiz.
+El flag se reconoce en cualquier posicion y se retira de los argumentos antes de resolver el path de la spec, asi que `--parallel ai_docs/tasks/spec_registro.md` es equivalente. Por defecto hay como mucho 4 tasks en vuelo a la vez; `--parallel=N` cambia ese tope (N, un entero mayor que 0). Tambien puedes pedirlo en lenguaje natural ("implementa la spec en paralelo") para que el asistente lo pase al workflow. El flag es exclusivo de Claude Code, el unico backend con un motor de workflows que lo parsea; en Codex, Antigravity y Gemini el modo concurrente se pide igual, en lenguaje natural, y lo ejecuta el orquestador siguiendo su fichero de instrucciones raiz.
 
 | Backend | Como se pide el modo concurrente | Quien lo ejecuta |
 |---|---|---|
@@ -445,13 +445,19 @@ Una task fallida no cancela a sus hermanas: cada una reporta su propio resultado
 
 ### Frontera de responsabilidad en modo concurrente
 
-El framework lanza a la vez las tasks de un nivel y reporta el resultado de cada una. Nada mas. En concreto **no**:
+Lo que el framework hace en modo concurrente:
 
-- **No hay un unico escritor por fichero.** Dos tasks del mismo nivel pueden escribir el mismo archivo.
-- **No detecta colisiones** entre tasks que tocan los mismos archivos, ni reparte el trabajo por ellas.
-- **No aisla el arbol de trabajo.** Todas las tasks de un nivel comparten el mismo working tree mientras se implementan. Si una falla su gate de tests o su revisión, sus ficheros de la tabla "Archivos afectados" que cambiaron se apartan en `git stash` y salen del árbol: lo que las hermanas tienen en el árbol no se toca, salvo en un fichero que declaren las dos. La entrada del stash guarda, eso sí, todo lo que hubiera preparado en el índice en ese momento, también lo de una hermana: para recuperar solo lo de la task, usa `git restore --source=stash@{N} -- <rutas>` (ver más abajo). Si falla una task sin tabla legible, no se aparta nada: su trabajo se queda sin commitear en el árbol, y lo dice la nota de su resultado.
+- **Tope de concurrencia.** Nunca hay más de 4 tasks en vuelo a la vez (`--parallel=N` lo cambia): cada una es un agente implementador y, después, un revisor.
+- **Colisiones serializadas.** Antes de lanzar un nivel cruza las tablas "Archivos afectados" de sus tasks. Las de ficheros disjuntos van a la vez; las que comparten un fichero (o un directorio y lo que cuelga de él) con otra del lote, y las que no tienen tabla legible, van después, una tras otra. Dos tasks que declaran el mismo fichero no se implementan nunca a la vez.
+- **Gate y git en exclusión mutua.** El gate de tests y las operaciones de git que tocan el índice (preparar el diff, commitear, apartar) van de una en una: dos suites no corren a la vez. La implementación y la revisión siguen en paralelo.
+- **Escrituras fuera de alcance, al revisor.** Los ficheros cambiados que no declara ninguna task en vuelo llegan al revisor de cada task, que decide si son un hallazgo. En secuencial, los que no declara la task.
 
-Evitar que dos tasks hermanas se pisen es **responsabilidad del invocador**, no del framework: pide `--parallel` solo cuando las tasks de cada nivel tocan archivos disjuntos, y si necesitas aislamiento real, separa el trabajo en specs distintas y corre cada una en su propio worktree de git (ver "Aislamiento por worktree" en `/implementar-spec`).
+Lo que **no** hace:
+
+- **No hay un único escritor real por fichero.** La partición se fía de las tablas declaradas: una task que escribe fuera de su tabla puede pisar a una hermana, y eso solo lo ve el revisor.
+- **No aísla el árbol de trabajo.** Todas las tasks en vuelo comparten el mismo working tree mientras se implementan. **Residuo declarado:** la exclusión mutua evita que dos suites corran a la vez, pero el gate de una task sigue viendo en el árbol el trabajo a medias de sus hermanas, así que un rojo espurio por esa contaminación sigue siendo posible. Ese rojo aparta el trabajo de la task en `git stash`, recuperable; no lo destruye. Eliminarlo exige un worktree por task, que el framework no crea. Si una falla su gate de tests o su revisión, sus ficheros de la tabla "Archivos afectados" que cambiaron se apartan en `git stash` y salen del árbol: lo que las hermanas tienen en el árbol no se toca. La entrada del stash guarda, eso sí, todo lo que hubiera preparado en el índice en ese momento, también lo de una hermana: para recuperar solo lo de la task, usa `git restore --source=stash@{N} -- <rutas>` (ver más abajo). Si falla una task sin tabla legible, no se aparta nada: su trabajo se queda sin commitear en el árbol, y lo dice la nota de su resultado.
+
+Que las tablas "Archivos afectados" digan la verdad sigue siendo **responsabilidad del invocador**: de ellas depende la partición. Si necesitas aislamiento real, separa el trabajo en specs distintas y corre cada una en su propio worktree de git (ver "Aislamiento por worktree" en `/implementar-spec`).
 
 ### Árbol limpio y trabajo apartado
 

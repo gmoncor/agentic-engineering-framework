@@ -18,6 +18,11 @@
 // antes sobrevivia y comprobando que la suite cae:
 //   - `parsearArgs` devolviendo `modoParalelo: false` fijo;
 //   - la rama concurrente de `recorrerNiveles` sustituida por un bucle de uno en uno;
+//   - la rama concurrente de `recorrerNiveles` devuelta al `Promise.all` del nivel entero, sin
+//     tope ni partición por colisiones;
+//   - el gate de tests fuera de la exclusión mutua (`deps.exclusivo`);
+//   - la preparación del diff, el commit, el apartado y el re-gate de una ronda de corrección,
+//     cada uno por separado, fuera de la exclusión mutua;
 //   - `if (false && !escapeActivo(...))` en el gate de tests;
 //   - `gitVerificado` devolviendo `{ ok: true }` sin mirar el codigo de salida;
 //   - `construirResultado` con el campo de convergencia comentado y retorno nulo;
@@ -52,6 +57,11 @@ function resultadoDe(task, resultado) {
     resultado: resultado || 'COMPLETADA',
     archivos_modificados: ['src/' + task.titulo + '.js'],
   };
+}
+
+/** Ámbito de una task de prueba: un fichero propio, disjunto del de cualquier otra. */
+function ambitoPropio(task) {
+  return ['src/' + task.titulo + '.js'];
 }
 
 /** Deja correr los microtasks pendientes sin resolver nada del test. */
@@ -105,18 +115,18 @@ function gitDoble(respuestas) {
 
 test('parsearArgs: --parallel activa el modo concurrente y se separa de la ruta de la spec', () => {
   assert.deepStrictEqual(orq.parsearArgs(SPEC + ' --parallel'),
-    { modoParalelo: true, specPath: SPEC, error: null });
+    { modoParalelo: true, concurrencia: null, specPath: SPEC, error: null });
 });
 
 test('parsearArgs: el flag se reconoce tambien delante de la ruta', () => {
   assert.deepStrictEqual(orq.parsearArgs('--parallel ' + SPEC),
-    { modoParalelo: true, specPath: SPEC, error: null });
+    { modoParalelo: true, concurrencia: null, specPath: SPEC, error: null });
 });
 
 test('parsearArgs: sin flag el modo es una task tras otra (defecto)', () => {
-  assert.deepStrictEqual(orq.parsearArgs(SPEC), { modoParalelo: false, specPath: SPEC, error: null });
+  assert.deepStrictEqual(orq.parsearArgs(SPEC), { modoParalelo: false, concurrencia: null, specPath: SPEC, error: null });
   assert.deepStrictEqual(orq.parsearArgs('  ' + SPEC + '  '),
-    { modoParalelo: false, specPath: SPEC, error: null });
+    { modoParalelo: false, concurrencia: null, specPath: SPEC, error: null });
 });
 
 test('parsearArgs: un flag parecido no activa el modo concurrente', () => {
@@ -127,7 +137,7 @@ test('parsearArgs: un flag parecido no activa el modo concurrente', () => {
 
 test('parsearArgs: una ruta que contiene la palabra no se confunde con el flag', () => {
   const ruta = 'ai_docs/tasks/spec_parallel_writes.md';
-  assert.deepStrictEqual(orq.parsearArgs(ruta), { modoParalelo: false, specPath: ruta, error: null });
+  assert.deepStrictEqual(orq.parsearArgs(ruta), { modoParalelo: false, concurrencia: null, specPath: ruta, error: null });
 });
 
 test('parsearArgs: sin ruta de spec (o con una demasiado corta) devuelve el error de uso', () => {
@@ -137,6 +147,21 @@ test('parsearArgs: sin ruta de spec (o con una demasiado corta) devuelve el erro
   }
   // El flag solo tampoco arrastra texto a la ruta.
   assert.strictEqual(orq.parsearArgs('--parallel').specPath, '');
+});
+
+test('parsearArgs: --parallel=N fija el tope de concurrencia y se retira de la ruta', () => {
+  assert.deepStrictEqual(orq.parsearArgs(SPEC + ' --parallel=2'),
+    { modoParalelo: true, concurrencia: 2, specPath: SPEC, error: null });
+  assert.deepStrictEqual(orq.parsearArgs('--parallel=12 ' + SPEC),
+    { modoParalelo: true, concurrencia: 12, specPath: SPEC, error: null });
+});
+
+test('parsearArgs: un tope que no es un entero mayor que 0 es un error de uso, no el defecto', () => {
+  for (const tope of ['0', '-1', 'abc', '', '2.5', '3x', '02']) {
+    const r = orq.parsearArgs(SPEC + ' --parallel=' + tope);
+    assert.match(r.error || '', /entero mayor que 0/, tope);
+    assert.strictEqual(r.specPath, SPEC, tope);
+  }
 });
 
 // ── Recorrido de niveles ─────────────────────────────────────────────────────
@@ -152,7 +177,8 @@ test('recorrerNiveles: en modo concurrente las N tasks del nivel estan en vuelo 
     liberar.push(() => resolve(resultadoDe(task)));
   });
 
-  const pendiente = orq.recorrerNiveles([tareas('a', 'b', 'c')], ejecutar, { modoParalelo: true });
+  const pendiente = orq.recorrerNiveles([tareas('a', 'b', 'c')], ejecutar,
+    { modoParalelo: true, ambito: ambitoPropio });
   await cederElTurno();
 
   assert.deepStrictEqual(arrancadas, ['a', 'b', 'c'],
@@ -245,6 +271,247 @@ test('recorrerNiveles: en concurrente el fallo de una task no cancela a las herm
   assert.deepStrictEqual(resultados.map(r => r.resultado), ['COMPLETADA', 'FALLIDA', 'COMPLETADA']);
   assert.match(resultados[1].notas, /no devolvio nada utilizable/);
   assert.deepStrictEqual(orq.resumirResultados(resultados), { completadas: 2, fallidas: 1 });
+});
+
+// ── Tope, colisiones y exclusión mutua del modo concurrente ─────────────────
+// Rojo con el recorrido anterior, que lanzaba el nivel entero con `Promise.all`: sin tope, sin
+// mirar los ficheros declarados y con los gates de las tasks a la vez sobre el mismo índice. Todo
+// se decide con promesas que el test resuelve a mano, sin plazos.
+
+/**
+ * Ejecutor de prueba: cada task queda en vuelo hasta que el test la libera.
+ * Registra el orden de arranque y el máximo de tasks en vuelo a la vez.
+ */
+function ejecutorControlado() {
+  const e = { enVuelo: new Set(), maximo: 0, arrancadas: [], liberar: new Map() };
+  e.ejecutar = task => new Promise(resolve => {
+    e.arrancadas.push(task.titulo);
+    e.enVuelo.add(task.titulo);
+    e.maximo = Math.max(e.maximo, e.enVuelo.size);
+    e.liberar.set(task.titulo, () => { e.enVuelo.delete(task.titulo); resolve(resultadoDe(task)); });
+  });
+  return e;
+}
+
+test('recorrerNiveles: con tope 2 y 4 tasks disjuntas nunca hay más de 2 en vuelo', async () => {
+  const e = ejecutorControlado();
+  const pendiente = orq.recorrerNiveles([tareas('a', 'b', 'c', 'd')], e.ejecutar,
+    { modoParalelo: true, concurrencia: 2, ambito: ambitoPropio });
+  await cederElTurno();
+  assert.deepStrictEqual(e.arrancadas, ['a', 'b']);
+
+  e.liberar.get('b')();
+  await cederElTurno();
+  assert.deepStrictEqual(e.arrancadas, ['a', 'b', 'c'], 'el hueco que deja una lo ocupa la siguiente');
+
+  e.liberar.get('a')();
+  await cederElTurno();
+  assert.deepStrictEqual(e.arrancadas, ['a', 'b', 'c', 'd']);
+
+  e.liberar.get('c')();
+  e.liberar.get('d')();
+  const resultados = await pendiente;
+  assert.strictEqual(e.maximo, 2);
+  assert.deepStrictEqual(resultados.map(r => r.task_titulo), ['a', 'b', 'c', 'd'],
+    'los resultados van en el orden del nivel, no en el de llegada');
+});
+
+test('recorrerNiveles: sin --parallel=N el tope es MAX_CONCURRENCIA', async () => {
+  const titulos = Array.from({ length: orq.MAX_CONCURRENCIA + 2 }, (_, i) => 't' + i);
+  const e = ejecutorControlado();
+  const pendiente = orq.recorrerNiveles([tareas(...titulos)], e.ejecutar,
+    { modoParalelo: true, ambito: ambitoPropio });
+  await cederElTurno();
+  assert.strictEqual(e.arrancadas.length, orq.MAX_CONCURRENCIA);
+
+  for (let i = 0; i < titulos.length; i++) {
+    e.liberar.get(titulos[i])();
+    await cederElTurno();
+  }
+  await pendiente;
+  assert.strictEqual(e.maximo, orq.MAX_CONCURRENCIA);
+});
+
+test('recorrerNiveles: dos tasks que declaran el mismo fichero no se solapan en el tiempo', async () => {
+  // a y c comparten src/comun.js (escrito de dos formas); b es disjunta.
+  const ambitos = { a: ['src/comun.js', 'src/a.js'], b: ['src/b.js'], c: ['./src/comun.js'] };
+  const e = ejecutorControlado();
+  const pendiente = orq.recorrerNiveles([tareas('a', 'b', 'c')], e.ejecutar,
+    { modoParalelo: true, ambito: t => ambitos[t.titulo] });
+  await cederElTurno();
+  assert.deepStrictEqual(e.arrancadas, ['a', 'b'], 'c choca con a: no arranca con el lote');
+
+  e.liberar.get('a')();
+  await cederElTurno();
+  assert.deepStrictEqual(e.arrancadas, ['a', 'b'], 'la que choca va tras el lote entero');
+
+  e.liberar.get('b')();
+  await cederElTurno();
+  assert.deepStrictEqual(e.arrancadas, ['a', 'b', 'c']);
+
+  e.liberar.get('c')();
+  const resultados = await pendiente;
+  assert.deepStrictEqual(resultados.map(r => r.task_titulo), ['a', 'b', 'c']);
+});
+
+test('recorrerNiveles: las tasks de ámbito vacío, o sin función de ámbito, van una tras otra', async () => {
+  for (const ambito of [t => (t.titulo === 'a' ? ['src/a.js'] : []), undefined]) {
+    const e = ejecutorControlado();
+    const pendiente = orq.recorrerNiveles([tareas('a', 'b', 'c')], e.ejecutar, { modoParalelo: true, ambito });
+    await cederElTurno();
+    const primeras = e.arrancadas.slice();
+    for (const t of ['a', 'b', 'c']) {
+      if (e.liberar.has(t)) e.liberar.get(t)();
+      await cederElTurno();
+    }
+    await pendiente;
+    assert.strictEqual(e.maximo, 1, 'sin ámbito no se sabe qué toca: en serie (' + primeras.join(',') + ')');
+  }
+});
+
+test('recorrerNiveles: un ámbito que no se puede leer cuenta como vacío y la task va en serie', async () => {
+  const e = ejecutorControlado();
+  const ambito = t => { if (t.titulo === 'b') throw new Error('tabla ilegible'); return ambitoPropio(t); };
+  const pendiente = orq.recorrerNiveles([tareas('a', 'b', 'c')], e.ejecutar, { modoParalelo: true, ambito });
+  await cederElTurno();
+  assert.deepStrictEqual(e.arrancadas, ['a', 'c']);
+  e.liberar.get('a')();
+  e.liberar.get('c')();
+  await cederElTurno();
+  assert.deepStrictEqual(e.arrancadas, ['a', 'c', 'b']);
+  e.liberar.get('b')();
+  assert.deepStrictEqual((await pendiente).map(r => r.task_titulo), ['a', 'b', 'c']);
+});
+
+test('recorrerNiveles: el registro de tasks en vuelo refleja las que se ejecutan, en los dos modos', async () => {
+  for (const modoParalelo of [false, true]) {
+    const enVuelo = new Set();
+    const vistos = [];
+    const ejecutar = async task => {
+      vistos.push([task.titulo, Array.from(enVuelo).map(t => t.titulo).sort()]);
+      return resultadoDe(task);
+    };
+    await orq.recorrerNiveles([tareas('a', 'b')], ejecutar, { modoParalelo, ambito: ambitoPropio, enVuelo });
+    assert.strictEqual(enVuelo.size, 0, 'al terminar no queda ninguna en vuelo');
+    assert.deepStrictEqual(vistos, modoParalelo
+      ? [['a', ['a']], ['b', ['a', 'b']]]
+      : [['a', ['a']], ['b', ['b']]], 'modoParalelo=' + modoParalelo);
+  }
+});
+
+test('particionarPorColisiones: fichero repetido, directorio que contiene a otro y ámbito vacío van en serie', () => {
+  assert.deepStrictEqual(orq.particionarPorColisiones([['src/a.js'], ['src/b.js']]),
+    { disjuntas: [0, 1], enSerie: [] });
+  assert.deepStrictEqual(orq.particionarPorColisiones([['src/a.js'], ['src/']]),
+    { disjuntas: [0], enSerie: [1] }, 'un directorio declarado choca con lo que cuelga de él');
+  assert.deepStrictEqual(orq.particionarPorColisiones([['src'], ['src/x/y.js'], ['srcs/z.js']]),
+    { disjuntas: [0, 2], enSerie: [1] }, 'un prefijo de nombre no es un directorio');
+  assert.deepStrictEqual(orq.particionarPorColisiones([['a.js'], [], undefined, ['b.js']]),
+    { disjuntas: [0, 3], enSerie: [1, 2] });
+  assert.deepStrictEqual(orq.particionarPorColisiones([['src\\comun.js'], ['src/comun.js']]),
+    { disjuntas: [0], enSerie: [1] }, 'los separadores de Windows se comparan traducidos');
+});
+
+test('crearMutex: una sección no empieza hasta que termina la anterior, y un fallo no bloquea la cola', async () => {
+  const exclusivo = orq.crearMutex();
+  const orden = [];
+  let liberarPrimera;
+  const primera = exclusivo(() => new Promise(resolve => { orden.push('1 entra'); liberarPrimera = resolve; }));
+  const segunda = exclusivo(async () => { orden.push('2 entra'); throw new Error('falla la segunda'); });
+  const tercera = exclusivo(async () => { orden.push('3 entra'); return 'tercera'; });
+  await cederElTurno();
+  assert.deepStrictEqual(orden, ['1 entra']);
+
+  liberarPrimera('primera');
+  assert.strictEqual(await primera, 'primera');
+  await assert.rejects(segunda, /falla la segunda/);
+  assert.strictEqual(await tercera, 'tercera');
+  assert.deepStrictEqual(orden, ['1 entra', '2 entra', '3 entra']);
+});
+
+/**
+ * Nivel de dos tasks disjuntas con implementación y gate controlados por el
+ * test. Devuelve lo observado y los liberadores.
+ */
+function nivelConGatesControlados(exclusivo) {
+  const v = { implEnVuelo: new Set(), maxImpl: 0, gatesEnVuelo: new Set(), maxGates: 0,
+    liberarImpl: new Map(), liberarGate: new Map() };
+  const { deps } = depsTask({
+    marcarEstado: () => {},
+    exclusivo,
+    implementar: t => new Promise(resolve => {
+      v.implEnVuelo.add(t.titulo);
+      v.maxImpl = Math.max(v.maxImpl, v.implEnVuelo.size);
+      v.liberarImpl.set(t.titulo, () => { v.implEnVuelo.delete(t.titulo); resolve(resultadoDe(t)); });
+    }),
+    gateTests: t => new Promise(resolve => {
+      v.gatesEnVuelo.add(t.titulo);
+      v.maxGates = Math.max(v.maxGates, v.gatesEnVuelo.size);
+      v.liberarGate.set(t.titulo, () => {
+        v.gatesEnVuelo.delete(t.titulo);
+        resolve({ estado: 'PASA', nota: 'Tests verdes (exit 0) via package.json' });
+      });
+    }),
+  });
+  v.pendiente = orq.recorrerNiveles([tareas('a', 'b')], (t, p) => orq.ejecutarTask(t, p, deps),
+    { modoParalelo: true, ambito: ambitoPropio });
+  return v;
+}
+
+test('ejecución concurrente: dos gates nunca se solapan, y las implementaciones sí', async () => {
+  const v = nivelConGatesControlados(orq.crearMutex());
+  await cederElTurno();
+  assert.strictEqual(v.maxImpl, 2, 'la implementación sigue en paralelo');
+
+  v.liberarImpl.get('a')();
+  v.liberarImpl.get('b')();
+  await cederElTurno();
+  assert.deepStrictEqual(Array.from(v.liberarGate.keys()), ['a'], 'el gate de b espera al de a');
+
+  v.liberarGate.get('a')();
+  await cederElTurno();
+  assert.deepStrictEqual(Array.from(v.liberarGate.keys()), ['a', 'b']);
+
+  v.liberarGate.get('b')();
+  const resultados = await v.pendiente;
+  assert.strictEqual(v.maxGates, 1);
+  assert.deepStrictEqual(resultados.map(r => r.resultado), ['COMPLETADA', 'COMPLETADA']);
+});
+
+test('ejecución concurrente: sin el mutex inyectado los dos gates sí se solapan (el caso anterior discrimina)', async () => {
+  const v = nivelConGatesControlados(undefined);
+  await cederElTurno();
+  v.liberarImpl.get('a')();
+  v.liberarImpl.get('b')();
+  await cederElTurno();
+  assert.strictEqual(v.maxGates, 2);
+  v.liberarGate.get('a')();
+  v.liberarGate.get('b')();
+  await v.pendiente;
+});
+
+test('ejecución concurrente: el apartado tras un gate rojo también espera al gate en curso de la hermana', async () => {
+  const exclusivo = orq.crearMutex();
+  const orden = [];
+  let liberarGateB;
+  const { deps } = depsTask({
+    marcarEstado: () => {},
+    exclusivo,
+    gateTests: t => (t.titulo === 'a'
+      ? Promise.resolve({ estado: 'FALLIDA', nota: 'Tests en rojo (exit 1)' })
+      : new Promise(resolve => { orden.push('gate b entra'); liberarGateB = () => resolve({ estado: 'PASA', nota: 'verde' }); })),
+    descartar: async t => { orden.push('apartado ' + t.titulo); },
+  });
+  // b toma el mutex primero: su gate queda en vuelo mientras a termina en rojo.
+  const b = orq.ejecutarTask(tarea('b'), [], deps);
+  await cederElTurno();
+  const a = orq.ejecutarTask(tarea('a'), [], deps);
+  await cederElTurno();
+  assert.deepStrictEqual(orden, ['gate b entra'], 'ni el gate ni el apartado de a entran con el de b en curso');
+
+  liberarGateB();
+  await Promise.all([a, b]);
+  assert.deepStrictEqual(orden, ['gate b entra', 'apartado a']);
 });
 
 test('resumirResultados: solo COMPLETADA cuenta como completada', () => {
@@ -754,6 +1021,51 @@ test('revisarYComitear: sin commit_message propuesto el subject se deriva del ti
 });
 
 // ── Convergencia ─────────────────────────────────────────────────────────────
+
+// ── Escrituras fuera de alcance: llegan al revisor ───────────────────────────
+
+test('revisarYComitear: un fichero cambiado fuera de todo ámbito en vuelo llega al revisor en fuera_de_alcance', async () => {
+  const git = gitDoble({
+    'diff --cached --no-ext-diff --no-textconv -- src/a.js': { code: 0, out: DIFF, err: '' },
+    'status --porcelain -z --untracked-files=all -- src/a.js': { code: 0, out: ' M src/a.js\0', err: '' },
+    ['status --porcelain -z --untracked-files=all ' + PROYECTO]:
+      { code: 0, out: ' M src/a.js\0 M src/b.js\0?? notas/suelto.md\0', err: '' },
+    'rev-parse --show-prefix': { code: 0, out: '\n', err: '' },
+  });
+  const contextos = [];
+  const { deps } = depsRevision(git, {
+    ambito: ['src/a.js'],
+    alcance: async () => ['src/a.js', 'src/b.js'],
+    revisar: async (t, diff, contexto) => { contextos.push(contexto); return { veredicto: 'APROBADA' }; },
+  });
+
+  const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+  assert.strictEqual(r.resultado, 'COMPLETADA', 'fuera de alcance informa al revisor; no bloquea por sí solo');
+  assert.deepStrictEqual(contextos[0].fuera_de_alcance, ['notas/suelto.md'],
+    'src/b.js es de una hermana en vuelo; notas/suelto.md no lo declara nadie');
+});
+
+test('revisarYComitear: sin alcance, o con alcance vacío, fuera_de_alcance es null (no calculable)', async () => {
+  for (const alcance of [undefined, async () => []]) {
+    const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+    const contextos = [];
+    const { deps } = depsRevision(git, {
+      alcance,
+      revisar: async (t, diff, contexto) => { contextos.push(contexto); return { veredicto: 'APROBADA' }; },
+    });
+    await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+    assert.strictEqual(contextos[0].fuera_de_alcance, null);
+    assert.ok(!git.llamadas.some(c => c.startsWith('status')), 'sin ámbitos con que comparar no se lee el estado');
+  }
+});
+
+test('rutasFueraDeAmbito: quita el prefijo del proyecto y mira los dos lados de un renombrado', () => {
+  const salida = ' M app/src/a.js\0R  app/src/nuevo.js\0app/src/a_viejo.js\0?? app/docs/x.md\0';
+  assert.deepStrictEqual(orq.rutasFueraDeAmbito(salida, ['src/a.js', 'src/nuevo.js'], 'app/'),
+    ['src/a_viejo.js', 'docs/x.md']);
+  assert.deepStrictEqual(orq.rutasFueraDeAmbito(salida, ['src/', 'docs'], 'app/'), []);
+});
 
 test('resolverConvergencia: con tasks sin completar se omite, sin invocar la verificacion', async () => {
   let invocada = 0;
@@ -1631,6 +1943,124 @@ test('re-gate: un apartado que pide detener en secuencial para el recorrido; la 
   assert.match(resultados[1].notas, /el recorrido se detuvo en la task a/);
 });
 
+// ── Exclusión mutua de cada sección que toca el índice o corre la suite ───────
+// Cada caso retiene el mutex con una sección ajena (la de una hermana en curso) justo antes
+// del punto que prueba y comprueba que ese punto espera. Quitar `exclusivo` de ese punto
+// lo deja correr con la sección ajena abierta, y el caso cae.
+
+/**
+ * Abre en `exclusivo` una sección que no termina hasta que el test la libera,
+ * como el gate o el git de una hermana en vuelo. Devuelve el liberador.
+ */
+async function retenerMutex(exclusivo) {
+  let liberar;
+  exclusivo(() => new Promise(resolve => { liberar = resolve; }));
+  await cederElTurno();
+  return () => liberar();
+}
+
+test('exclusión mutua: la preparación del diff para revisar espera a la sección de una hermana', async () => {
+  const exclusivo = orq.crearMutex();
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+  const { deps, visto } = depsRevision(git, { exclusivo });
+  const liberar = await retenerMutex(exclusivo);
+
+  const pendiente = orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+  await cederElTurno();
+  assert.deepStrictEqual(git.llamadas, [], 'ni add ni diff con la sección de la hermana abierta');
+  assert.deepStrictEqual(visto.revisiones, []);
+
+  liberar();
+  const r = await pendiente;
+  assert.strictEqual(r.resultado, 'COMPLETADA');
+  assert.deepStrictEqual(git.llamadas.slice(0, 2), [ADD_PROYECTO, DIFF_PROYECTO]);
+});
+
+test('exclusión mutua: el commit de una task aprobada espera a la sección de una hermana', async () => {
+  const exclusivo = orq.crearMutex();
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+  let liberar;
+  const { deps, visto } = depsRevision(git, {
+    exclusivo,
+    // Mientras el revisor trabaja (fuera del mutex), una hermana entra en su sección.
+    revisar: async () => { liberar = await retenerMutex(exclusivo); return { veredicto: 'APROBADA' }; },
+  });
+
+  const pendiente = orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+  await cederElTurno();
+  await cederElTurno();
+  assert.strictEqual(visto.firmados.length, 1, 'la señal se emite fuera del mutex');
+  assert.ok(!git.llamadas.some(c => c.startsWith('commit')), 'sin commit con la sección abierta: '
+    + git.llamadas.join(' | '));
+
+  liberar();
+  const r = await pendiente;
+  assert.strictEqual(r.resultado, 'COMPLETADA');
+  assert.ok(git.llamadas[git.llamadas.length - 1].startsWith('commit'));
+});
+
+test('exclusión mutua: el apartado de una task FALLIDA espera a la sección de una hermana', async () => {
+  const exclusivo = orq.crearMutex();
+  let liberar;
+  const { deps, visto } = depsTask({
+    marcarEstado: () => {},
+    exclusivo,
+    implementar: async t => {
+      liberar = await retenerMutex(exclusivo);
+      return resultadoDe(t, 'FALLIDA');
+    },
+  });
+
+  const pendiente = orq.ejecutarTask(tarea('a'), [], deps);
+  await cederElTurno();
+  await cederElTurno();
+  assert.strictEqual(visto.descartes, 0, 'el stash no corre con la sección de la hermana abierta');
+
+  liberar();
+  const r = await pendiente;
+  assert.strictEqual(r.resultado, 'FALLIDA');
+  assert.strictEqual(visto.descartes, 1);
+});
+
+test('exclusión mutua: el re-gate de una ronda de corrección espera al primer gate en curso de una hermana', async () => {
+  const exclusivo = orq.crearMutex();
+  const orden = [];
+  let liberarGateB;
+  let gateBEntro;
+  const gateBEnCurso = new Promise(resolve => { gateBEntro = resolve; });
+  const gateTests = t => {
+    orden.push('gate ' + t.titulo + ' entra');
+    if (t.titulo === 'a') return Promise.resolve(PASA);
+    gateBEntro();
+    return new Promise(resolve => { liberarGateB = () => { orden.push('gate b sale'); resolve(PASA); }; });
+  };
+  const { deps: depsB } = depsTask({ marcarEstado: () => {}, exclusivo, gateTests });
+  let b;
+
+  const git = gitDoble({
+    [DIFF_PROYECTO]: n => ({ code: 0, out: n === 1 ? DIFF : DIFF + '+corregido\n', err: '' }),
+  });
+  const { deps: depsA } = depsRevision(git, {
+    exclusivo,
+    gateTests,
+    revisar: revisorEnOrden([{ veredicto: 'NECESITA_CORRECCIONES', problemas_criticos: ['x'] },
+      { veredicto: 'APROBADA' }], []),
+    // Mientras a corrige, su hermana b termina de implementar y entra en su primer gate.
+    corregir: async () => { b = orq.ejecutarTask(tarea('b'), [], depsB); await gateBEnCurso; },
+  });
+
+  const a = orq.revisarYComitear(tarea('a'), Object.assign(resultadoDe(tarea('a')), { gate_tests: PASA }), depsA);
+  await gateBEnCurso;
+  await cederElTurno();
+  assert.deepStrictEqual(orden, ['gate b entra'], 'el re-gate de a no entra con el gate de b en curso');
+
+  liberarGateB();
+  const [ra, rb] = await Promise.all([a, b]);
+  assert.deepStrictEqual(orden, ['gate b entra', 'gate b sale', 'gate a entra']);
+  assert.strictEqual(ra.resultado, 'COMPLETADA');
+  assert.strictEqual(rb.resultado, 'COMPLETADA');
+});
+
 // ── Veredicto contradictorio ─────────────────────────────────────────────────
 // Rojo antes de esta task: `APROBADA` con `problemas_criticos` no vacío se commiteaba.
 
@@ -1802,6 +2232,8 @@ function depsReales(spawn, ambito) {
     emitirSenal: async () => 'marca',
     descartar: async () => {},
     ambito,
+    // Mutex activo: los casos de git real corren con la exclusión mutua del modo concurrente.
+    exclusivo: orq.crearMutex(),
   };
 }
 
@@ -1888,6 +2320,39 @@ test('pathspec con git real, concurrente: sin rutas cambiadas en el ámbito no h
     assert.ok(!git.llamadas.some(c => c.startsWith('add') || c.startsWith('commit')), git.llamadas.join('\n'));
     assert.strictEqual(repo.g(['diff', '--cached', '--name-only']), '');
     assert.strictEqual(repo.g(['status', '--porcelain']), '?? x.txt\n');
+  } finally {
+    fs.rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+test('fuera de alcance con git real, concurrente en un monorepo: lo que no declara ninguna task en vuelo llega al revisor', async () => {
+  const repo = repoTemporal('proyecto');
+  try {
+    repo.escribir('proyecto/base.txt', 'base\n');
+    repo.g(['add', '-A']);
+    repo.g(['commit', '-q', '-m', 'base']);
+
+    repo.escribir('proyecto/a.txt', 'de la task\n');
+    repo.escribir('proyecto/suelto.txt', 'sin declarar\n');
+    repo.escribir('proyecto/x.txt', 'de una hermana en vuelo\n');
+    repo.escribir('proyecto/ai_docs/tasks/001_a.md', '# plan\n');
+    repo.escribir('fuera_del_proyecto.txt', 'otro proyecto\n');
+    const contextos = [];
+    const deps = Object.assign(depsReales(repo.spawn, ['a.txt']), {
+      alcance: async () => ['a.txt', 'x.txt'],
+      revisar: async (t, diff, contexto) => {
+        contextos.push(contexto);
+        return { veredicto: 'APROBADA', problemas_criticos: [], problemas_menores: [] };
+      },
+    });
+
+    const r = await orq.revisarYComitear(tarea('a'),
+      Object.assign(resultadoDe(tarea('a')), { archivos_modificados: ['a.txt'], commit_message: 'feat: a' }), deps);
+
+    assert.strictEqual(r.resultado, 'COMPLETADA', r.notas);
+    assert.deepStrictEqual(contextos[0].fuera_de_alcance, ['suelto.txt'],
+      'ni la hermana en vuelo, ni el plan, ni lo de fuera del proyecto');
+    assert.strictEqual(repo.g(['show', '--name-only', '--format=', 'HEAD']), 'proyecto/a.txt\n');
   } finally {
     fs.rmSync(repo.dir, { recursive: true, force: true });
   }

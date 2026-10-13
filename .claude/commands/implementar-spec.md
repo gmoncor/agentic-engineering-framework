@@ -1,6 +1,6 @@
 ---
 description: "Implementa TODAS las tasks de una spec en orden de dependencias (o en paralelo con --parallel), revision adversarial por task antes de commitear"
-argument-hint: "[ruta de la spec aprobada] [--parallel]"
+argument-hint: "[ruta de la spec aprobada] [--parallel[=N]]"
 ---
 
 Ejecuta el workflow de implementacion completa de una spec.
