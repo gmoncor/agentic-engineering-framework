@@ -786,8 +786,22 @@ async function comitearAprobada(task, resultado, contexto, deps) {
   const log = registrar(deps);
   const marca = await deps.emitirSenal(contexto.diff);
   const subject = String(resultado.commit_message || ('feat: ' + task.titulo)).substring(0, 72);
-  const cuerpo = resultado.commit_cuerpo || resultado.notas
+  let cuerpo = resultado.commit_cuerpo || resultado.notas
     || 'Implementa la task segun su especificacion.';
+
+  // Los menores no abren ronda: viajan en el commit y en el resultado, para que
+  // quien lea cualquiera de los dos sepa qué quedó señalado sin bloquear.
+  const menores = (contexto.revision && Array.isArray(contexto.revision.problemas_menores))
+    ? contexto.revision.problemas_menores.filter(Boolean)
+      // Una línea por menor: un salto de línea dentro de uno abriría en el cuerpo
+      // un párrafo nuevo, o un trailer como `Signed-off-by:`.
+      .map(function (m) { return String(m).replace(/\s*\n\s*/g, ' ').trim(); }).filter(Boolean)
+    : [];
+  if (menores.length > 0) {
+    cuerpo += '\n\nHallazgos menores de la revisión (no bloquean):\n- ' + menores.join('\n- ');
+    resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
+      + '(menores de la revisión, no bloquean: ' + menores.join('; ') + ')';
+  }
 
   // Mismo pathspec que acotó el diff revisado (F1): sin él, `git commit` sobre un
   // índice compartido en modo concurrente se lleva TODO lo preparado, incluido lo
@@ -839,6 +853,95 @@ function normalizarRevision(revision) {
   return revision;
 }
 
+// ── Rondas de corrección ─────────────────────────────────────────────────────
+
+/**
+ * Tope de rondas de corrección por task. Cada ronda es corregir, volver a pasar
+ * el gate de tests y volver a revisar, así que el peor caso cuesta cuatro
+ * revisiones y tres gates por task. Tres rondas dan margen a una corrección que
+ * resuelve un hallazgo y destapa otro; si tras la tercera sigue habiendo un
+ * crítico, otra vuelta del mismo corrector difícilmente lo cierra, y la decisión
+ * pasa al usuario con los hallazgos abiertos.
+ */
+const MAX_RONDAS_CORRECCION = 3;
+
+/**
+ * Críticos de una revisión: los de `problemas_criticos` más los hallazgos
+ * previos que la propia revisión declara persistentes y no repitió ahí. Un
+ * hallazgo que sigue abierto bloquea aunque el revisor olvide copiarlo.
+ */
+function criticosDe(revision) {
+  const r = revision || {};
+  const criticos = (Array.isArray(r.problemas_criticos) ? r.problemas_criticos : []).filter(Boolean);
+  const persistentes = (Array.isArray(r.hallazgos_previos) ? r.hallazgos_previos : [])
+    .filter(function (h) { return h && h.estado === 'persistente' && h.hallazgo; })
+    .map(function (h) { return h.hallazgo; });
+  return criticos.concat(persistentes.filter(function (h) { return !criticos.includes(h); }));
+}
+
+/** Correcciones propuestas por la revisión, si las trae. */
+function correccionesDe(revision) {
+  const r = revision || {};
+  return (Array.isArray(r.correcciones_propuestas) ? r.correcciones_propuestas : []).filter(Boolean);
+}
+
+/**
+ * Regla de apertura de una ronda de corrección, sobre una revisión ya
+ * normalizada. La abren un crítico, un veredicto `RECHAZADA` o la falta de
+ * veredicto (`ERROR`): una revisión ausente nunca equivale a aprobar. Un
+ * `NECESITA_CORRECCIONES` sin críticos no la abre: sus menores no bloquean y se
+ * commitea con ellos en el cuerpo del commit.
+ */
+function abreRonda(revision) {
+  return revision.veredicto === 'ERROR' || revision.veredicto === 'RECHAZADA'
+    || criticosDe(revision).length > 0;
+}
+
+/** Parte un diff de git en secciones por fichero, con la cabecera `diff --git` como clave. */
+function seccionesDeDiff(diff) {
+  const secciones = new Map();
+  let clave = '';
+  let lineas = [];
+  const cerrar = function () {
+    while (lineas.length > 0 && lineas[lineas.length - 1] === '') lineas.pop();
+    if (lineas.length > 0) secciones.set(clave, lineas.join('\n'));
+  };
+  for (const linea of String(diff == null ? '' : diff).split('\n')) {
+    if (linea.startsWith('diff --git ')) {
+      cerrar();
+      clave = linea;
+      lineas = [linea];
+    } else {
+      lineas.push(linea);
+    }
+  }
+  cerrar();
+  return secciones;
+}
+
+/**
+ * Delta entre dos diffs revisados de la misma task, fichero a fichero. Función
+ * pura sobre los dos textos que ya se revisaron: los dos salen de `diff --cached`
+ * con el pathspec de la task, así que el delta no ve nada fuera de él. En modo
+ * concurrente el índice es compartido, y un árbol de todo el índice
+ * (`git write-tree`) capturaría lo que una hermana preparó entre las dos rondas.
+ *
+ * Devuelve las secciones del diff actual que cambiaron o aparecieron y, por
+ * cada fichero cuyo cambio se retiró, su cabecera con una línea que lo dice.
+ */
+function deltaEntreDiffs(anterior, actual) {
+  const antes = seccionesDeDiff(anterior);
+  const ahora = seccionesDeDiff(actual);
+  const partes = [];
+  for (const [clave, texto] of ahora) {
+    if (antes.get(clave) !== texto) partes.push(texto);
+  }
+  for (const clave of antes.keys()) {
+    if (!ahora.has(clave)) partes.push(clave + '\n# cambio retirado: esta ruta ya no tiene diff');
+  }
+  return partes.length > 0 ? partes.join('\n') + '\n' : '';
+}
+
 /**
  * Diff vacío tras preparar: git corrió y no hay nada preparado. Dos situaciones
  * opuestas llegan aquí: la task que de verdad no tenía nada que hacer (sin
@@ -863,8 +966,12 @@ function resultadoDiffVacio(task, resultado, log) {
 }
 
 /**
- * Revisa el diff de la task y, si la revision aprueba, emite la constancia atada
- * a ESE diff y commitea. Devuelve el resultado del implementador con el veredicto
+ * Revisa el diff de la task y, si la revision no abre ronda (`abreRonda`), emite
+ * la constancia atada a ESE diff y commitea. Si la abre: hasta
+ * MAX_RONDAS_CORRECCION rondas de corregir (solo los críticos), volver a pasar el
+ * gate y volver a revisar con los hallazgos previos y el delta
+ * (`revisar(task, diff, previa)`). Agotado el tope, `BLOQUEADA_REVISION`
+ * (`escalarRevision`). Devuelve el resultado del implementador con el veredicto
  * reflejado.
  *
  * `deps`: `spawnGit` (ejecuta git), `revisar`, `corregir`, `emitirSenal`,
@@ -896,44 +1003,99 @@ async function revisarYComitear(task, resultado, deps) {
   let revision = normalizarRevision(await d.revisar(task, preparado.diff));
   if (revision.veredicto_original) resultado.veredicto_original = revision.veredicto_original;
 
-  // Una sola pasada de correccion si la revision es adversa.
-  if (revision.veredicto !== 'APROBADA') {
-    log('Revision de ' + task.titulo + ': ' + revision.veredicto
-      + (revision.causa ? ' (' + revision.causa + ')' : '') + ' — una pasada de correccion');
-    await d.corregir(task, revision);
+  // Hallazgos abiertos: los críticos de la última revisión utilizable. Una
+  // revisión sin veredicto no los resuelve ni los sustituye.
+  let abiertos = criticosDe(revision);
+  let propuestas = correccionesDe(revision);
+  // Diff de la última revisión utilizable: el delta se mide contra lo que de
+  // verdad se revisó, no contra lo que vio una revisión sin veredicto.
+  let diffRevisado = preparado.diff;
 
-    // La corrección cambia el código que el gate ya había dado por bueno: se
-    // vuelve a pasar antes de revisar, o se commitearía sin evidencia de tests.
-    if (d.gateTests) {
-      const gate = await d.gateTests(task);
-      resultado.gate_tests_tras_correccion = gate;
-      const corte = await decidirGate(task, resultado, gate, d);
-      if (corte) return corte;
+  for (let ronda = 1; abreRonda(revision); ronda++) {
+    if (ronda > MAX_RONDAS_CORRECCION) {
+      return escalarRevision(task, resultado, { revision, abiertos, propuestas }, d);
+    }
+    log('Revision de ' + task.titulo + ': ' + revision.veredicto
+      + (revision.causa ? ' (' + revision.causa + ')' : '') + ' — ronda de correccion ' + ronda
+      + ' de ' + MAX_RONDAS_CORRECCION);
+
+    // Sin veredicto no hay hallazgos nuevos que corregir: la ronda se consume
+    // solo en volver a revisar el mismo código.
+    if (revision.veredicto !== 'ERROR') {
+      // El corrector recibe solo lo que bloquea: los menores no abren ronda y,
+      // mezclados con los críticos, ensancharían la corrección sin motivo.
+      await d.corregir(task, {
+        veredicto: revision.veredicto,
+        problemas_criticos: abiertos,
+        correcciones_propuestas: propuestas,
+        resumen: revision.resumen,
+      });
+
+      // La corrección cambia el código que el gate ya había dado por bueno: se
+      // vuelve a pasar antes de revisar, o se commitearía sin evidencia de tests.
+      if (d.gateTests) {
+        const gate = await d.gateTests(task);
+        resultado.gate_tests_tras_correccion = gate;
+        const corte = await decidirGate(task, resultado, gate, d);
+        if (corte) return corte;
+      }
     }
 
-    const segunda = await diffPreparado(d.spawnGit, ambito);
-    if (!segunda.ok) return falloDeGit(resultado, segunda.error, log);
-    if (!segunda.diff.trim()) return resultadoDiffVacio(task, resultado, log);
-    preparado = segunda;
+    const siguiente = await diffPreparado(d.spawnGit, ambito);
+    if (!siguiente.ok) return falloDeGit(resultado, siguiente.error, log);
+    if (!siguiente.diff.trim()) return resultadoDiffVacio(task, resultado, log);
 
-    revision = normalizarRevision(await d.revisar(task, preparado.diff));
+    // La re-revisión recibe lo que se pidió corregir y lo que cambió desde la
+    // revisión anterior, para pronunciarse sobre cada hallazgo en vez de empezar
+    // de cero y mover la portería.
+    const previa = {
+      ronda,
+      hallazgos_previos: abiertos.slice(),
+      correcciones_propuestas: propuestas.slice(),
+      delta: deltaEntreDiffs(diffRevisado, siguiente.diff),
+    };
+    preparado = siguiente;
+
+    revision = normalizarRevision(await d.revisar(task, preparado.diff, previa));
     if (revision.veredicto_original) resultado.veredicto_original = revision.veredicto_original;
-  }
-
-  // Sigue adversa: no se commitea. Se aparta el trabajo, recuperable, para que
-  // no contamine el diff de la siguiente task.
-  if (revision.veredicto !== 'APROBADA') {
-    log('Task ' + task.titulo + ': FALLIDA (revision ' + revision.veredicto + '), no se commitea');
-    resultado.resultado = 'FALLIDA';
-    resultado.revision = revision;
-    resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
-      + '(revision adversarial: ' + revision.veredicto
-      + (revision.causa ? ', ' + revision.causa : '') + ')';
-    return apartarYRegistrar(task, resultado, d);
+    if (revision.veredicto !== 'ERROR') {
+      diffRevisado = preparado.diff;
+      abiertos = criticosDe(revision);
+      propuestas = correccionesDe(revision);
+    }
   }
 
   return comitearAprobada(task, resultado,
     { diff: preparado.diff, pathspec: preparado.pathspec, revision }, d);
+}
+
+/**
+ * Agotado el tope sin una revisión que deje de abrir ronda: la task queda
+ * `BLOQUEADA_REVISION` y la decisión pasa al usuario con los hallazgos abiertos
+ * y su corrección propuesta. Su trabajo se aparta con nombre, recuperable; nada
+ * se destruye. Como no es `COMPLETADA`, sus dependientes quedan bloqueadas.
+ */
+function escalarRevision(task, resultado, estado, deps) {
+  const log = registrar(deps);
+  const revision = estado.revision;
+  const abiertos = estado.abiertos.length > 0
+    ? estado.abiertos.slice()
+    : [revision.resumen || ('revisión ' + revision.veredicto + ' sin hallazgos detallados')];
+
+  log('Task ' + task.titulo + ': BLOQUEADA_REVISION tras ' + MAX_RONDAS_CORRECCION
+    + ' rondas de correccion (revision ' + revision.veredicto + '), no se commitea; '
+    + abiertos.length + ' hallazgo(s) abierto(s) para el usuario');
+  resultado.resultado = 'BLOQUEADA_REVISION';
+  resultado.revision = revision;
+  resultado.rondas_correccion = MAX_RONDAS_CORRECCION;
+  resultado.hallazgos_abiertos = abiertos;
+  resultado.correcciones_propuestas = estado.propuestas.slice();
+  resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
+    + '(revision adversarial: ' + revision.veredicto
+    + (revision.causa ? ', ' + revision.causa : '')
+    + '; BLOQUEADA_REVISION tras ' + MAX_RONDAS_CORRECCION + ' rondas de corrección, decide el usuario: '
+    + abiertos.join('; ') + ')';
+  return apartarYRegistrar(task, resultado, deps);
 }
 
 // ── Ejecucion de una task ────────────────────────────────────────────────────
@@ -1277,6 +1439,9 @@ module.exports = {
   pathspecDeTask,
   prepararTask,
   normalizarRevision,
+  MAX_RONDAS_CORRECCION,
+  abreRonda,
+  deltaEntreDiffs,
   revisarYComitear,
   depsFallidas,
   ejecutarTask,

@@ -438,7 +438,7 @@ El flag `--parallel` no existe fuera de Claude Code. En los otros tres backends 
 Son puertas de calidad, no de paralelizacion. Se aplican **por task** en los dos modos, sin excepcion:
 
 - **Gate de tests** — la suite del proyecto se ejecuta de verdad antes de revisar, y cuenta su codigo de salida real, no un recuento auto-declarado. En rojo, la task no se commitea.
-- **Revision adversarial del diff** — un agente con contexto limpio revisa el diff de esa task. Sin veredicto APROBADA no hay commit; hay una sola pasada de correccion antes de darla por fallida.
+- **Revision adversarial del diff** — un agente con contexto limpio revisa el diff de esa task. Solo un hallazgo crítico (o un veredicto `RECHAZADA`, o una revisión sin veredicto) abre una ronda de corrección; los menores no bloquean y viajan en el cuerpo del commit. Cada ronda corrige los críticos, vuelve a pasar el gate de tests y re-revisa con los hallazgos previos y el delta. Tras tres rondas sin aprobar, la task queda `BLOQUEADA_REVISION`: su trabajo se aparta con nombre en `git stash`, sin destruir nada, y los hallazgos abiertos con su corrección propuesta pasan al usuario.
 - **Convergencia con la spec** — al cerrar la ultima task (ver "Garantia de convergencia").
 
 Una task fallida no cancela a sus hermanas: cada una reporta su propio resultado, y las que dependan de una fallida quedan bloqueadas sin implementar.

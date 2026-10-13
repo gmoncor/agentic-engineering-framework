@@ -598,10 +598,10 @@ test('revisarYComitear: el ambito acota tambien la segunda preparacion, tras una
     'diff --cached -- src/a.js': n => ({ code: 0, out: n === 1 ? DIFF : DIFF + '+corregido\n', err: '' }),
     'status --porcelain -z --untracked-files=all -- src/a.js': { code: 0, out: ' M src/a.js\0', err: '' },
   });
-  let veredictos = ['NECESITA_CORRECCIONES', 'APROBADA'];
+  const veredictos = [{ veredicto: 'NECESITA_CORRECCIONES', problemas_criticos: ['x'] }, { veredicto: 'APROBADA' }];
   const { deps, visto } = depsRevision(git, {
     ambito: ['src/a.js'],
-    revisar: async (t, diff) => ({ veredicto: veredictos.shift() }),
+    revisar: async () => veredictos.shift(),
   });
 
   await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
@@ -666,16 +666,16 @@ test('revisarYComitear: sin ámbito (modo secuencial), add, diff y commit se aco
   assert.ok(commit.endsWith(' ' + PROYECTO), 'el commit cubre lo mismo que se revisó: ' + commit);
 });
 
-test('revisarYComitear: revision adversa -> una pasada de correccion y re-revision del nuevo diff', async () => {
+test('revisarYComitear: un crítico -> corrección, re-revisión del nuevo diff aprobada y commit', async () => {
   const CORREGIDO = DIFF + '+corregido\n';
   const git = gitDoble({
     [DIFF_PROYECTO]: n => ({ code: 0, out: n === 1 ? DIFF : CORREGIDO, err: '' }),
   });
-  let veredictos = ['NECESITA_CORRECCIONES', 'APROBADA'];
+  const veredictos = [{ veredicto: 'NECESITA_CORRECCIONES', problemas_criticos: ['x'] }, { veredicto: 'APROBADA' }];
   const { deps, visto } = depsRevision(git, {
     revisar: async (t, diff) => {
       visto0.push(diff);
-      return { veredicto: veredictos.shift() };
+      return veredictos.shift();
     },
   });
   const visto0 = visto.revisiones;
@@ -683,13 +683,13 @@ test('revisarYComitear: revision adversa -> una pasada de correccion y re-revisi
   const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
 
   assert.deepStrictEqual(visto.revisiones, [DIFF, CORREGIDO]);
-  assert.strictEqual(visto.correcciones, 1, 'una sola pasada de correccion');
+  assert.strictEqual(visto.correcciones, 1, 'una ronda basta si la re-revisión aprueba');
   assert.deepStrictEqual(visto.firmados, [CORREGIDO], 'se firma el diff que de verdad se aprobo');
   assert.strictEqual(r.resultado, 'COMPLETADA');
   assert.ok(git.llamadas.some(c => c.startsWith('commit')));
 });
 
-test('revisarYComitear: revision que sigue adversa -> se descarta el trabajo y no se commitea', async () => {
+test('revisarYComitear: revision que sigue adversa -> tope de rondas, se aparta el trabajo y no se commitea', async () => {
   const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
   const { deps, visto } = depsRevision(git, {
     revisar: async (t, diff) => { visto1.push(diff); return { veredicto: 'RECHAZADA' }; },
@@ -698,23 +698,31 @@ test('revisarYComitear: revision que sigue adversa -> se descarta el trabajo y n
 
   const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
 
-  assert.strictEqual(visto.revisiones.length, 2, 'se revisa, se corrige una vez y se re-revisa');
-  assert.strictEqual(visto.correcciones, 1);
+  assert.strictEqual(orq.MAX_RONDAS_CORRECCION, 3);
+  assert.strictEqual(visto.revisiones.length, 4, 'la revisión inicial y una re-revisión por ronda');
+  assert.strictEqual(visto.correcciones, 3);
   assert.strictEqual(visto.descartes, 1);
   assert.deepStrictEqual(visto.firmados, []);
   assert.ok(!git.llamadas.some(c => c.startsWith('commit')));
-  assert.strictEqual(r.resultado, 'FALLIDA');
+  assert.strictEqual(r.resultado, 'BLOQUEADA_REVISION');
   assert.match(r.notas, /revision adversarial: RECHAZADA/);
 });
 
-test('revisarYComitear: una revision que no parsea cuenta como adversa, no como aprobada', async () => {
+test('revisarYComitear: una revisión nula en todas las rondas nunca se commitea', async () => {
   const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
-  const { deps, visto } = depsRevision(git, { revisar: async () => null });
+  const { deps, visto } = depsRevision(git, {
+    revisar: async (t, diff) => { visto2.push(diff); return null; },
+  });
+  const visto2 = visto.revisiones;
 
   const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
 
+  assert.strictEqual(visto.revisiones.length, 1 + orq.MAX_RONDAS_CORRECCION, 'cada revisión nula consume una ronda');
+  assert.strictEqual(visto.correcciones, 0, 'sin veredicto no hay hallazgos que corregir');
   assert.deepStrictEqual(visto.firmados, []);
-  assert.strictEqual(r.resultado, 'FALLIDA');
+  assert.ok(!git.llamadas.some(c => c.startsWith('commit')));
+  assert.strictEqual(visto.descartes, 1);
+  assert.strictEqual(r.resultado, 'BLOQUEADA_REVISION');
   assert.match(r.notas, /revision adversarial: ERROR/);
 });
 
@@ -1098,7 +1106,8 @@ test('apartado: revisión adversa tras la corrección aparta, en los dos modos, 
 
     const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
 
-    assert.strictEqual(r.resultado, 'FALLIDA');
+    assert.strictEqual(r.resultado, 'BLOQUEADA_REVISION');
+    assert.strictEqual(git.llamadas.filter(c => c.startsWith('stash push')).length, 1);
     const esperado = modoParalelo
       ? 'stash push --include-untracked -m sdd-apartado: a -- src/a.js'
       : 'stash push --include-untracked -m sdd-apartado: a ' + PROYECTO;
@@ -1467,7 +1476,7 @@ test('re-gate: un fallo de git conserva el trabajo, y el escape degrada el rojo 
   for (const caso of casos) {
     const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
     const { deps, visto } = depsRevision(git, {
-      revisar: revisorEnOrden([{ veredicto: 'NECESITA_CORRECCIONES' }, { veredicto: 'APROBADA' }], []),
+      revisar: revisorEnOrden([{ veredicto: 'NECESITA_CORRECCIONES', problemas_criticos: ['x'] }, { veredicto: 'APROBADA' }], []),
       gateTests: async () => caso.gate,
       env: caso.env,
     });
@@ -1542,16 +1551,18 @@ test('revisarYComitear: APROBADA con un crítico no se commitea en la primera pa
   assert.strictEqual(r.veredicto_original, 'APROBADA');
 });
 
-test('revisarYComitear: APROBADA con críticos también tras corregir -> FALLIDA, apartada y sin commit', async () => {
+test('revisarYComitear: APROBADA con críticos en todas las rondas -> BLOQUEADA_REVISION, apartada y sin commit', async () => {
   const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
   const contradictoria = { veredicto: 'APROBADA', problemas_criticos: ['x'], problemas_menores: [] };
-  const { deps, visto } = depsRevision(git, { revisar: revisorEnOrden([contradictoria, contradictoria], []) });
+  const { deps, visto } = depsRevision(git, {
+    revisar: revisorEnOrden(Array(1 + orq.MAX_RONDAS_CORRECCION).fill(contradictoria), []),
+  });
 
   const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
 
   assert.ok(!git.llamadas.some(c => c.startsWith('commit')));
   assert.strictEqual(visto.descartes, 1);
-  assert.strictEqual(r.resultado, 'FALLIDA');
+  assert.strictEqual(r.resultado, 'BLOQUEADA_REVISION');
   assert.match(r.notas, /NECESITA_CORRECCIONES, veredicto contradictorio/);
   assert.strictEqual(r.revision.veredicto_original, 'APROBADA');
 });
@@ -1570,16 +1581,16 @@ test('revisarYComitear: APROBADA sin críticos se commitea sin pasar por correcc
   assert.strictEqual(r.veredicto_original, undefined);
 });
 
-test('revisarYComitear: revisión nula tras la corrección -> ERROR, sin commit y con el trabajo apartado', async () => {
+test('revisarYComitear: revisiones nulas tras la corrección -> ERROR, sin commit y con el trabajo apartado', async () => {
   const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
   const { deps } = depsRevision(git, {
-    revisar: revisorEnOrden([{ veredicto: 'RECHAZADA' }, null], []),
+    revisar: revisorEnOrden([{ veredicto: 'RECHAZADA' }, null, null, null], []),
     descartar: descartarCon(git, false),
   });
 
   const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
 
-  assert.strictEqual(r.resultado, 'FALLIDA');
+  assert.strictEqual(r.resultado, 'BLOQUEADA_REVISION');
   assert.match(r.notas, /revision adversarial: ERROR/);
   assert.ok(!git.llamadas.some(c => c.startsWith('commit')));
   assert.ok(git.llamadas.some(c => APARTADO_SECUENCIAL.test(c)), git.llamadas.join('\n'));
@@ -1825,4 +1836,251 @@ test('secuencial con git real: registro de sesiones, doc de la task y lo de fuer
   } finally {
     fs.rmSync(repo.dir, { recursive: true, force: true });
   }
+});
+
+// ── Rondas de revisión ───────────────────────────────────────────────────────
+// Rojo antes de esta task: cualquier veredicto distinto de APROBADA abría la corrección, el
+// corrector recibía también los menores, la segunda revisión no veía los hallazgos previos ni el
+// delta, y tras una sola corrección la task se descartaba.
+
+test('rondas: solo menores -> commit en la primera pasada, menores en el cuerpo y en las notas, sin corregir', async () => {
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+  const { deps, visto } = depsRevision(git, {
+    revisar: revisorEnOrden([{
+      veredicto: 'NECESITA_CORRECCIONES', problemas_criticos: [], problemas_menores: ['nombre poco claro', 'falta un caso límite menor'],
+    }], []),
+  });
+  const resultado = Object.assign(resultadoDe(tarea('a')), { commit_message: 'feat: a', commit_cuerpo: 'que y por que' });
+
+  const r = await orq.revisarYComitear(tarea('a'), resultado, deps);
+
+  assert.strictEqual(visto.correcciones, 0, 'un menor no abre ronda');
+  assert.strictEqual(r.resultado, 'COMPLETADA');
+  const commit = git.llamadas.find(c => c.startsWith('commit'));
+  assert.ok(commit, git.llamadas.join('\n'));
+  assert.match(commit, /que y por que\n\nHallazgos menores de la revisión \(no bloquean\):\n- nombre poco claro\n- falta un caso límite menor/);
+  assert.match(r.notas, /menores de la revisión, no bloquean: nombre poco claro; falta un caso límite menor/);
+  assert.deepStrictEqual(visto.firmados, [DIFF]);
+});
+
+test('rondas: el corrector recibe solo los críticos y su corrección propuesta, nunca los menores', async () => {
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+  const recibidas = [];
+  const { deps } = depsRevision(git, {
+    revisar: revisorEnOrden([
+      { veredicto: 'NECESITA_CORRECCIONES', problemas_criticos: ['entrada sin validar'], problemas_menores: ['estilo'],
+        correcciones_propuestas: ['validar la entrada en el parser'], resumen: 'r1' },
+      { veredicto: 'APROBADA', problemas_criticos: [], problemas_menores: [] },
+    ], []),
+    corregir: async (t, revision) => { recibidas.push(revision); },
+  });
+
+  const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+  assert.strictEqual(r.resultado, 'COMPLETADA');
+  assert.strictEqual(recibidas.length, 1);
+  assert.deepStrictEqual(recibidas[0].problemas_criticos, ['entrada sin validar']);
+  assert.deepStrictEqual(recibidas[0].correcciones_propuestas, ['validar la entrada en el parser']);
+  assert.ok(!('problemas_menores' in recibidas[0]), JSON.stringify(recibidas[0]));
+  assert.doesNotMatch(JSON.stringify(recibidas[0]), /estilo/);
+});
+
+test('rondas: la re-revisión recibe los hallazgos previos, su corrección propuesta y el delta', async () => {
+  // src/b.js no cambia entre rondas: su sección no es parte del delta.
+  const SIN_CAMBIO = 'diff --git a/src/b.js b/src/b.js\n+intacta\n';
+  const INICIAL = DIFF + SIN_CAMBIO;
+  const CORREGIDO = 'diff --git a/src/a.js b/src/a.js\n+una linea\n+validada\n' + SIN_CAMBIO;
+  const git = gitDoble({ [DIFF_PROYECTO]: n => ({ code: 0, out: n === 1 ? INICIAL : CORREGIDO, err: '' }) });
+  const llamadas = [];
+  const cola = [
+    { veredicto: 'RECHAZADA', problemas_criticos: ['entrada sin validar'], problemas_menores: [],
+      correcciones_propuestas: ['validar la entrada'] },
+    { veredicto: 'APROBADA', problemas_criticos: [], problemas_menores: [],
+      hallazgos_previos: [{ hallazgo: 'entrada sin validar', estado: 'resuelto' }] },
+  ];
+  const { deps } = depsRevision(git, {
+    revisar: async function () { llamadas.push(Array.from(arguments)); return cola.shift(); },
+  });
+
+  const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+  assert.strictEqual(r.resultado, 'COMPLETADA');
+  assert.strictEqual(llamadas.length, 2);
+  assert.strictEqual(llamadas[0][2], undefined, 'la primera revisión no tiene previa');
+  const previa = llamadas[1][2];
+  assert.strictEqual(previa.ronda, 1);
+  assert.deepStrictEqual(previa.hallazgos_previos, ['entrada sin validar']);
+  assert.deepStrictEqual(previa.correcciones_propuestas, ['validar la entrada']);
+  assert.match(previa.delta, /\+validada/);
+  assert.doesNotMatch(previa.delta, /src\/b\.js|intacta/, 'la sección sin cambios no entra en el delta');
+});
+
+test('rondas: un hallazgo previo declarado persistente sigue abriendo ronda aunque no se repita en críticos', async () => {
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+  const persistente = { veredicto: 'APROBADA', problemas_criticos: [], problemas_menores: [],
+    hallazgos_previos: [{ hallazgo: 'entrada sin validar', estado: 'persistente' }] };
+  const { deps, visto } = depsRevision(git, {
+    revisar: revisorEnOrden([{ veredicto: 'RECHAZADA', problemas_criticos: ['entrada sin validar'] },
+      persistente, persistente, persistente], []),
+  });
+
+  const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+  assert.ok(!git.llamadas.some(c => c.startsWith('commit')));
+  assert.strictEqual(visto.correcciones, 3);
+  assert.strictEqual(r.resultado, 'BLOQUEADA_REVISION');
+  assert.deepStrictEqual(r.hallazgos_abiertos, ['entrada sin validar']);
+});
+
+test('rondas: tres rondas adversas -> BLOQUEADA_REVISION, gate en cada ronda, un apartado sin destruir, dependiente bloqueada', async () => {
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+  let gates = 0;
+  let apartados = 0;
+  const apartar = descartarCon(git, false);
+  const descartar = async t => { apartados += 1; return apartar(t); };
+  const gateTests = async () => { gates += 1; return PASA; };
+  const adversa = { veredicto: 'NECESITA_CORRECCIONES', problemas_criticos: ['contrato roto'], problemas_menores: ['estilo'],
+    correcciones_propuestas: ['restaurar la firma'] };
+  const { deps: dr, visto: vr } = depsRevision(git, {
+    revisar: revisorEnOrden(Array(1 + orq.MAX_RONDAS_CORRECCION).fill(adversa), []),
+    gateTests,
+    descartar,
+  });
+  const { deps, visto } = depsTask({ gateTests, descartar, revisarYComitear: (t, r) => orq.revisarYComitear(t, r, dr) });
+
+  const resultados = await orq.recorrerNiveles([[tarea('a')], [tarea('b', ['ai_docs/tasks/a.md'])]],
+    (t, p) => orq.ejecutarTask(t, p, deps));
+  const [a, b] = resultados;
+
+  assert.strictEqual(a.resultado, 'BLOQUEADA_REVISION');
+  assert.strictEqual(a.rondas_correccion, 3);
+  assert.deepStrictEqual(a.hallazgos_abiertos, ['contrato roto']);
+  assert.deepStrictEqual(a.correcciones_propuestas, ['restaurar la firma']);
+  assert.match(a.notas, /BLOQUEADA_REVISION tras 3 rondas de corrección, decide el usuario: contrato roto/);
+  assert.match(a.notas, /trabajo apartado en git stash "sdd-apartado: a"/);
+  assert.strictEqual(vr.correcciones, 3);
+  assert.strictEqual(gates, 1 + orq.MAX_RONDAS_CORRECCION, 'el gate corre antes de revisar y en cada ronda');
+  assert.strictEqual(apartados, 1, 'el trabajo se aparta una sola vez');
+  assert.strictEqual(git.llamadas.filter(c => c.startsWith('stash push')).length, 1);
+  sinDestruccion(git.llamadas);
+  assert.ok(!git.llamadas.some(c => c.startsWith('commit')));
+  assert.ok(!a.detener_recorrido);
+
+  assert.deepStrictEqual(visto.implementadas, ['a']);
+  assert.strictEqual(b.bloqueada, true);
+  assert.match(b.notas, /sus dependencias no se completaron \(ai_docs\/tasks\/a\.md\)/);
+  assert.deepStrictEqual(orq.resumirResultados(resultados), { completadas: 0, fallidas: 2 });
+});
+
+test('rondas: si el apartado del escalado pide detener, el resultado lo lleva y el recorrido se para', async () => {
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+  const descartar = async () => ({ ok: false, detener: true, nota: 'no se pudo apartar el trabajo' });
+  const { deps: dr } = depsRevision(git, {
+    revisar: async () => ({ veredicto: 'RECHAZADA', problemas_criticos: ['x'] }), descartar,
+  });
+  const { deps, visto } = depsTask({ descartar, revisarYComitear: (t, r) => orq.revisarYComitear(t, r, dr) });
+
+  const resultados = await orq.recorrerNiveles([tareas('a', 'c')], (t, p) => orq.ejecutarTask(t, p, deps));
+
+  assert.strictEqual(resultados[0].resultado, 'BLOQUEADA_REVISION');
+  assert.strictEqual(resultados[0].detener_recorrido, true);
+  assert.match(resultados[0].notas, /no se pudo apartar el trabajo/);
+  assert.deepStrictEqual(visto.implementadas, ['a']);
+  assert.match(resultados[1].notas, /el recorrido se detuvo en la task a/);
+});
+
+test('deltaEntreDiffs: solo las secciones que cambiaron o aparecieron, y las retiradas con su cabecera', () => {
+  const a = 'diff --git a/x b/x\n+x1\ndiff --git a/y b/y\n+y1\n';
+  const b = 'diff --git a/x b/x\n+x1\ndiff --git a/y b/y\n+y2\ndiff --git a/z b/z\n+z1\n';
+  assert.strictEqual(orq.deltaEntreDiffs(a, a), '');
+  assert.strictEqual(orq.deltaEntreDiffs(a, b), 'diff --git a/y b/y\n+y2\ndiff --git a/z b/z\n+z1\n');
+  assert.strictEqual(orq.deltaEntreDiffs(b, 'diff --git a/x b/x\n+x1\n'),
+    'diff --git a/y b/y\n# cambio retirado: esta ruta ya no tiene diff\n'
+    + 'diff --git a/z b/z\n# cambio retirado: esta ruta ya no tiene diff\n');
+});
+
+test('rondas con git real, concurrente: lo que una hermana prepara entre dos rondas no entra en el delta', async () => {
+  const repo = repoTemporal();
+  try {
+    repo.escribir('a.txt', 'a original\n');
+    repo.escribir('h.txt', 'h original\n');
+    repo.g(['add', '-A']);
+    repo.g(['commit', '-q', '-m', 'base']);
+
+    repo.escribir('a.txt', 'a de la task\n');
+    const ambito = ['a.txt'];
+    const previas = [];
+    const cola = [
+      { veredicto: 'NECESITA_CORRECCIONES', problemas_criticos: ['a.txt incompleto'], problemas_menores: [] },
+      { veredicto: 'APROBADA', problemas_criticos: [], problemas_menores: [] },
+    ];
+    const deps = Object.assign(depsReales(repo.spawn, ambito), {
+      revisar: async (t, diff, previa) => { previas.push(previa); return cola.shift(); },
+      corregir: async () => {
+        repo.escribir('a.txt', 'a de la task\ncorregida\n');
+        // La hermana trabaja a la vez en el mismo árbol y deja su fichero preparado.
+        repo.escribir('h.txt', 'h de la hermana\n');
+        repo.g(['add', '--', 'h.txt']);
+      },
+    });
+
+    const r = await orq.revisarYComitear(tarea('a'),
+      Object.assign(resultadoDe(tarea('a')), { archivos_modificados: ['a.txt'], commit_message: 'feat: a' }), deps);
+
+    assert.strictEqual(r.resultado, 'COMPLETADA', r.notas);
+    const delta = previas[1].delta;
+    assert.match(delta, /\+corregida/);
+    assert.doesNotMatch(delta, /h\.txt/, 'el delta no ve lo que preparó la hermana');
+    assert.strictEqual(repo.g(['show', '--name-only', '--format=', 'HEAD']), 'a.txt\n');
+    assert.strictEqual(repo.g(['diff', '--cached', '--name-only']), 'h.txt\n', 'lo de la hermana sigue preparado para ella');
+  } finally {
+    fs.rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+test('rondas: una re-revisión nula no desplaza la base del delta: la siguiente lo mide contra la última utilizable', async () => {
+  const R1 = 'diff --git a/src/a.js b/src/a.js\n+una linea\n+corregida\n';
+  const git = gitDoble({ [DIFF_PROYECTO]: n => ({ code: 0, out: n === 1 ? DIFF : R1, err: '' }) });
+  const previas = [];
+  const cola = [{ veredicto: 'NECESITA_CORRECCIONES', problemas_criticos: ['x'] }, null, { veredicto: 'APROBADA' }];
+  const { deps, visto } = depsRevision(git, {
+    revisar: async (t, diff, previa) => { previas.push(previa); return cola.shift(); },
+  });
+
+  const r = await orq.revisarYComitear(tarea('a'), resultadoDe(tarea('a')), deps);
+
+  assert.strictEqual(r.resultado, 'COMPLETADA');
+  assert.strictEqual(visto.correcciones, 1, 'la ronda de la revisión nula no corrige');
+  assert.strictEqual(previas.length, 3);
+  assert.match(previas[1].delta, /\+corregida/);
+  assert.match(previas[2].delta, /\+corregida/, 'R2 recibe el delta real respecto de R0, no un delta vacío respecto de la nula');
+  assert.deepStrictEqual(previas[2].hallazgos_previos, ['x']);
+});
+
+test('rondas: un menor multilínea se aplana a una línea en el cuerpo y en las notas', async () => {
+  const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+  const { deps } = depsRevision(git, {
+    revisar: revisorEnOrden([{ veredicto: 'APROBADA', problemas_criticos: [],
+      problemas_menores: ['nombre poco claro\n\nSigned-off-by: alguien <a@example.com>'] }], []),
+  });
+  const resultado = Object.assign(resultadoDe(tarea('a')), { commit_message: 'feat: a', commit_cuerpo: 'que y por que' });
+
+  const r = await orq.revisarYComitear(tarea('a'), resultado, deps);
+
+  const commit = git.llamadas.find(c => c.startsWith('commit'));
+  assert.match(commit, /\n- nombre poco claro Signed-off-by: alguien <a@example\.com>/);
+  assert.doesNotMatch(commit, /\nSigned-off-by:/, 'ningún menor abre una línea que git lea como trailer');
+  assert.match(r.notas, /nombre poco claro Signed-off-by: alguien/);
+  assert.doesNotMatch(r.notas, /\n/);
+});
+
+test('abreRonda: la abren un crítico, RECHAZADA o ERROR; un NECESITA_CORRECCIONES sin críticos no', () => {
+  const n = orq.normalizarRevision;
+  assert.strictEqual(orq.abreRonda(n({ veredicto: 'NECESITA_CORRECCIONES', problemas_criticos: [], problemas_menores: ['m'] })), false);
+  assert.strictEqual(orq.abreRonda(n({ veredicto: 'APROBADA', problemas_criticos: [] })), false);
+  assert.strictEqual(orq.abreRonda(n({ veredicto: 'NECESITA_CORRECCIONES', problemas_criticos: ['c'] })), true);
+  assert.strictEqual(orq.abreRonda(n({ veredicto: 'RECHAZADA', problemas_criticos: [] })), true);
+  assert.strictEqual(orq.abreRonda(n(null)), true);
+  assert.strictEqual(orq.abreRonda(n({ veredicto: 'APROBADA', problemas_criticos: [],
+    hallazgos_previos: [{ hallazgo: 'h', estado: 'refutado' }] })), false, 'un refutado no bloquea');
 });

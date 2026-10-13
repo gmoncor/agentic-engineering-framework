@@ -63,7 +63,19 @@ const REVISION_SCHEMA = {
     problemas_criticos: { type: 'array', items: { type: 'string' } },
     problemas_menores: { type: 'array', items: { type: 'string' } },
     positivos: { type: 'array', items: { type: 'string' } },
-    resumen: { type: 'string' }
+    resumen: { type: 'string' },
+    hallazgos_previos: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          hallazgo: { type: 'string' },
+          estado: { type: 'string', enum: ['resuelto', 'persistente', 'refutado'] }
+        },
+        required: ['hallazgo', 'estado']
+      }
+    },
+    correcciones_propuestas: { type: 'array', items: { type: 'string' } }
   },
   required: ['veredicto', 'problemas_criticos', 'problemas_menores', 'resumen']
 }
@@ -457,8 +469,28 @@ async function implementarTask(task) {
   })
 }
 
-// Revision adversarial de UNA task: contexto limpio, solo el diff de la task.
-async function revisarDiff(task, diff) {
+// Bloque del prompt de una re-revisión: los hallazgos que se pidió corregir, su corrección
+// propuesta y el delta desde la revisión anterior (orq.revisarYComitear lo calcula sobre el
+// pathspec de la task). Sin `previa` es la primera revisión y el bloque no existe.
+function bloqueRevisionPrevia(previa) {
+  if (!previa) return ''
+  const lista = function (xs, vacio) { return xs && xs.length ? '- ' + xs.join('\n- ') : vacio }
+  return '\
+\n\
+RE-REVISIÓN (ronda de corrección ' + previa.ronda + '):\n\
+Hallazgos críticos que la revisión anterior pidió corregir:\n' + lista(previa.hallazgos_previos, '(ninguno detallado)') + '\n\
+Corrección propuesta entonces:\n' + lista(previa.correcciones_propuestas, '(ninguna)') + '\n\
+\n\
+Delta desde la revisión anterior (lo que cambió la corrección):\n\
+```diff\n' + (previa.delta || '(sin cambios)') + '\n```\n\
+\n\
+- Pronúnciate sobre CADA hallazgo previo en `hallazgos_previos`, con estado `resuelto`, `persistente` o `refutado` (con su motivo en el resumen). Un persistente se repite en problemas_criticos.\n\
+- Un hallazgo nuevo fuera del delta solo cuenta si es material (BLOQUEANTE): lo que ya estaba y no señalaste antes no se convierte ahora en crítico por una preferencia.\n'
+}
+
+// Revision adversarial de UNA task: contexto limpio, solo el diff de la task. En una re-revisión
+// (`previa`), además, los hallazgos previos y el delta.
+async function revisarDiff(task, diff, previa) {
   return agent('\
 Lee ai_docs/dev_templates/revision_adversarial.md y sigue sus pasos, aplicados a UNA task.\n\
 Lee la task en: ' + task.path + '\n\
@@ -469,10 +501,13 @@ POSTURA OBLIGATORIA:\n\
 - NO hagas preguntas. Trabaja con lo que hay.\n\
 \n\
 Diff de la task (lo que se va a commitear):\n\
-```diff\n' + diff + '\n```\n\
+```diff\n' + diff + '\n```\n' + bloqueRevisionPrevia(previa) + '\
 \n\
 Revisa: correccion frente a la task, tests presentes y utiles, edge cases,\n\
 regresiones, codigo muerto y seguridad.\n\
+En problemas_criticos van solo los hallazgos BLOQUEANTES: son los únicos que abren una ronda de corrección.\n\
+Los WARNING van en problemas_menores: no bloquean el commit y viajan en su cuerpo.\n\
+Para cada crítico, propón su corrección en correcciones_propuestas.\n\
 Emite tu veredicto: APROBADA, NECESITA_CORRECCIONES o RECHAZADA.', {
     label: 'revision-' + task.titulo.substring(0, 20),
     phase: 'Implementacion',
@@ -480,16 +515,19 @@ Emite tu veredicto: APROBADA, NECESITA_CORRECCIONES o RECHAZADA.', {
   })
 }
 
-// Una unica pasada de correccion de los problemas que encontro la revision. Deja
-// los cambios en el working tree; no commitea. El workflow re-revisa despues.
+// Una ronda de correccion: recibe solo los criticos de la revision (y su correccion propuesta);
+// los menores no bloquean y no se le pasan. Deja los cambios en el working tree; no commitea.
+// El workflow vuelve a pasar el gate y re-revisa despues.
 async function corregirTask(task, revision) {
-  const problemas = (revision.problemas_criticos || []).concat(revision.problemas_menores || [])
+  const problemas = revision.problemas_criticos || []
+  const propuestas = revision.correcciones_propuestas || []
   return agent('\
-La revision adversarial encontro problemas en esta task. Corrigelos en el working tree.\n\
+La revision adversarial encontro problemas criticos en esta task. Corrigelos en el working tree.\n\
 Lee ai_docs/dev_templates/implementar.md para el proceso.\n\
 Task: ' + task.path + '\n\
 \n\
-Problemas a corregir:\n- ' + (problemas.length ? problemas.join('\n- ') : '(ver el resumen de la revision)') + '\n\
+Problemas criticos a corregir:\n- ' + (problemas.length ? problemas.join('\n- ') : '(ver el resumen de la revision)') + '\n\
+Correccion propuesta por la revision:\n- ' + (propuestas.length ? propuestas.join('\n- ') : '(ninguna)') + '\n\
 Resumen de la revision: ' + (revision.resumen || '') + '\n\
 \n\
 REGLAS:\n\
@@ -509,7 +547,7 @@ REGLAS:\n\
 // en orquestacion.js, donde se prueba con dobles; aqui solo se cablean las piezas
 // que hablan con el mundo exterior. El ambito solo se calcula (y se pasa) en modo
 // concurrente: en secuencial no hay hermanas que contaminen el indice compartido.
-// Tras la pasada de correccion, el gate de tests se vuelve a pasar antes de re-revisar.
+// En cada ronda de correccion el gate de tests se vuelve a pasar antes de re-revisar.
 async function revisarYComitear(task, resultado) {
   const ambito = modoParalelo ? await ambitoTask(task) : undefined
   return orq.revisarYComitear(task, resultado, {
