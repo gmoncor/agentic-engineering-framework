@@ -134,7 +134,7 @@ No pierdas tiempo con tests que no aportan valor:
 - **Una verificacion por test:** No mezclar multiples comprobaciones
 - **Datos minimos:** Solo los datos necesarios para el test, nada mas
 - **Independientes:** Cada test funciona solo, sin depender de otros ni del orden de ejecucion
-- **Rapidos:** Un test unitario no deberia tardar mas de 50ms
+- **Sin dependencia del reloj:** el resultado no depende del tiempo ni de la carga de la máquina: inyecta el reloj o el temporizador. Un rojo por contención no se tapa ampliando un plazo
 
 ### Parametrizacion — evitar tests duplicados
 
@@ -223,6 +223,8 @@ Antes de dar el fix por cerrado:
 | Test sin verificacion (`render(<Comp />)` y ya) | No comprueba nada | Anadir `expect(...)` con valor concreto |
 | Verificacion generica (`toBeTruthy()`) | No dice que se espera | `toEqual(valorExacto)` |
 | `sleep()` o esperas fijas | Test lento y fragil | Usar `waitFor()` o async/await |
+| Cota de tiempo de pared (`expect(duracion).toBeLessThan(50)`) | El resultado depende de la carga de la máquina: rojo intermitente por contención | Inyectar el reloj o el temporizador y afirmar sobre el comportamiento, no sobre la duración |
+| Un subproceso por caso cuando se puede importar el módulo | Cada arranque de intérprete suma segundos: la suite pasa de segundos a minutos | Importar el módulo y llamarlo en proceso; el subproceso queda para uno o dos casos de la interfaz de línea de comandos |
 | Copiar test cambiando 1 valor | Codigo duplicado | Usar parametrizacion (`test.each` / `parametrize`) |
 | Nombre vago (`"deberia funcionar"`) | No dice que prueba | `"devuelve 404 cuando el usuario no existe"` |
 | Test que depende de otro test | Si uno falla, todos fallan | Cada test se prepara sus propios datos |
