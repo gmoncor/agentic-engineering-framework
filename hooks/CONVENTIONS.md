@@ -136,6 +136,14 @@ y, por la regla de la seccion anterior, el veredicto es ese codigo de salida:
 `0` y nada mas. El test imprime lineas y bytes de cada documento aunque pase,
 para que la tendencia sea visible antes de tocar el limite.
 
+**Límite por pila de rol.** Un subagente carga a la vez el documento raíz, su
+fichero de agente y la plantilla que su workflow le manda leer; el mismo test
+mide esa pila para cada rol que despachan los workflows y le pone un límite en
+bytes. Cada límite es la pila medida multiplicada por 1,15 y redondeada hacia
+arriba al KB (1024 bytes); la medida y el cálculo constan en el comentario del
+test. Subir un límite exige volver a medir y recalcular con la misma regla: no
+se ajusta la cifra hasta que el test pase.
+
 **Por que dos ejes.** Las lineas solas no bastan: una tabla ancha o un parrafo
 largo anaden bytes sin anadir lineas, y el coste real de contexto se paga en
 tokens, que siguen a los bytes (~1 token por cada 4 bytes), no a los saltos de

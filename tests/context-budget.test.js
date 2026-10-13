@@ -105,3 +105,165 @@ test('pocas lineas con muchos bytes incumplen por el eje de bytes', () => {
   assert.strictEqual(fallos.length, 1);
   assert.match(fallos[0], /^BYTE_BUDGET_EXCEEDED/);
 });
+
+// ── Presupuesto por pila de rol ──────────────────────────────────────────────
+//
+// Un subagente no carga un documento suelto: carga el documento raíz de su
+// backend, su fichero de agente y la plantilla que el workflow le manda leer.
+// Esa pila es lo que paga cada despacho, y puede crecer por cualquiera de sus
+// tres capas sin que el presupuesto por documento lo vea. Los workflows solo
+// existen en el backend de Claude Code, así que la pila se mide allí.
+//
+// La pila no se declara a mano: cada llamada `agent(...)` de un workflow cierra
+// con su `agentType`, y las plantillas que cita el tramo de código que la
+// precede (desde el `agentType` anterior) son las que ese rol lee. Si un
+// workflow pasa a mandar leer otra plantilla, la pila la recoge sola.
+//
+// Límite por rol: la pila más grande medida al fijarlo, más un margen del 15 %,
+// redondeado hacia arriba al KB (1024 bytes):
+//
+//   rol           medida (bytes)  medida x 1,15  límite
+//   asesor        16011           18412,65      18432 (18 KB)
+//   implementador 26274           30215,10      30720 (30 KB)
+//   planificador  45573           52408,95      53248 (52 KB)
+//   revisor       33383           38390,45      38912 (38 KB)
+//
+// Subir un límite es una decisión: se vuelve a medir y se recalcula con la
+// misma regla; no se ajusta la cifra hasta que pase.
+
+const DOC_RAIZ_DE_LA_PILA = 'CLAUDE.md';
+const DIR_AGENTES = '.claude/agents';
+const DIR_WORKFLOWS = '.claude/workflows';
+const MAX_BYTES_POR_PILA = {
+  asesor: 18432,
+  implementador: 30720,
+  planificador: 53248,
+  revisor: 38912
+};
+
+const MARCA_AGENTE = /agentType:\s*(['"])([a-z-]+)\1/g;
+const CITA_PLANTILLA = /ai_docs\/(?:dev|core)_templates\/[a-z0-9_]+\.md/g;
+
+/**
+ * Despachos de un workflow: un elemento por `agentType`, con el rol y las
+ * plantillas citadas en el tramo de código que lo precede.
+ *
+ * La atribución es por posición en el texto, no por análisis del programa, y
+ * tiene límites: se pierden sin aviso una plantilla citada en un helper definido
+ * después de su `agent()`, una cita dentro de `lib/` y una ruta construida con
+ * una variable; y una mención dentro de un comentario cuenta como lectura. Si un
+ * workflow adopta alguno de esos patrones, la medida deja de ser fiable y este
+ * extractor debe cambiar con él.
+ */
+function despachosDe(codigo) {
+  const despachos = [];
+  let desde = 0;
+  for (const marca of codigo.matchAll(MARCA_AGENTE)) {
+    const tramo = codigo.slice(desde, marca.index);
+    const plantillas = [...new Set(tramo.match(CITA_PLANTILLA) || [])].sort();
+    despachos.push({ rol: marca[2], plantillas });
+    desde = marca.index + marca[0].length;
+  }
+  return despachos;
+}
+
+function workflows(raiz = RAIZ) {
+  return fs.readdirSync(path.join(raiz, DIR_WORKFLOWS))
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => path.join(DIR_WORKFLOWS, f));
+}
+
+function bytesDe(ruta, raiz = RAIZ) {
+  return fs.statSync(path.join(raiz, ruta)).size;
+}
+
+/**
+ * Pila más grande por rol: { rol: { bytes, ficheros } }. Un rol que ningún
+ * workflow manda a leer plantilla pesa su documento raíz y su agente.
+ */
+function pilasPorRol(raiz = RAIZ) {
+  const pilas = {};
+  const despachos = workflows(raiz).flatMap((w) => despachosDe(fs.readFileSync(path.join(raiz, w), 'utf8')));
+  for (const { rol, plantillas } of despachos) {
+    const ficheros = [DOC_RAIZ_DE_LA_PILA, `${DIR_AGENTES}/${rol}.md`, ...plantillas];
+    const bytes = ficheros.reduce((suma, ruta) => suma + bytesDe(ruta, raiz), 0);
+    if (!pilas[rol] || bytes > pilas[rol].bytes) pilas[rol] = { bytes, ficheros };
+  }
+  return pilas;
+}
+
+function fallosDePila(pilas, limites = MAX_BYTES_POR_PILA) {
+  const fallos = [];
+  for (const [rol, { bytes, ficheros }] of Object.entries(pilas)) {
+    if (!(rol in limites)) {
+      fallos.push(`STACK_BUDGET_MISSING: el rol ${rol} se despacha sin límite de pila declarado.`);
+    } else if (bytes > limites[rol]) {
+      fallos.push(`STACK_BUDGET_EXCEEDED: la pila de ${rol} (${ficheros.join(' + ')}) pesa ${bytes} bytes (máximo ${limites[rol]}).`);
+    }
+  }
+  return fallos;
+}
+
+test('cada agentType de los workflows es un literal con fichero de agente', () => {
+  for (const workflow of workflows()) {
+    const codigo = fs.readFileSync(path.join(RAIZ, workflow), 'utf8');
+    const usos = (codigo.match(/agentType:/g) || []).length;
+    const roles = despachosDe(codigo).map((d) => d.rol);
+    assert.strictEqual(roles.length, usos, `${workflow}: un agentType no literal escapa a la medida de la pila.`);
+    for (const rol of roles) {
+      assert.ok(fs.existsSync(path.join(RAIZ, DIR_AGENTES, `${rol}.md`)), `${workflow}: no existe el agente ${rol}.`);
+    }
+  }
+});
+
+test('los workflows mandan leer plantillas: la pila no se mide en vacío', () => {
+  const conPlantilla = workflows()
+    .flatMap((w) => despachosDe(fs.readFileSync(path.join(RAIZ, w), 'utf8')))
+    .filter((d) => d.plantillas.length > 0);
+  assert.ok(conPlantilla.length > 0, 'ningún despacho cita una plantilla: la extracción se ha roto');
+});
+
+test('la pila de cada rol cabe en su presupuesto', (t) => {
+  const pilas = pilasPorRol();
+  for (const [rol, { bytes, ficheros }] of Object.entries(pilas)) {
+    t.diagnostic(`${rol}: ${bytes} bytes (${ficheros.join(' + ')}; máximo ${MAX_BYTES_POR_PILA[rol]})`);
+  }
+  assert.deepStrictEqual(Object.keys(pilas).sort(), Object.keys(MAX_BYTES_POR_PILA).sort());
+  assert.deepStrictEqual(fallosDePila(pilas), []);
+});
+
+test('despachosDe atribuye al rol las plantillas citadas antes de su agentType', () => {
+  const codigo = [
+    "agent('Lee ai_docs/dev_templates/spec.md', { agentType: 'planificador' })",
+    "agent('sin plantilla', { agentType: \"asesor\" })",
+    "agent('Lee ai_docs/dev_templates/revisar_tarea.md y ai_docs/dev_templates/tareas.md', {",
+    "  agentType: 'revisor' })"
+  ].join('\n');
+
+  assert.deepStrictEqual(despachosDe(codigo), [
+    { rol: 'planificador', plantillas: ['ai_docs/dev_templates/spec.md'] },
+    { rol: 'asesor', plantillas: [] },
+    { rol: 'revisor', plantillas: ['ai_docs/dev_templates/revisar_tarea.md', 'ai_docs/dev_templates/tareas.md'] }
+  ]);
+});
+
+test('una plantilla que crece por encima del margen pone en rojo la pila de su rol', (t) => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'context-budget-pila-'));
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  for (const ruta of [DOC_RAIZ_DE_LA_PILA, DIR_AGENTES, DIR_WORKFLOWS, 'ai_docs/dev_templates', 'ai_docs/core_templates']) {
+    fs.cpSync(path.join(RAIZ, ruta), path.join(base, ruta), { recursive: true });
+  }
+  const [rol, pila] = Object.entries(pilasPorRol(base)).find(([, p]) => p.ficheros.length > 2);
+  assert.deepStrictEqual(fallosDePila({ [rol]: pila }), [], 'la copia debe partir dentro del presupuesto');
+
+  const plantilla = pila.ficheros[pila.ficheros.length - 1];
+  fs.appendFileSync(path.join(base, plantilla), 'x'.repeat(MAX_BYTES_POR_PILA[rol] - pila.bytes + 1));
+
+  assert.match(fallosDePila(pilasPorRol(base)).join('\n'), new RegExp(`STACK_BUDGET_EXCEEDED: la pila de ${rol} `));
+});
+
+test('un rol despachado sin límite declarado falla con STACK_BUDGET_MISSING', () => {
+  const fallos = fallosDePila({ nuevo: { bytes: 1, ficheros: ['X.md'] } });
+
+  assert.deepStrictEqual(fallos, ['STACK_BUDGET_MISSING: el rol nuevo se despacha sin límite de pila declarado.']);
+});

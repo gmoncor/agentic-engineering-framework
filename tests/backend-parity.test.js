@@ -463,6 +463,90 @@ test('conteos: la documentacion cita el numero real de plantillas', () => {
   );
 });
 
+// ── Árboles de los fragmentos y del núcleo: conteos por comentario ───────────
+//
+// Cada fragmento de backend dibuja su árbol de ficheros y comenta en él cuántos
+// comandos, skills y hooks trae; el núcleo hace lo mismo con las plantillas. Son
+// las fuentes de CLAUDE.md, GEMINI.md y AGENTS.md, así que se comprueban aquí,
+// antes de compilar. Cada cifra esperada sale del disco con los mismos
+// contadores que la tabla del README; el caso solo fija dónde se cita.
+
+/**
+ * Línea de árbol de `entrada` (p. ej. `commands/`). Con `rama`, la busca solo
+ * entre las líneas que cuelgan de esa rama de primer nivel (p. ej. `.codex/`);
+ * sin ella, entre las de primer nivel.
+ */
+function lineaDelArbol(texto, rama, entrada) {
+  const lineas = texto.split('\n');
+  const primerNivel = l => /^[├└]── /.test(l);
+  if (!rama) return lineas.find(l => primerNivel(l) && l.startsWith(`── ${entrada}`, 1));
+
+  const desde = lineas.findIndex(l => primerNivel(l) && l.startsWith(`── ${rama}`, 1));
+  if (desde === -1) return undefined;
+  const fin = lineas.findIndex((l, i) => i > desde && primerNivel(l));
+  return lineas.slice(desde + 1, fin === -1 ? lineas.length : fin).find(l => l.includes(`── ${entrada}`));
+}
+
+/** Incumplimientos de `casos` sobre `texto`: lista vacía cuando cada línea cita su cifra. */
+function fallosDeConteoEnArbol(texto, casos) {
+  const fallos = [];
+  for (const { rama, entrada, cuenta, sustantivo } of casos) {
+    const donde = rama ? `${rama}${entrada}` : entrada;
+    const linea = lineaDelArbol(texto, rama, entrada);
+    if (linea === undefined) {
+      fallos.push(`${donde}: el árbol no tiene esa línea.`);
+    } else if (!new RegExp(`#\\s*${cuenta} ${sustantivo}\\b`).test(linea)) {
+      fallos.push(`${donde}: el comentario no cita ${cuenta} ${sustantivo} («${linea.trim()}»).`);
+    }
+  }
+  return fallos;
+}
+
+/** Casos por fichero fuente: qué línea del árbol cita qué cifra del disco. */
+function casosDeConteoEnArbol() {
+  const comandos = backend => nombresDe(BACKENDS[backend].capacidades[0]).length;
+  const hooks = backend => hooksCableados(backend).length;
+  return {
+    'docs-src/fragments/claude.md': [
+      { rama: '.claude/', entrada: 'commands/', cuenta: comandos('claude'), sustantivo: 'comandos' },
+      { rama: '.claude/', entrada: 'skills/', cuenta: nombresDe(BACKENDS.claude.capacidades[1]).length, sustantivo: 'skills' },
+      { entrada: 'hooks/', cuenta: hooks('claude'), sustantivo: 'hooks' }
+    ],
+    'docs-src/fragments/gemini.md': [
+      { rama: '.gemini/', entrada: 'commands/', cuenta: comandos('gemini'), sustantivo: 'comandos' },
+      { rama: '.gemini/', entrada: 'skills/', cuenta: nombresDe(BACKENDS.gemini.capacidades[1]).length, sustantivo: 'skills' },
+      { entrada: 'hooks/', cuenta: hooks('gemini'), sustantivo: 'hooks' }
+    ],
+    'docs-src/fragments/agents.md': [
+      { rama: '.codex/', entrada: 'hooks.json', cuenta: hooks('codex'), sustantivo: 'hooks' },
+      { rama: '.agents/', entrada: 'skills/', cuenta: nombresDe({ dir: SKILLS_COMPARTIDAS }).length, sustantivo: 'skills' },
+      { rama: '.agents/', entrada: 'hooks.json', cuenta: hooks('antigravity'), sustantivo: 'hooks' }
+    ],
+    'docs-src/core.md': [
+      { rama: 'ai_docs/', entrada: 'core_templates/', cuenta: contarPlantillas('ai_docs/core_templates'), sustantivo: 'plantillas' },
+      { rama: 'ai_docs/', entrada: 'dev_templates/', cuenta: contarPlantillas('ai_docs/dev_templates'), sustantivo: 'plantillas' }
+    ]
+  };
+}
+
+test('conteos: los árboles de los fragmentos y del núcleo citan los números reales', () => {
+  const fallos = Object.entries(casosDeConteoEnArbol())
+    .flatMap(([ruta, casos]) => fallosDeConteoEnArbol(leer(ruta), casos).map(f => `${ruta} ${f}`));
+
+  assert.deepStrictEqual(fallos, []);
+});
+
+test('conteos: una cifra del árbol desfasada del disco pone el caso en rojo', () => {
+  const ruta = 'docs-src/fragments/claude.md';
+  const casos = casosDeConteoEnArbol()[ruta];
+  const { cuenta } = casos[0];
+  const copia = leer(ruta).replace(`# ${cuenta} comandos`, `# ${cuenta - 1} comandos`);
+
+  assert.notStrictEqual(copia, leer(ruta), 'la copia debe diferir del fragmento');
+  assert.deepStrictEqual(fallosDeConteoEnArbol(copia, casos).length, 1);
+  assert.match(fallosDeConteoEnArbol(copia, casos)[0], new RegExp(`no cita ${cuenta} comandos`));
+});
+
 // ── Tabla "Que se instala": los mismos conteos, declarados por segunda vez ──
 //
 // La seccion "### Que se instala" repite en una tabla los conteos que el
