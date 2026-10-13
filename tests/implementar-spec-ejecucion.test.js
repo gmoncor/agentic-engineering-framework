@@ -2162,3 +2162,290 @@ test('abreRonda: la abren un crítico, RECHAZADA o ERROR; un NECESITA_CORRECCION
   assert.strictEqual(orq.abreRonda(n({ veredicto: 'APROBADA', problemas_criticos: [],
     hallazgos_previos: [{ hallazgo: 'h', estado: 'refutado' }] })), false, 'un refutado no bloquea');
 });
+
+// ── Ciclo de vida del campo Estado del documento de la task ──────────────────
+// Antes, el workflow calculaba el resultado de cada task en memoria y nada lo escribía: el
+// documento seguía PENDIENTE para siempre. Ahora `ejecutarTask` escribe EN_PROGRESO justo antes de
+// implementar y el estado final al retornar, solo en las tasks que se intentaron.
+
+/** Línea `Estado` de la plantilla de tasks, leída de la propia plantilla. */
+function lineaEstadoPlantilla() {
+  const plantilla = fs.readFileSync(path.join(__dirname, '..', 'ai_docs', 'dev_templates', 'tareas.md'), 'utf8');
+  const linea = plantilla.split('\n').find(l => /^\*\*Estado:\*\* PENDIENTE\s*$/.test(l));
+  assert.ok(linea, 'la plantilla declara el estado inicial PENDIENTE');
+  return linea.replace(/\s+$/, '');
+}
+
+function docDeTask(titulo, eol) {
+  const fin = eol || '\n';
+  return ['# Task: ' + titulo, '', '**Spec madre:** spec_x', lineaEstadoPlantilla(),
+    '**Dependencias:** Ninguna', '', '## Objetivo', '', 'Hacer ' + titulo + '.', ''].join(fin);
+}
+
+/** Proyecto en un directorio temporal con un documento PENDIENTE por task. */
+function proyectoConTasks(titulos) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'estado-task-'));
+  for (const t of titulos) escribirArchivo(dir, 'ai_docs/tasks/' + t + '.md', docDeTask(t));
+  const leer = t => fs.readFileSync(path.join(dir, 'ai_docs', 'tasks', t + '.md'), 'utf8');
+  const estado = t => (leer(t).match(/^\*\*Estado:\*\* (.+)$/m) || [])[1];
+  return { dir, leer, estado, limpiar: () => fs.rmSync(dir, { recursive: true, force: true }) };
+}
+
+/** Doble de marcarEstado que anota cada llamada y escribe de verdad en el proyecto temporal. */
+function marcadorReal(proyecto) {
+  const llamadas = [];
+  const marcarEstado = (ruta, estado) => {
+    llamadas.push(estado);
+    return orq.marcarEstado(ruta, estado, { cwd: proyecto.dir });
+  };
+  return { llamadas, marcarEstado };
+}
+
+test('estado: task aprobada y commiteada -> PENDIENTE, EN_PROGRESO durante la implementación, COMPLETADA', async () => {
+  const p = proyectoConTasks(['a']);
+  try {
+    const m = marcadorReal(p);
+    const durante = [];
+    const { deps } = depsTask({
+      marcarEstado: m.marcarEstado,
+      implementar: async t => { durante.push(p.estado('a')); return resultadoDe(t); },
+    });
+    assert.strictEqual(p.estado('a'), 'PENDIENTE');
+    const r = await orq.ejecutarTask(tarea('a'), [], deps);
+    assert.strictEqual(r.resultado, 'COMPLETADA');
+    assert.deepStrictEqual(durante, ['EN_PROGRESO']);
+    assert.deepStrictEqual(m.llamadas, ['EN_PROGRESO', 'COMPLETADA']);
+    assert.strictEqual(p.estado('a'), 'COMPLETADA');
+  } finally { p.limpiar(); }
+});
+
+test('estado: gate rojo -> FALLIDA; implementador PARCIAL -> PARCIAL; excepción -> FALLIDA, nunca EN_PROGRESO', async () => {
+  const casos = [
+    { overrides: { gateTests: async () => ({ estado: 'FALLIDA', nota: 'Tests en rojo (exit 1)' }) }, final: 'FALLIDA' },
+    { overrides: { implementar: async t => resultadoDe(t, 'PARCIAL') }, final: 'PARCIAL' },
+    { overrides: { implementar: async () => { throw new Error('agente caído'); } }, final: 'FALLIDA' },
+    { overrides: { revisarYComitear: async () => { throw new Error('revisión caída'); } }, final: 'FALLIDA' },
+  ];
+  for (const caso of casos) {
+    const p = proyectoConTasks(['a']);
+    try {
+      const m = marcadorReal(p);
+      const { deps } = depsTask(Object.assign({ marcarEstado: m.marcarEstado }, caso.overrides));
+      const r = await orq.ejecutarTask(tarea('a'), [], deps);
+      assert.strictEqual(r.resultado, caso.final);
+      assert.deepStrictEqual(m.llamadas, ['EN_PROGRESO', caso.final]);
+      assert.strictEqual(p.estado('a'), caso.final);
+    } finally { p.limpiar(); }
+  }
+});
+
+test('estado: revisión adversa en todas las rondas -> BLOQUEADA_REVISION, nunca COMPLETADA', async () => {
+  const p = proyectoConTasks(['a']);
+  try {
+    const m = marcadorReal(p);
+    const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: DIFF, err: '' } });
+    const rev = depsRevision(git, { revisar: async () => ({ veredicto: 'RECHAZADA' }) }).deps;
+    const { deps } = depsTask({
+      marcarEstado: m.marcarEstado,
+      revisarYComitear: (t, r) => orq.revisarYComitear(t, r, rev),
+    });
+    const r = await orq.ejecutarTask(tarea('a'), [], deps);
+    assert.strictEqual(r.resultado, 'BLOQUEADA_REVISION');
+    assert.ok(!m.llamadas.includes('COMPLETADA'));
+    assert.deepStrictEqual(m.llamadas, ['EN_PROGRESO', 'BLOQUEADA_REVISION']);
+  } finally { p.limpiar(); }
+});
+
+test('estado: diff vacío legítimo -> COMPLETADA sin commit y con la nota de que no se commitea', async () => {
+  const p = proyectoConTasks(['a']);
+  try {
+    const m = marcadorReal(p);
+    const git = gitDoble({ [DIFF_PROYECTO]: { code: 0, out: '', err: '' } });
+    const rev = depsRevision(git).deps;
+    const { deps } = depsTask({
+      marcarEstado: m.marcarEstado,
+      implementar: async t => Object.assign(resultadoDe(t), { archivos_modificados: [] }),
+      revisarYComitear: (t, r) => orq.revisarYComitear(t, r, rev),
+    });
+    const r = await orq.ejecutarTask(tarea('a'), [], deps);
+    assert.ok(!git.llamadas.some(c => c.startsWith('commit')));
+    assert.strictEqual(r.resultado, 'COMPLETADA');
+    assert.match(r.notas, /sin cambios en el working tree: no se commitea/);
+    assert.deepStrictEqual(m.llamadas, ['EN_PROGRESO', 'COMPLETADA']);
+  } finally { p.limpiar(); }
+});
+
+test('estado: una task no intentada no escribe: bloqueada, residuo al empezar, excepción en la comprobación', async () => {
+  const p = proyectoConTasks(['a', 'b']);
+  try {
+    const m = marcadorReal(p);
+    const bloqueada = await orq.ejecutarTask(tarea('b', ['ai_docs/tasks/a.md']),
+      [{ task_path: 'ai_docs/tasks/a.md', task_titulo: 'a', resultado: 'PARCIAL' }],
+      depsTask({ marcarEstado: m.marcarEstado }).deps);
+    assert.strictEqual(bloqueada.bloqueada, true);
+
+    const conResiduo = await orq.ejecutarTask(tarea('a'), [], depsTask({
+      marcarEstado: m.marcarEstado,
+      arbolLimpio: async () => ({ limpio: false, rutas: ['src/x.js'] }),
+    }).deps);
+    assert.strictEqual(conResiduo.resultado, 'FALLIDA');
+    assert.strictEqual(conResiduo.detener_recorrido, true);
+
+    const conExcepcion = await orq.ejecutarTask(tarea('a'), [], depsTask({
+      marcarEstado: m.marcarEstado,
+      arbolLimpio: async () => { throw new Error('git ausente'); },
+    }).deps);
+    assert.strictEqual(conExcepcion.resultado, 'FALLIDA');
+
+    assert.deepStrictEqual(m.llamadas, []);
+    assert.strictEqual(p.estado('a'), 'PENDIENTE');
+    assert.strictEqual(p.estado('b'), 'PENDIENTE');
+  } finally { p.limpiar(); }
+});
+
+test('estado: tras la parada del recorrido, las tasks no ejecutadas no escriben y siguen PENDIENTE', async () => {
+  const p = proyectoConTasks(['a', 'b', 'c']);
+  try {
+    const m = marcadorReal(p);
+    let comprobaciones = 0;
+    const { deps, visto } = depsTask({
+      marcarEstado: m.marcarEstado,
+      // La primera task encuentra el árbol limpio y deja residuo; la segunda lo ve y se detiene.
+      arbolLimpio: async () => (++comprobaciones === 1 ? { limpio: true, rutas: [] } : { limpio: false, rutas: ['src/a.js'] }),
+    });
+    const resultados = await orq.recorrerNiveles([tareas('a', 'b'), tareas('c')],
+      (t, prev) => orq.ejecutarTask(t, prev, deps));
+    assert.deepStrictEqual(visto.implementadas, ['a']);
+    assert.strictEqual(resultados[1].detener_recorrido, true);
+    assert.match(resultados[2].notas, /el recorrido se detuvo/);
+    assert.deepStrictEqual(m.llamadas, ['EN_PROGRESO', 'COMPLETADA']);
+    assert.strictEqual(p.estado('a'), 'COMPLETADA');
+    assert.strictEqual(p.estado('b'), 'PENDIENTE');
+    assert.strictEqual(p.estado('c'), 'PENDIENTE');
+  } finally { p.limpiar(); }
+});
+
+test('estado: un escritor que lanza no cambia el resultado de la task', async () => {
+  const { deps } = depsTask({ marcarEstado: () => { throw new Error('disco lleno'); } });
+  const r = await orq.ejecutarTask(tarea('a'), [], deps);
+  assert.strictEqual(r.resultado, 'COMPLETADA');
+});
+
+// ── marcarEstado sobre un fichero real ───────────────────────────────────────
+
+test('marcarEstado: reescribe solo el valor de la línea Estado, el resto byte a byte igual (LF y CRLF)', () => {
+  for (const eol of ['\n', '\r\n']) {
+    const p = proyectoConTasks([]);
+    try {
+      const original = docDeTask('a', eol);
+      escribirArchivo(p.dir, 'ai_docs/tasks/a.md', original);
+      assert.strictEqual(orq.marcarEstado('ai_docs/tasks/a.md', 'COMPLETADA', { cwd: p.dir }), true);
+      const despues = p.leer('a');
+      assert.strictEqual(despues, original.replace('**Estado:** PENDIENTE', '**Estado:** COMPLETADA'));
+      assert.ok(despues.includes('**Estado:** COMPLETADA' + eol));
+    } finally { p.limpiar(); }
+  }
+});
+
+test('marcarEstado: con dos líneas Estado propias cambia solo la última, aunque esté en el cuerpo; una mención en una frase no cuenta', () => {
+  const p = proyectoConTasks([]);
+  try {
+    const original = '# Task\n\n**Estado:** PENDIENTE\n\nEl texto dice que Estado: PENDIENTE es el inicio.\n\n'
+      + '## Notas\n\nEstado: PENDIENTE\n\nY otra vez Estado: PENDIENTE en una frase.\n';
+    escribirArchivo(p.dir, 'ai_docs/tasks/a.md', original);
+    orq.marcarEstado('ai_docs/tasks/a.md', 'EN_PROGRESO', { cwd: p.dir });
+    assert.strictEqual(p.leer('a'), original.replace('\nEstado: PENDIENTE\n', '\nEstado: EN_PROGRESO\n'));
+  } finally { p.limpiar(); }
+});
+
+test('marcarEstado: con el directorio en curso por debajo de la raíz encuentra el documento ascendiendo', () => {
+  const p = proyectoConTasks(['001_x']);
+  try {
+    const sub = path.join(p.dir, 'src', 'sub');
+    fs.mkdirSync(sub, { recursive: true });
+    assert.strictEqual(orq.marcarEstado('ai_docs/tasks/001_x.md', 'COMPLETADA', { cwd: sub }), true);
+    assert.strictEqual(p.estado('001_x'), 'COMPLETADA');
+  } finally { p.limpiar(); }
+});
+
+test('marcarEstado: fuera de ai_docs/tasks/ avisa y no escribe; la ruta aceptada cae dentro de RUTAS_FUERA', () => {
+  const p = proyectoConTasks(['a']);
+  try {
+    const fuera = '# Otro\n**Estado:** PENDIENTE\n';
+    escribirArchivo(p.dir, 'ai_docs/fuera.md', fuera);
+    const avisos = [];
+    const ok = orq.marcarEstado('../fuera.md', 'COMPLETADA',
+      { cwd: path.join(p.dir, 'ai_docs', 'tasks'), log: m => avisos.push(m) });
+    assert.strictEqual(ok, false);
+    assert.strictEqual(fs.readFileSync(path.join(p.dir, 'ai_docs', 'fuera.md'), 'utf8'), fuera);
+    assert.match(avisos.join('\n'), /fuera de ai_docs\/tasks/);
+
+    // La única ruta que acepta es un .md directamente en ai_docs/tasks/, que el commit nunca toma.
+    assert.strictEqual(orq.marcarEstado('ai_docs/tasks/a.md', 'EN_PROGRESO', { cwd: p.dir }), true);
+    const relativo = path.relative(p.dir, path.dirname(path.join(p.dir, 'ai_docs/tasks/a.md'))).split(path.sep).join('/');
+    assert.ok(orq.RUTAS_FUERA.includes(relativo), relativo + ' en RUTAS_FUERA');
+  } finally { p.limpiar(); }
+});
+
+test('marcarEstado: sin fichero o sin línea Estado avisa, no lanza y no crea ni inventa nada', () => {
+  const p = proyectoConTasks([]);
+  try {
+    const avisos = [];
+    const log = m => avisos.push(m);
+    assert.strictEqual(orq.marcarEstado('ai_docs/tasks/no_existe.md', 'COMPLETADA', { cwd: p.dir, log }), false);
+    assert.ok(!fs.existsSync(path.join(p.dir, 'ai_docs', 'tasks', 'no_existe.md')));
+
+    const sinEstado = '# Task\n\n**Dependencias:** Ninguna\n';
+    escribirArchivo(p.dir, 'ai_docs/tasks/b.md', sinEstado);
+    assert.strictEqual(orq.marcarEstado('ai_docs/tasks/b.md', 'COMPLETADA', { cwd: p.dir, log }), false);
+    assert.strictEqual(p.leer('b'), sinEstado);
+    assert.strictEqual(avisos.length, 2);
+    assert.match(avisos[0], /no existe/);
+    assert.match(avisos[1], /sin línea Estado/);
+  } finally { p.limpiar(); }
+});
+
+test('estado con git real, secuencial: EN_PROGRESO no entra en el commit de la task y COMPLETADA queda sin commitear', async () => {
+  const repo = repoTemporal();
+  try {
+    repo.escribir('base.txt', 'base\n');
+    repo.escribir('ai_docs/tasks/001_x.md', docDeTask('001_x'));
+    repo.g(['add', '-A']);
+    repo.g(['commit', '-q', '-m', 'base']);
+
+    const llamadas = [];
+    const r = await orq.ejecutarTask(tarea('001_x'), [], {
+      log: () => {},
+      marcarEstado: (ruta, estado) => { llamadas.push(estado); return orq.marcarEstado(ruta, estado, { cwd: repo.dir }); },
+      arbolLimpio: () => orq.comprobarArbolLimpio(repo.spawn),
+      implementar: async t => {
+        repo.escribir('a.txt', 'de la task\n');
+        return Object.assign(resultadoDe(t), { archivos_modificados: ['a.txt'], commit_message: 'feat: x' });
+      },
+      gateTests: async () => ({ estado: 'PASA', nota: 'verde' }),
+      revisarYComitear: (t, res) => orq.revisarYComitear(t, res, depsReales(repo.spawn, undefined)),
+      descartar: async () => {},
+    });
+
+    assert.strictEqual(r.resultado, 'COMPLETADA', r.notas);
+    assert.deepStrictEqual(llamadas, ['EN_PROGRESO', 'COMPLETADA']);
+    assert.strictEqual(repo.g(['show', '--name-only', '--format=', 'HEAD']), 'a.txt\n');
+    assert.match(fs.readFileSync(path.join(repo.dir, 'ai_docs/tasks/001_x.md'), 'utf8'), /^\*\*Estado:\*\* COMPLETADA$/m);
+    assert.strictEqual(repo.g(['status', '--porcelain', '--untracked-files=all']), ' M ai_docs/tasks/001_x.md\n');
+  } finally {
+    fs.rmSync(repo.dir, { recursive: true, force: true });
+  }
+});
+
+test('marcarEstado: una spec no se toca aunque esté en ai_docs/tasks/: avisa y queda byte a byte intacta', () => {
+  const p = proyectoConTasks([]);
+  try {
+    const spec = '# Spec: x\n\n**Estado:** APROBADA\n';
+    escribirArchivo(p.dir, 'ai_docs/tasks/spec_x.md', spec);
+    const avisos = [];
+    assert.strictEqual(orq.marcarEstado('ai_docs/tasks/spec_x.md', 'COMPLETADA',
+      { cwd: p.dir, log: m => avisos.push(m) }), false);
+    assert.strictEqual(fs.readFileSync(path.join(p.dir, 'ai_docs', 'tasks', 'spec_x.md'), 'utf8'), spec);
+    assert.match(avisos.join('\n'), /es una spec/);
+  } finally { p.limpiar(); }
+});

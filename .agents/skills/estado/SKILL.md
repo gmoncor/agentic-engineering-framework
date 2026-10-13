@@ -10,7 +10,7 @@ Muestra el estado actual del proyecto SDD.
 1. Lee todos los archivos en `ai_docs/tasks/`
 2. Clasifica cada archivo:
    - **Specs:** archivos con prefijo `spec_` — indica estado (BORRADOR / APROBADA)
-   - **Tasks:** archivos con prefijo numerico `NNN_` — indica estado, spec madre y el contenido de su campo **Dependencias:** (celda vacia si la task no lo declara). Las tasks `NNN_convergencia_<spec>.md` (generadas por la garantia de convergencia al cerrar una spec) se clasifican igual; para el resumen, cuenta cuantas tienen estado PENDIENTE
+   - **Tasks:** archivos con prefijo numérico `NNN_` — indica estado vigente (el valor de la última línea propia `Estado:` del documento: `PENDIENTE`, `EN_PROGRESO`, `COMPLETADA`, `PARCIAL`, `FALLIDA` o `BLOQUEADA_REVISION`), spec madre y el contenido de su campo **Dependencias:** (celda vacía si la task no lo declara). Las tasks `NNN_convergencia_<spec>.md` (generadas por la garantía de convergencia al cerrar una spec) se clasifican igual; para el resumen, cuenta cuántas tienen estado PENDIENTE
 3. Presenta un resumen con este formato:
 
 ```
@@ -28,11 +28,13 @@ Muestra el estado actual del proyecto SDD.
 
 ### Resumen
 - Specs activas: N
-- Tasks pendientes: N
+- Tasks por estado: PENDIENTE N · EN_PROGRESO N · COMPLETADA N · PARCIAL N · FALLIDA N · BLOQUEADA_REVISION N
 - Tasks de convergencia pendientes: N
-- Progreso real: el campo `Estado` de una task se escribe al crearla y ningun paso posterior lo actualiza (no se reescribe tras implementar ni revisar), asi que este comando no cuenta cuantas quedan resueltas o a medias; el progreso se lee del estado de la spec (BORRADOR / APROBADA) y de los commits del proyecto
+- Progreso real: N de M tasks COMPLETADA
 ```
+
+El recuento sale del estado vigente que escriben la skill `implementar-spec` y la skill `implementar`. Una task commiteada con una versión anterior del framework, que no escribía el estado, sigue `PENDIENTE`: contrasta las pendientes con los commits del proyecto antes de darlas por no implementadas. Una task en `EN_PROGRESO` es una implementación interrumpida o sin commit.
 
 4. Si `ai_docs/tasks/` esta vacio, indica que no hay specs ni tasks creadas y sugiere empezar con la skill `planificar` (o la skill `spec` si solo necesita crear una spec individual)
 5. Si hay specs aprobadas sin tasks, sugiere usar la skill `tareas` para derivarlas
-6. Si hay specs aprobadas con tasks pendientes, sugiere revisar los commits del proyecto para saber cuales estan implementadas
+6. Si hay specs aprobadas con tasks pendientes, sugiere revisar los commits del proyecto para confirmar cuáles siguen sin implementar

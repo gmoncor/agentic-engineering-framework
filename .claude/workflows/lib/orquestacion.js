@@ -1135,6 +1135,103 @@ function resultadoVacio(task, notas) {
   };
 }
 
+// ── Estado de la task en su documento ────────────────────────────────────────
+
+/** Niveles que se asciende desde el directorio en curso buscando la raíz del proyecto. */
+const MAX_ASCENSO = 10;
+
+/** Estados finales que se escriben tal cual; cualquier otro resultado se escribe FALLIDA. */
+const ESTADOS_FINALES = new Set(['COMPLETADA', 'PARCIAL', 'FALLIDA', 'BLOQUEADA_REVISION']);
+
+/**
+ * Línea `Estado:` propia, con el mismo patrón que el lector de estado vigente de
+ * los hooks (`headerFieldValues` en hooks/sdd-plan-state.js). El flag `d` da la
+ * posición exacta del valor para reescribir solo ese tramo. No se importa del
+ * hook: los dos directorios se instalan por separado.
+ */
+const LINEA_ESTADO_RE = /^\s*\*{0,2}Estado:\*{0,2}\s*(.+?)\s*$/dgim;
+
+/**
+ * Sustituye el valor de la última línea propia `Estado:` del texto completo, la
+ * misma que lee el estado vigente. Conserva la negrita, los espacios y el fin de
+ * línea (`\r\n` incluido). Devuelve `null` si no hay ninguna.
+ */
+function reescribirEstado(texto, estado) {
+  const coincidencias = Array.from(texto.matchAll(LINEA_ESTADO_RE));
+  if (coincidencias.length === 0) return null;
+  const tramo = coincidencias[coincidencias.length - 1].indices[1];
+  return texto.slice(0, tramo[0]) + estado + texto.slice(tramo[1]);
+}
+
+/**
+ * Ruta de la task en disco. `task.path` es relativo a la raíz del proyecto, que no
+ * es el directorio en curso si la sesión arrancó en un subdirectorio o en un
+ * worktree enlazado: se asciende, acotado, hasta el primer directorio donde
+ * exista. Devuelve `null` si no existe en ningún nivel.
+ */
+function resolverDocDeTask(ruta, cwd, sfs) {
+  const rel = rutaNativa(ruta);
+  if (path.isAbsolute(rel)) return sfs.existsSync(rel) ? rel : null;
+  let dir = path.resolve(cwd);
+  for (let i = 0; i < MAX_ASCENSO; i++) {
+    const candidato = path.resolve(dir, rel);
+    if (sfs.existsSync(candidato)) return candidato;
+    const padre = path.dirname(dir);
+    if (padre === dir) break;
+    dir = padre;
+  }
+  return null;
+}
+
+/**
+ * El documento es una task: un `.md` directamente en `ai_docs/tasks/` que no es
+ * una spec. El `Estado` de una spec (APROBADA) lo lee el guard de escrituras para
+ * localizar la spec activa; reescribirlo la dejaría sin spec.
+ */
+function dentroDeTasks(real) {
+  const tasks = path.dirname(real);
+  return real.endsWith('.md')
+    && !path.basename(real).startsWith('spec_')
+    && path.basename(tasks) === 'tasks'
+    && path.basename(path.dirname(tasks)) === 'ai_docs';
+}
+
+/**
+ * Escribe `estado` en el campo `Estado` del documento de la task. Es metadato:
+ * cualquier fallo (fichero inexistente, sin línea `Estado`, fuera de
+ * `ai_docs/tasks/`, error de lectura o escritura) registra un aviso, no lanza, no
+ * crea ni inventa nada y devuelve `false`.
+ *
+ * `opciones`: `cwd` (por defecto `process.cwd()`), `fs` (por defecto el módulo) y
+ * `log`. La ruta aceptada siempre cae dentro de RUTAS_FUERA, así que la escritura
+ * no entra en el commit de ninguna task.
+ */
+function marcarEstado(ruta, estado, opciones) {
+  const o = opciones || {};
+  const sfs = o.fs || fs;
+  const log = registrar(o);
+  const aviso = function (motivo) {
+    log('Aviso: no se escribe el estado ' + estado + ' en ' + ruta + ' (' + motivo + ')');
+    return false;
+  };
+  try {
+    const resuelta = resolverDocDeTask(ruta, o.cwd || process.cwd(), sfs);
+    if (!resuelta) return aviso('el documento no existe');
+    const real = sfs.realpathSync(resuelta);
+    if (!dentroDeTasks(real)) return aviso('no es una task: fuera de ai_docs/tasks/, no es .md o es una spec');
+
+    const bytes = sfs.readFileSync(real);
+    const texto = bytes.toString('utf8');
+    if (!Buffer.from(texto, 'utf8').equals(bytes)) return aviso('no es UTF-8 válido');
+    const nuevo = reescribirEstado(texto, estado);
+    if (nuevo === null) return aviso('sin línea Estado');
+    if (nuevo !== texto) sfs.writeFileSync(real, nuevo, 'utf8');
+    return true;
+  } catch (e) {
+    return aviso(e.message);
+  }
+}
+
 /**
  * El escape de emergencia degrada el bloqueo del gate de tests a aviso. Se lee
  * del entorno; `env` se inyecta para poder ejercitar las dos ramas sin tocar el
@@ -1197,14 +1294,42 @@ async function trasGateTests(task, resultado, deps) {
  * hermanas de su mismo nivel cuando el nivel se lanza a la vez.
  *
  * `deps`: `implementar`, `gateTests`, `revisarYComitear`, `descartar(task)`,
- * `log`, `env` y, solo en el recorrido secuencial, `arbolLimpio()`: antes de
- * implementar se comprueba que no queda residuo fuera de RUTAS_FUERA (devuelve
- * `{ limpio, rutas, error }`). Con residuo la task no se implementa y el
- * recorrido se detiene: su `add -A` lo commitearía como propio.
+ * `log`, `env`, `marcarEstado(ruta, estado)` (opcional; por defecto el escritor
+ * del módulo con el `log` de `deps`) y, solo en el recorrido secuencial,
+ * `arbolLimpio()`: antes de implementar se comprueba que no queda residuo fuera
+ * de RUTAS_FUERA (devuelve `{ limpio, rutas, error }`). Con residuo la task no se
+ * implementa y el recorrido se detiene: su `add -A` lo commitearía como propio.
+ *
+ * ESTADO DEL DOCUMENTO. Solo se escribe en una task que se intentó: `EN_PROGRESO`
+ * justo antes de implementar y, al retornar, el estado final, también tras una
+ * excepción. Una task bloqueada por dependencias o con residuo al empezar no se
+ * intentó: su documento sigue `PENDIENTE`, igual que el de las que no llegan a
+ * ejecutarse porque el recorrido se detuvo (`noEjecutada`).
  */
 async function ejecutarTask(task, resultadosPrevios, deps) {
   const d = deps || {};
   const log = registrar(d);
+  const intento = { iniciado: false };
+
+  const resultado = await intentarTask(task, resultadosPrevios, d, log, intento);
+  if (intento.iniciado) {
+    escribirEstado(task, ESTADOS_FINALES.has(resultado.resultado) ? resultado.resultado : 'FALLIDA', d, log);
+  }
+  return resultado;
+}
+
+/** Escribe el estado sin dejar que un fallo del escritor cambie el resultado de la task. */
+function escribirEstado(task, estado, d, log) {
+  try {
+    if (d.marcarEstado) d.marcarEstado(task.path, estado);
+    else marcarEstado(task.path, estado, { log });
+  } catch (e) {
+    log('Aviso: no se escribe el estado ' + estado + ' de ' + task.titulo + ' (' + e.message + ')');
+  }
+}
+
+/** Cuerpo de ejecutarTask; `intento.iniciado` queda en true al escribir EN_PROGRESO. */
+async function intentarTask(task, resultadosPrevios, d, log, intento) {
 
   const bloqueada = depsFallidas(task, resultadosPrevios);
   if (bloqueada.length > 0) {
@@ -1229,6 +1354,8 @@ async function ejecutarTask(task, resultadosPrevios, deps) {
       }
     }
 
+    escribirEstado(task, 'EN_PROGRESO', d, log);
+    intento.iniciado = true;
     log('Implementando: ' + task.titulo);
     const resultado = await d.implementar(task);
 
@@ -1498,6 +1625,7 @@ module.exports = {
   deltaEntreDiffs,
   revisarYComitear,
   depsFallidas,
+  marcarEstado,
   ejecutarTask,
   recorrerNiveles,
   resumirResultados,
