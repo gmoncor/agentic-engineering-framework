@@ -3,7 +3,7 @@
      frontmatter y lo que solo tiene sentido en formato de skill. -->
 ---
 name: tareas
-description: "Se activa cuando el usuario pide derivar o partir una spec aprobada en tasks granulares. Genera las tasks con su tabla de archivos afectados y sus dependencias."
+description: "Cuando hay una spec aprobada que derivar en tasks granulares: genera cada task con su tabla de archivos afectados y sus dependencias. El ciclo completo: planificar."
 ---
 
 Lee ademas la spec madre.

@@ -1,6 +1,6 @@
 ---
 name: estado
-description: "Se activa cuando el usuario pregunta como va el proyecto, que specs y tasks hay, o cual es el progreso. Resume el estado del pipeline SDD."
+description: "Cuando el usuario quiere saber cómo va el proyecto, qué specs y tasks hay o cuál es su progreso: resume el estado del pipeline SDD sin modificar nada."
 ---
 
 Muestra el estado actual del proyecto SDD.

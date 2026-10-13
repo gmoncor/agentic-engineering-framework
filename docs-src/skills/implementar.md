@@ -6,7 +6,7 @@
      hook. -->
 ---
 name: implementar
-description: "Se activa cuando el usuario pide implementar UNA task concreta del plan, con control manual. Escribe codigo y tests solo de los archivos que la task declara."
+description: "Cuando el usuario pide implementar UNA task concreta del plan con control manual: escribe código y tests solo de los archivos que la task declara. La spec completa: implementar-spec."
 ---
 
 Lee ademas la spec madre de la task.
