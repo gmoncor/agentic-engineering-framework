@@ -1,5 +1,6 @@
 ---
 description: "Implementa UNA task en orden secuencial"
+argument-hint: "[task NNN o descripción]"
 ---
 
 ANTES de implementar, verifica estos requisitos:

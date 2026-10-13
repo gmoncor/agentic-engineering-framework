@@ -1,5 +1,6 @@
 ---
 description: "Analiza un problema y recomienda la mejor solucion con opciones y trade-offs"
+argument-hint: "[problema o decisión]"
 ---
 
 Lee y sigue el proceso completo de `ai_docs/dev_templates/resolver_problema.md`.

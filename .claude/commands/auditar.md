@@ -1,5 +1,6 @@
 ---
 description: "Audita coherencia entre spec y tasks derivadas"
+argument-hint: "[spec o descripción de la auditoría]"
 ---
 
 Lee y sigue el proceso completo de `ai_docs/dev_templates/auditar_spec.md`.
