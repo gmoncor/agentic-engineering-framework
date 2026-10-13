@@ -1,6 +1,6 @@
 ---
 name: auditar
-description: "Se activa cuando el usuario pide auditar la coherencia entre una spec y sus tasks derivadas: cobertura, huecos, solapes y dependencias."
+description: "Cuando el usuario pide auditar la coherencia entre una spec y sus tasks derivadas: cobertura, huecos, solapes y dependencias. Dentro de planificar ya se audita."
 ---
 
 Lee y sigue el proceso completo de `ai_docs/dev_templates/auditar_spec.md`.

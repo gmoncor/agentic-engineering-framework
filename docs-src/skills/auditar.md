@@ -3,7 +3,7 @@
      frontmatter y lo que solo tiene sentido en formato de skill. -->
 ---
 name: auditar
-description: "Se activa cuando el usuario pide auditar la coherencia entre una spec y sus tasks derivadas: cobertura, huecos, solapes y dependencias."
+description: "Cuando el usuario pide auditar la coherencia entre una spec y sus tasks derivadas: cobertura, huecos, solapes y dependencias. Dentro de planificar ya se audita."
 ---
 
 Lee ademas la spec y todas sus tasks.

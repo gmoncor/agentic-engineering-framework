@@ -3,5 +3,5 @@
      ninguna capacidad ausente en estos backends. -->
 ---
 name: inicio
-description: "Se activa cuando el usuario quiere arrancar la documentacion inicial del proyecto (vision, planificacion tecnica, roadmap, setup de testing) sin copiar y pegar las plantillas a mano."
+description: "Cuando el usuario quiere arrancar la documentación inicial del proyecto (visión, planificación técnica, roadmap, setup de testing) sin copiar y pegar las plantillas a mano."
 ---

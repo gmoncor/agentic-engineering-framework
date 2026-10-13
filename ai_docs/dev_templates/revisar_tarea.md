@@ -161,9 +161,17 @@ Presenta al usuario un resumen de la revision:
 ### Ajustes propuestos al documento de task
 - [Ajuste 1 — que cambiar y por que]
 - [Ajuste 2 — que cambiar y por que]
+
+### Avisos (no bloquean)
+- [Duda sin evidencia — qué la resolvería]
 ```
 
 El veredicto va primero: quien lee el resultado decide con la primera línea y solo baja al detalle si lo necesita.
+
+Cuándo emitir cada veredicto:
+- **NECESITA_AJUSTES:** solo ante un hallazgo material con evidencia: una cita de la spec, de la task o del código que lo acredite.
+- **NECESITA_REPLANTEAMIENTO:** el enfoque de la task no cumple la spec.
+- **LISTO_PARA_IMPLEMENTAR:** no hay hallazgo material con evidencia. Una duda sin evidencia va como aviso, con lo que la resolvería, y no impide este veredicto.
 
 **PUNTO DE ESPERA (uso manual):**
 - DETENTE aqui y espera la respuesta del usuario
@@ -176,6 +184,6 @@ El veredicto va primero: quien lee el resultado decide con la primera línea y s
 
 1. **NUNCA implementes durante la revision** — esta plantilla es solo para analizar y proponer ajustes
 2. **NUNCA ignores dependencias faltantes** — si algo no existe y se necesita, detenerlo ahora cuesta minutos; descubrirlo durante implementacion cuesta horas
-3. **NUNCA aceptes un plan sin cuestionar** — tu trabajo es encontrar lo que se paso por alto, no confirmar que todo esta bien
+3. **Cuestiona el plan; bloquea solo lo que puedas demostrar** — tu trabajo es encontrar lo que se pasó por alto; una duda sin evidencia es un aviso, no un ajuste
 4. **Si la task es demasiado grande**, propone dividirla antes de aprobar la implementacion
 5. **SIEMPRE verifica coherencia con la spec madre** — una task desalineada con la spec es peor que no tener task
