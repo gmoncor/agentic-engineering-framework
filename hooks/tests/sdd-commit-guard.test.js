@@ -8,6 +8,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('fs');
 const path = require('path');
 const { runHook, tempDir, writeFile } = require('./helpers');
 const { commitWarnings, usesNoVerify } = require('../sdd-commit-rules');
@@ -221,3 +222,71 @@ test('gh pr create sin ai_docs/tasks/ -> sin aviso ni excepcion', () => {
 
   assert.ok(!warnings.some(w => /CONVERGENCE_PENDING/.test(w)));
 });
+
+// El mensaje de `git commit -F <ruta>` se lee del fichero, resuelto contra el directorio en curso:
+// estos tests fijan el cwd en un directorio temporal con el fichero de mensaje y lo borran al acabar.
+function conDirMensaje(fn) {
+  const dir = tempDir('sdd-commit-file-');
+  try {
+    return fn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('git commit -F con asunto de 80 caracteres -> warn COMMIT_SUBJECT_TOO_LONG', () => conDirMensaje(dir => {
+  writeFile(path.join(dir, 'msg.txt'), 'docs: ' + 'x'.repeat(74) + '\n');
+
+  const warnings = withCwd(dir, () => commitWarnings('git commit -F msg.txt'));
+
+  assert.ok(warnings.some(w => /COMMIT_SUBJECT_TOO_LONG: subject tiene 80 chars/.test(w)), warnings.join('\n'));
+}));
+
+test('git commit --file=<ruta> con Co-Authored-By de IA -> warn COMMIT_COAUTHOR_FORBIDDEN', () => conDirMensaje(dir => {
+  writeFile(path.join(dir, 'msg.txt'),
+    'fix: corrige el parseo\n\nEl parser perdia el ultimo campo.\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n');
+
+  const warnings = withCwd(dir, () => commitWarnings('git commit --file=msg.txt'));
+
+  assert.ok(warnings.some(w => /COMMIT_COAUTHOR_FORBIDDEN/.test(w)), warnings.join('\n'));
+}));
+
+test('git commit --file <ruta> y -F<ruta> pegado tambien se leen', () => conDirMensaje(dir => {
+  writeFile(path.join(dir, 'msg.txt'), 'nope: asunto con tipo invalido\n');
+
+  for (const cmd of ['git commit --file msg.txt', 'git commit -Fmsg.txt', 'git add . && git commit -F "msg.txt"']) {
+    const warnings = withCwd(dir, () => commitWarnings(cmd));
+    assert.ok(warnings.some(w => /COMMIT_TYPE_INVALID/.test(w)), cmd + ': ' + warnings.join('\n'));
+  }
+}));
+
+test('git commit -F a un fichero inexistente -> sin aviso de mensaje ni excepcion', () => conDirMensaje(dir => {
+  const warnings = withCwd(dir, () => commitWarnings('git commit -F no_existe.txt'));
+
+  assert.ok(!warnings.some(w => /COMMIT_/.test(w)), warnings.join('\n'));
+}));
+
+test('git commit -F - (stdin) -> sin aviso de mensaje', () => conDirMensaje(dir => {
+  writeFile(path.join(dir, '-'), 'nope: no debe leerse\n');
+
+  const warnings = withCwd(dir, () => commitWarnings('git commit -F -'));
+
+  assert.ok(!warnings.some(w => /COMMIT_/.test(w)), warnings.join('\n'));
+}));
+
+test('git commit -F con un mensaje correcto -> sin avisos', () => conDirMensaje(dir => {
+  writeFile(path.join(dir, 'msg.txt'),
+    '\nfix: corrige el parseo de "campos" con comillas\r\n\r\nEl parser perdia el ultimo campo.\r\n');
+
+  const warnings = withCwd(dir, () => commitWarnings('git commit -F msg.txt'));
+
+  assert.deepStrictEqual(warnings, []);
+}));
+
+test('-F de otro programa en el mismo comando no se lee como mensaje del commit', () => conDirMensaje(dir => {
+  writeFile(path.join(dir, 'msg.txt'), 'nope: no debe leerse\n');
+
+  const warnings = withCwd(dir, () => commitWarnings('grep -F msg.txt x; git commit'));
+
+  assert.deepStrictEqual(warnings, []);
+}));
