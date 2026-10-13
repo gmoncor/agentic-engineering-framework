@@ -12,6 +12,8 @@
  * En cada lectura registra la ruta en sdd-read-tracker.js (fichero por sesion).
  * En cada escritura consulta si esa ruta consta leida. El estado vive fuera del
  * proceso porque lectura y escritura son invocaciones distintas del hook.
+ * Una escritura completa (Write y equivalentes) también registra su ruta: el
+ * agente conoce lo que él mismo escribió, y editarlo después no avisa.
  *
  * DEGRADACION SEGURA (nunca falso positivo, nunca bloqueo):
  *   - Archivo nuevo (no existe en disco): no habia nada que leer -> no avisa.
@@ -61,6 +63,15 @@ const WRITE_TOOLS = new Set([
   'create_file',
 ]);
 
+// Escrituras que fijan el contenido entero del fichero (crear o sobrescribir), frente a las
+// parciales (Edit, replace_*), que modifican un contenido que el agente puede no conocer.
+const FULL_WRITE_TOOLS = new Set([
+  'Write',          // Claude Code
+  'write_file',     // Gemini CLI
+  'write_to_file',  // Antigravity CLI
+  'create_file',
+]);
+
 // Firma estable (ver hooks/gate-signatures.json). Este hook es advisory-only: nunca deniega, asi
 // que no existe una firma _BLOCK para el, solo esta _ADVISORY.
 const ADVISORY_FIRMA = '[SDD_READ_EDIT_ADVISORY] ';
@@ -103,19 +114,31 @@ async function main() {
   // Archivo nuevo, o ruta que no se puede situar en el proyecto: no habia nada que leer. La ruta
   // se ancla a la raiz del proyecto (resolveRepoPath, en sdd-plan-state.js) porque una comprobada
   // contra el directorio equivocado responde "no existe" en silencio y calla el aviso entero.
-  const resolved = resolveRepoPath(filePath, data.cwd);
-  if (!resolved || !fs.existsSync(resolved)) process.exit(0);
-
-  // resolveRepoPath es idempotente sobre una absoluta: se reutiliza la ya situada en vez de
+  // resolveRepoPath es idempotente sobre una absoluta: hasRead reutiliza la ya situada en vez de
   // volver a buscar la raiz del repositorio.
-  if (hasRead(sessionId, resolved)) process.exit(0);
+  const resolved = resolveRepoPath(filePath, data.cwd);
+  const exists = !!resolved && fs.existsSync(resolved);
+  const known = exists && hasRead(sessionId, resolved);
 
-  // Sin lectura de esta ruta. Solo se avisa si consta que el backend entrega
-  // lecturas: Claude Code siempre; los demas solo si ya hubo alguna lectura.
+  // Solo se avisa si consta que el backend entrega lecturas: Claude Code siempre; los demas solo
+  // si ya hubo alguna lectura. Se evalúa antes de registrar la escritura de abajo, que también
+  // cuenta para hasAnyRead.
   const backendDeliversReads = READ_RELIABLE_WRITE_TOOLS.has(call.name)
     || hasAnyRead(sessionId);
-  if (!backendDeliversReads) process.exit(0);
 
+  // Una escritura completa deja el contenido en manos del agente: la ruta pasa a ser conocida
+  // en la sesión, y el Edit posterior sobre lo que él mismo escribió no avisa. Se registra antes
+  // de las salidas tempranas porque crear un fichero es justo el caso que sale por «no existe».
+  // Solo cuando el backend entrega lecturas: en otro, el registro activaría hasAnyRead y con él
+  // avisos sobre ficheros cuya lectura el hook nunca llega a ver.
+  if (FULL_WRITE_TOOLS.has(call.name) && backendDeliversReads) {
+    trackRead(sessionId, filePath, data.cwd);
+  }
+
+  if (!exists || known || !backendDeliversReads) process.exit(0);
+
+  // El aviso se decide con el estado previo a esta escritura: sobrescribir un fichero existente
+  // sin leerlo sigue avisando, aunque la ruta quede ya registrada para el siguiente Edit.
   warn(advisory(filePath), call);
 }
 
