@@ -362,3 +362,34 @@ test('-F de otro programa en el mismo comando no se lee como mensaje del commit'
 
   assert.deepStrictEqual(warnings, []);
 }));
+
+// Palabras con comillas pegadas y alias en línea de git: los resuelve sdd-git-command.js, y el
+// guard los recibe ya como invocaciones de `git commit`. En proceso, sin lanzar el hook.
+
+test('usesNoVerify: un valor de -c con blanco entrecomillado no oculta el commit', () => {
+  assert.strictEqual(usesNoVerify("git -c user.name='a b' commit --no-verify"), true);
+});
+
+test('usesNoVerify: alias en línea con -n', () => {
+  assert.strictEqual(usesNoVerify("git -c alias.x='commit -n' x"), true);
+});
+
+test('usesNoVerify: alias en cadena hasta commit --no-verify', () => {
+  assert.strictEqual(usesNoVerify("git -c alias.x=y -c alias.y='commit --no-verify' x"), true);
+});
+
+test('usesNoVerify: alias con nombre en mayúsculas', () => {
+  assert.strictEqual(usesNoVerify('git -c alias.X=commit x --no-verify'), true);
+});
+
+test('usesNoVerify: un alias con nombre de builtin no tapa el commit, que sigue bloqueado', () => {
+  assert.strictEqual(usesNoVerify('git -c alias.commit=log commit --no-verify'), true);
+});
+
+test("git commit --file='msg.txt' (valor entrecomillado pegado) se lee como mensaje", () => conDirMensaje(dir => {
+  writeFile(path.join(dir, 'msg.txt'), 'docs: ' + 'x'.repeat(74) + '\n');
+
+  const warnings = withCwd(dir, () => commitWarnings("git commit --file='msg.txt'"));
+
+  assert.ok(warnings.some(w => /COMMIT_SUBJECT_TOO_LONG/.test(w)), warnings.join('\n'));
+}));
