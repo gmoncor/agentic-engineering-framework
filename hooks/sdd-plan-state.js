@@ -197,10 +197,13 @@ function denialReason(tasksDir, resolved) {
 
   return 'SDD: el archivo ' + resolved + ' no esta declarado en ninguna task de la spec activa. '
     + 'Puede ser porque ninguna task lo declara en su tabla, o porque la task que lo declara no '
-    + 'cita "Spec madre". Anadelo a la tabla "Archivos afectados" de la task correspondiente '
-    + '(| `ruta/al/archivo` | CREAR/MODIFICAR/ELIMINAR | descripcion |) y declara '
-    + '"Spec madre: spec_X.md" en esa task, '
-    + 'o usa SDD_GUARD_SKIP=1 como escape puntual de emergencia.';
+    + 'cita "Spec madre". '
+    + 'Si estás implementando una task: no amplíes su alcance; detente y reporta esta ruta como '
+    + 'desviación a quien planifica. '
+    + 'Si estás planificando: declara la ruta en la tabla "Archivos afectados" de la task '
+    + 'correspondiente (| `ruta/al/archivo` | CREAR/MODIFICAR/ELIMINAR | descripción |) y '
+    + '"Spec madre: spec_X.md" en esa task. '
+    + 'SDD_GUARD_SKIP=1 queda solo como escape puntual de emergencia.';
 }
 
 /**
@@ -217,7 +220,11 @@ function headerFieldValues(texto, nombre) {
   return Array.from(texto.matchAll(patron), m => m[1]);
 }
 
-/** Estado vigente de una spec: el valor del ULTIMO campo `Estado` en linea propia, o null si no hay. */
+/**
+ * Estado vigente de una spec o una task: el valor del ULTIMO campo `Estado` en línea propia del
+ * texto completo, o null si no hay. Es la misma línea que reescribe el escritor del estado de una
+ * task en el motor de workflows, así que lector y escritor miran siempre la misma.
+ */
 function estadoVigente(texto) {
   const valores = headerFieldValues(texto, 'Estado');
   return valores.length ? valores[valores.length - 1] : null;
@@ -392,6 +399,7 @@ module.exports = {
   isPlainObject,
   findTasksDir,
   denialReason,
+  estadoVigente,
   findApprovedSpecs,
   findTaskFiles,
   findActiveTaskFiles,

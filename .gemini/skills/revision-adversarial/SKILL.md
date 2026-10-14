@@ -1,9 +1,9 @@
 ---
 name: revision-adversarial
-description: "Se activa al completar la implementacion de todas las tasks de una spec. Revision esceptica del codigo implementado."
+description: "Cuando se pide revisar a mano el código de una spec implementado fuera de `implementar-spec`, que ya revisa cada task. Mismo método que `revision`: revisión escéptica del código implementado."
 ---
 
 Ejecuta la revision siguiendo `ai_docs/dev_templates/revision_adversarial.md`.
 
-Lee la spec y todas sus tasks completadas. Sigue todos los pasos de la plantilla sin saltarte ninguno.
+Lee la spec y todas sus tasks completadas. Aplica los pasos de la plantilla pertinentes al riesgo y declara con motivo los omitidos.
 Presenta el resultado con el formato especificado en la plantilla.

@@ -8,7 +8,7 @@
      motor de workflows, no un resultado del analisis previo. -->
 ---
 name: planificar
-description: "Se activa cuando el usuario quiere planificar trabajo nuevo, crear una spec, arrancar una funcionalidad o dice 'quiero anadir X'. Ciclo completo: analisis previo, spec, tasks, revision y auditoria."
+description: "Cuando el usuario pide trabajo nuevo de punta a punta: análisis previo, spec, tasks, revisión y auditoría cruzada. Solo la spec: spec; solo derivar tasks: tareas."
 source-body: omit
 ---
 

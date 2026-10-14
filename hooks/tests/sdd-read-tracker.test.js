@@ -43,6 +43,28 @@ function conReadsDir(dir, fn) {
 const { trackRead, loadReads, hasRead } = require('../sdd-read-tracker');
 const TRACKER_MODULE = require.resolve('../sdd-read-tracker');
 
+// Sin SDD_READS_DIR el rastreador vive en la subcarpeta propia del temporal,
+// no en su raíz. os.tmpdir() lee TMPDIR (TEMP/TMP en Windows) en cada llamada:
+// redirigirlo aísla la prueba del temporal real.
+test('trackRead: sin SDD_READS_DIR escribe en la subcarpeta propia del temporal', () => {
+  const raiz = fs.realpathSync(tempReadsDir());
+  const claves = ['SDD_READS_DIR', 'TMPDIR', 'TEMP', 'TMP'];
+  const previos = claves.map((k) => process.env[k]);
+  delete process.env.SDD_READS_DIR;
+  for (const k of ['TMPDIR', 'TEMP', 'TMP']) process.env[k] = raiz;
+  try {
+    trackRead('sesion-defecto', path.join(raiz, 'archivo.js'));
+    assert.strictEqual(fs.existsSync(path.join(raiz, typeof process.getuid === 'function' ? 'sdd-hooks-' + process.getuid() : 'sdd-hooks', 'sdd-reads-sesion-defecto.jsonl')), true);
+    assert.strictEqual(fs.existsSync(path.join(raiz, 'sdd-reads-sesion-defecto.jsonl')), false);
+  } finally {
+    claves.forEach((k, i) => {
+      if (previos[i] === undefined) delete process.env[k];
+      else process.env[k] = previos[i];
+    });
+    fs.rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
 test('trackRead: al registrar una lectura, purga ficheros sdd-reads-* de otras sesiones con mas de 24h', () => {
   const dir = tempReadsDir();
   const viejo = path.join(dir, 'sdd-reads-sesion-vieja.jsonl');

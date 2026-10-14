@@ -33,7 +33,7 @@ entre. Tambien puedes nombrarla explicitamente.
 | `implementar-spec` | 4 | Implementa las tasks de una spec + revision adversarial |
 | `implementar` | 4 | Implementa UNA task individual (control manual) |
 | `revision` | 5 | Revision adversarial post-implementacion (paso aislado) |
-| `revision-adversarial` | 5 | Revision esceptica del codigo entregado |
+| `revision-adversarial` | — | Revisión escéptica a mano del código implementado fuera de `implementar-spec`, que ya revisa cada task |
 | `revisar-tarea` | 2 | Revision de un documento de task antes de implementarlo |
 | `estado` | — | Estado del proyecto: specs, tasks, progreso |
 | `asesor` | — | Analiza un problema, evalua opciones y recomienda |
@@ -51,14 +51,28 @@ entre. Tambien puedes nombrarla explicitamente.
 | `planificador` | Crea specs, deriva tasks | Pasos 1-2 |
 | `revisor` | Revisa tasks y hace revision adversarial (esceptico) | Pasos 2, 5 |
 | `implementador` | Ejecuta UNA task individual (codigo + tests) | Paso 4 |
-| `asesor` | Analiza problemas, evalua opciones, recomienda (read-only) | Cualquier momento |
+| `asesor` | Analiza problemas, evalua opciones, recomienda | Cualquier momento |
 
 Definidos en `.codex/agents/*.toml` (Codex) y en `.agents/plugins/sdd/agents/*.md` (Antigravity
 CLI). El asesor corre en modo solo lectura; los demas pueden escribir dentro del espacio de
 trabajo.
 
-En estos backends el `implementador` tambien commitea (codigo + tests + commit); el nucleo solo
-declara codigo + tests.
+Dentro de `implementar-spec`, el commit lo crea la sesión tras APROBADA; con `implementar` manual,
+lo decide el usuario.
+
+## Delegación y esperas (solo Codex)
+
+Solo para Codex; nombres de herramienta verificados en codex-cli 0.162.1.
+
+- Un subagente se lanza con `spawn_agent` y su parámetro `agent_type`. Que `agent_type` sea el
+  `name` de `.codex/agents/<rol>.toml` no está verificado.
+- Cada subagente lanzado se espera una vez con `wait_agent` (en v1, la estable, recibe `targets`; en
+  `multi_agent_v2` solo acepta `timeout_ms`); no se sondea su estado.
+- Cada ronda de revisión usa un `revisor` nuevo: no se reutiliza el de la ronda anterior.
+- Para seguir hablando con un subagente vivo, la herramienta es `send_input`; `send_message` solo
+  existe con `multi_agent_v2` (`--enable multi_agent_v2`).
+- Un comando que termina solo se ejecuta en una llamada síncrona, sin bucles de espera ni sondeo; si
+  su salida es larga, se redirige a un fichero y se lee el resumen.
 
 ## Estructura de archivos
 
@@ -133,10 +147,11 @@ documenta como traer los cambios del framework a un proyecto ya instalado, sin t
 |------|---------|----------|
 | `hooks/sdd-pipeline-guard-codex.js` | Antes de aplicar un parche | **Deniega** escribir un archivo que ninguna task de una spec APROBADA declara |
 | `hooks/sdd-commit-guard-codex.js` | Antes de ejecutar un comando | **Deniega** `git commit --no-verify` y `git push --no-verify`; avisa de commits mal formados |
-| `hooks/sdd-session-start.js` | Al arrancar la sesion | No enforcea nada: **escribe**. Anade una linea al registro de sesiones (`ai_docs/audits/provenance.jsonl`) con directorio de trabajo, rama, commit, modelo de la sesion y hashes de los componentes instalados |
+| `hooks/sdd-session-start.js` | Al arrancar la sesion | No enforcea nada: **escribe**. Anade una linea al registro de sesiones (`ai_docs/audits/provenance.jsonl`) con directorio de trabajo, rama, commit, el modelo de la sesión si el CLI lo envía en el arranque (si no, `null`) y hashes de los componentes instalados |
 
 Registrados en `.codex/hooks.json`. Refuerzo adicional: la regla de politica de ejecucion
-`.codex/rules/sdd-enforcement.rules` prohibe los mismos comandos de bypass.
+`.codex/rules/sdd-enforcement.rules` prohibe los mismos comandos de bypass; cada regla da su motivo
+en `justification` (un parámetro que `prefix_rule` no reconoce impide arrancar Codex).
 
 **El registro de sesiones se apaga con una clave.** `sdd-session-start.js` viene activo y escribe
 una linea por arranque de sesion en un fichero dentro de tu repositorio. Para que deje de escribir:
@@ -218,9 +233,9 @@ herramienta que llega al hook coincide con los del matcher.
 Ningun modelo esta impuesto por el framework: el modelo es tuyo y depende de tu cuenta y tu
 presupuesto.
 
-- **Codex:** `.codex/config.toml` trae `model = "o4-mini"` como punto de partida razonable. Subelo
-  si la planificacion se te queda corta — es el paso donde el framework se juega la calidad — y
-  dejalo bajo para el trabajo mecanico.
+- **Codex:** `.codex/config.toml` trae `model = "gpt-5.5"`, que figura en el catálogo de codex-cli
+  0.162.1. El catálogo cambia con cada versión: `codex debug models` lista los modelos que reconoce
+  la tuya. Sube el modelo si la planificación se te queda corta y bájalo para el trabajo mecánico.
 - **Antigravity:** la CLI usa el modelo que tengas seleccionado; el framework no lo fija.
 
 ## Estilo
@@ -232,6 +247,27 @@ presupuesto.
 
 - Nada de adular ni de rellenar.
 - Sin coautoria de IA en el mensaje.
+
+## Coste de la verificación
+
+Un test, un hook o un job de CI se decide por riesgo y por coste: en qué punto del ciclo corre, quién espera y cuánto cuesta medido, no supuesto. Va en el punto más barato que aún atrapa el riesgo; el mismo check dos veces se paga dos veces. Ese cálculo mueve o acota una verificación, nunca deja un riesgo sin cubrir.
+
+## Operativa y esperas
+
+- Informes y respuestas finales: el veredicto primero, sin narrar el proceso seguido.
+- Salida filtrada en origen con las opciones del propio comando (formato, límite, `--stat`), no recortada después.
+- Texto con comillas, multilínea o código va a un fichero temporal fuera del árbol de trabajo y se pasa por ruta absoluta literal, sin variables (`git commit -F <fichero>`), no citado en la orden; quien crea el fichero lo retira al terminar.
+- Un comando que termina solo: una llamada con timeout si tu herramienta lo admite. Uno largo (CI, despliegue, servidor): el mecanismo de segundo plano del backend, si figura en tus herramientas. Nunca bucles `sleep`/`until` ni `tail -f`.
+- Todo proceso propio se detiene antes de cerrar; nunca uno ajeno.
+
+## Dónde va cada cosa
+
+| Dónde | Qué guarda |
+|-------|------------|
+| Instrucciones raíz (este fichero) | Reglas y convenciones del proyecto |
+| `ai_docs/core/` | Decisiones que condicionan trabajo futuro, con su porqué |
+| Task doc | Alcance de una task: qué cambia y cómo se valida |
+| Memoria del agente | Solo lo no derivable del código ni de los documentos |
 
 ## Limites del framework
 

@@ -165,6 +165,21 @@ Minimo 3:
 - [ ] Si la task toca acceso a datos: volumen esperado, índice para cada filtro nuevo, plan de ejecución de la consulta y secuencia add → backfill → drop si cambia el esquema.
 ```
 
+**Ciclo de vida del campo `Estado`:**
+
+| Estado | Lo escribe | Cuándo |
+|--------|------------|--------|
+| `PENDIENTE` | Planificador (esta plantilla) | Al crear la task. Nadie lo toca si la task no se intentó: bloqueada por dependencias no completadas, con residuo en el árbol al empezar o no ejecutada porque el recorrido se detuvo |
+| `EN_PROGRESO` | `/implementar-spec` o `/implementar` | Justo antes de lanzar la implementación |
+| `COMPLETADA` | `/implementar-spec` o `/implementar` | Tras el commit de la task con la revisión aprobada. Única excepción: un diff vacío legítimo (sin cambios ni ficheros declarados como modificados), que se cierra sin commit |
+| `PARCIAL` | `/implementar-spec` o `/implementar` | La implementación se entrega a medias; su trabajo se aparta o se conserva |
+| `FALLIDA` | `/implementar-spec` o `/implementar` | Gate de tests en rojo, revisión adversa sin escalado, excepción o fallo de git |
+| `BLOQUEADA_REVISION` | `/implementar-spec` | Tope de rondas de corrección agotado y decisión escalada al usuario |
+
+El campo vigente es la última línea propia `Estado:` del documento: no escribas otra
+en el cuerpo ni lo edites a mano salvo en `/implementar`. Solo `COMPLETADA` satisface
+una dependencia.
+
 **Reglas para cada task:**
 - El titulo debe ser accionable: "Crear endpoint de registro" no "Registro"
 - Minimo 3 casos limite por task si involucra logica de negocio

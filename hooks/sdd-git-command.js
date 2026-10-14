@@ -20,13 +20,78 @@ const path = require('path');
  * Limite conocido: no evalua sustitucion de comandos ni expansion de variables. `git -c k=$(echo v)
  * commit` o `eval "$CMD"` no se resuelven -- el modulo no ejecuta nada, y un guard que ejecutara el
  * comando para decidir si bloquearlo seria peor que el problema que resuelve.
+ *
+ * Contrato de cada invocación (`invocaciones`):
+ *   - `programa`, `palabras`, `flags`: lo que el programa recibe como argv, separado en flags (tokens
+ *     sin comillas que empiezan por "-") y el resto.
+ *   - `entorno`: las asignaciones de cabeza (`NOMBRE=valor git ...`) como pares `[nombre, valor]`.
+ *   - `globales`: las opciones con valor separado (`-c`, `-C`, `--git-dir`...) que van entre el
+ *     programa y su primera palabra, como pares `[opción, valor]`. Las posteriores no entran: en
+ *     `git commit -C HEAD`, `-C` es una opción de `commit`, no un directorio.
+ *   - `separadorAntes` / `separadorDespues`: el separador sin comillas que la precede y el que la
+ *     sigue (`&&`, `||`, `;`, `|`, `&`, salto de línea), o `null` al principio o al final del script.
+ *   - `grupos`: identificadores de los grupos abiertos que la contienen, del más externo al más
+ *     interno (`( )`, `{ }`, `if … fi`, `while`/`until`/`for … done`), o `null` si las aperturas y
+ *     cierres de su script no cuadran.
+ *   - `script`: identificador del script; `0` en el nivel superior, uno propio por cada `bash -c`,
+ *     cuerpo de función o alias de git con `!`.
+ *   - `incompleta`: solo existe, con valor `true`, en la invocación que sustituye a un cuerpo de
+ *     función no analizado por el tope de anidamiento (ver abajo).
+ * Un alias en línea (`git -c alias.x=commit x`) añade la invocación expandida y conserva la
+ * original. La llamada a una función sigue tres reglas:
+ *   1. La invocación original se conserva: la llamada se analiza como invocación ordinaria y el
+ *      cuerpo se añade, igual que un alias. `git() { command git "$@"; }; git commit -n` sigue
+ *      siendo un `git commit` con `-n`.
+ *   2. Cada cuerpo se expande como mucho una vez por orden (por identidad del cuerpo, no por
+ *      nombre): una segunda llamada no aporta invocaciones nuevas, porque el cuerpo no depende de
+ *      los argumentos. Así terminan la recursión directa y la mutua, y el coste es lineal.
+ *   3. Con más de PROFUNDIDAD_MAXIMA_DE_FUNCIONES expansiones anidadas el cuerpo no se analiza: en
+ *      su lugar se añade una invocación `git commit` con `--no-verify` en `flags` e
+ *      `incompleta: true`, que hereda el contexto del punto de llamada (`script`, separadores y
+ *      `grupos`). Lo que no puede analizarse cuenta como un commit posible.
+ * El módulo no decide nada con estos campos: los consumen los hooks.
  */
+
+// Builtins de git (`git --list-cmds=builtins`, git 2.43.0, 140 nombres). git ignora un alias cuyo
+// nombre es un builtin (`git -c alias.status=log status` ejecuta `status`), así que un subcomando
+// de esta lista nunca se expande. Si falta un builtin posterior, solo se añade una invocación de
+// más: la original se conserva siempre.
+const SUBCOMANDOS_BUILTIN_DE_GIT = new Set([
+  'add', 'am', 'annotate', 'apply', 'archive', 'bisect', 'blame', 'branch', 'bugreport', 'bundle',
+  'cat-file', 'check-attr', 'check-ignore', 'check-mailmap', 'check-ref-format', 'checkout',
+  'checkout--worker', 'checkout-index', 'cherry', 'cherry-pick', 'clean', 'clone', 'column', 'commit',
+  'commit-graph', 'commit-tree', 'config', 'count-objects', 'credential', 'credential-cache',
+  'credential-cache--daemon', 'credential-store', 'describe', 'diagnose', 'diff', 'diff-files',
+  'diff-index', 'diff-tree', 'difftool', 'fast-export', 'fast-import', 'fetch', 'fetch-pack',
+  'fmt-merge-msg', 'for-each-ref', 'for-each-repo', 'format-patch', 'fsck', 'fsck-objects',
+  'fsmonitor--daemon', 'gc', 'get-tar-commit-id', 'grep', 'hash-object', 'help', 'hook', 'index-pack',
+  'init', 'init-db', 'interpret-trailers', 'log', 'ls-files', 'ls-remote', 'ls-tree', 'mailinfo',
+  'mailsplit', 'maintenance', 'merge', 'merge-base', 'merge-file', 'merge-index', 'merge-ours',
+  'merge-recursive', 'merge-recursive-ours', 'merge-recursive-theirs', 'merge-subtree', 'merge-tree',
+  'mktag', 'mktree', 'multi-pack-index', 'mv', 'name-rev', 'notes', 'pack-objects', 'pack-redundant',
+  'pack-refs', 'patch-id', 'pickaxe', 'prune', 'prune-packed', 'pull', 'push', 'range-diff',
+  'read-tree', 'rebase', 'receive-pack', 'reflog', 'remote', 'remote-ext', 'remote-fd', 'repack',
+  'replace', 'rerere', 'reset', 'restore', 'rev-list', 'rev-parse', 'revert', 'rm', 'send-pack',
+  'shortlog', 'show', 'show-branch', 'show-index', 'show-ref', 'sparse-checkout', 'stage', 'stash',
+  'status', 'stripspace', 'submodule--helper', 'switch', 'symbolic-ref', 'tag', 'unpack-file',
+  'unpack-objects', 'update-index', 'update-ref', 'update-server-info', 'upload-archive',
+  'upload-archive--writer', 'upload-pack', 'var', 'verify-commit', 'verify-pack', 'verify-tag',
+  'version', 'whatchanged', 'worktree', 'write-tree',
+]);
+
+// Tope de expansiones de función anidadas (regla 3 de la cabecera). Una cadena de funciones
+// distintas no repite cuerpo, así que la regla 2 no la corta; sin tope agotaría la pila. Una orden
+// legítima no anida tantas funciones. En sdd-turn-budget.js la invocación por tope cuenta como un
+// commit y reinicia el contador del agente, pero eso no abre un camino nuevo: cualquier `git
+// commit` lo reinicia ya, aunque falle.
+const PROFUNDIDAD_MAXIMA_DE_FUNCIONES = 32;
 
 // Separadores de shell que no van entrecomillados: parten la lista de tokens en invocaciones.
 const SEPARADORES = new Set(['&&', '||', ';', '|', '&', '\n']);
 
 // Asignacion de entorno al inicio de una invocacion (FOO=bar git commit): no es el programa.
 const ASIGNACION_ENTORNO_RE = /^[A-Za-z_][A-Za-z0-9_]*=/;
+const ASIGNACION_ENTORNO_CAPTURA_RE = /^([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/;
 
 // Opciones globales de git/gh que consumen el token siguiente como valor, en su forma SIN "=".
 // Con "=" el valor va pegado al propio token (--git-dir=/x) y no hace falta saltar nada.
@@ -166,16 +231,20 @@ function retirarHeredocs(cmd) {
 
 const ES_SEPARADOR_UN_CHAR = ch => ch === ';' || ch === '|' || ch === '&' || ch === '(' || ch === ')';
 const ES_BLANCO = ch => ch === ' ' || ch === '\t' || ch === '\r';
-const CORTA_PALABRA = ch => ES_BLANCO(ch) || ch === '\n' || ch === '"' || ch === "'" || ES_SEPARADOR_UN_CHAR(ch);
+const CORTA_PALABRA = ch => ES_BLANCO(ch) || ch === '\n' || ES_SEPARADOR_UN_CHAR(ch);
 
 /**
  * tokenizar(cmd) -> [{ valor, entrecomillado }]
  *
- * Respeta comillas simples y dobles (el contenido entre comillas es UN token, marcado
- * entrecomillado). Una comilla sin cerrar cierra al final de la cadena: el resto de la entrada
- * se convierte en un unico token entrecomillado, de modo que los flags anteriores a la comilla
- * abierta siguen contando y la comilla no se vuelve una via de evasion. No lanza ante entrada
- * vacia, solo espacios, o comillas sin cerrar.
+ * Forma las palabras como el shell: las piezas adyacentes sin blanco entre ellas (texto sin
+ * comillas, `'…'` y `"…"`) son UN token, con las comillas retiradas (`alias.x='commit -n'` da
+ * `alias.x=commit -n`). `entrecomillado` vale true solo si todas las piezas iban entre comillas:
+ * basta una sin comillas para que valga false, porque el shell quita las comillas y una palabra
+ * mixta que empieza por "-" (`"--no-"verify`) llega al programa como flag. Los separadores solo
+ * cortan la palabra fuera de comillas. Una comilla sin cerrar cierra al final de la cadena: la
+ * pieza abierta llega hasta el final de la entrada, de modo que los flags anteriores a la comilla
+ * siguen contando y la comilla no se vuelve una vía de evasión. No lanza ante entrada vacía, solo
+ * espacios, o comillas sin cerrar.
  */
 function tokenizar(cmd) {
   const fuente = retirarHeredocs(String(cmd || ''));
@@ -192,40 +261,44 @@ function tokenizar(cmd) {
     if (ch === '|' && fuente[i + 1] === '|') { tokens.push({ valor: '||', entrecomillado: false }); i += 2; continue; }
     if (ES_SEPARADOR_UN_CHAR(ch)) { tokens.push({ valor: ch, entrecomillado: false }); i += 1; continue; }
 
-    // Comillas simples: literal hasta el cierre, sin procesar escapes (asi las trata la shell).
-    if (ch === "'") {
-      let j = i + 1;
-      while (j < n && fuente[j] !== ch) j += 1;
-      tokens.push({ valor: fuente.slice(i + 1, j), entrecomillado: true });
-      i = j < n ? j + 1 : n;
-      continue;
-    }
-
-    // Comillas dobles: `\"` y `\\` son escapes reales dentro de un string entrecomillado (asi los
-    // resuelve la shell antes de que el programa reciba el argumento). Sin desescaparlos, la
-    // PRIMERA comilla escapada de un script anidado (`bash -lc "git commit -m \"x\""`) se lee como
-    // el cierre real, partiendo el script a mitad de camino -- el resto deja de tokenizarse como
-    // la invocacion de git que es.
-    if (ch === '"') {
-      let j = i + 1;
-      let valor = '';
-      while (j < n && fuente[j] !== '"') {
-        if (fuente[j] === '\\' && j + 1 < n && (fuente[j + 1] === '"' || fuente[j + 1] === '\\')) {
-          valor += fuente[j + 1];
-          j += 2;
-        } else {
-          valor += fuente[j];
-          j += 1;
-        }
-      }
-      tokens.push({ valor, entrecomillado: true });
-      i = j < n ? j + 1 : n;
-      continue;
-    }
-
+    let valor = '';
+    let todasEntrecomilladas = true;
     let j = i;
-    while (j < n && !CORTA_PALABRA(fuente[j])) j += 1;
-    tokens.push({ valor: fuente.slice(i, j), entrecomillado: false });
+    while (j < n && !CORTA_PALABRA(fuente[j])) {
+      // Comillas simples: literal hasta el cierre, sin procesar escapes (asi las trata la shell).
+      if (fuente[j] === "'") {
+        let k = j + 1;
+        while (k < n && fuente[k] !== "'") k += 1;
+        valor += fuente.slice(j + 1, k);
+        j = k < n ? k + 1 : n;
+        continue;
+      }
+
+      // Comillas dobles: `\"` y `\\` son escapes reales dentro de un string entrecomillado (asi los
+      // resuelve la shell antes de que el programa reciba el argumento). Sin desescaparlos, la
+      // PRIMERA comilla escapada de un script anidado (`bash -lc "git commit -m \"x\""`) se lee
+      // como el cierre real, partiendo el script a mitad de camino -- el resto deja de
+      // tokenizarse como la invocacion de git que es.
+      if (fuente[j] === '"') {
+        let k = j + 1;
+        while (k < n && fuente[k] !== '"') {
+          if (fuente[k] === '\\' && k + 1 < n && (fuente[k + 1] === '"' || fuente[k + 1] === '\\')) {
+            valor += fuente[k + 1];
+            k += 2;
+          } else {
+            valor += fuente[k];
+            k += 1;
+          }
+        }
+        j = k < n ? k + 1 : n;
+        continue;
+      }
+
+      valor += fuente[j];
+      todasEntrecomilladas = false;
+      j += 1;
+    }
+    tokens.push({ valor, entrecomillado: todasEntrecomilladas });
     i = j;
   }
 
@@ -291,6 +364,113 @@ function extraerFunciones(tokens) {
 }
 
 /**
+ * Índice del primer token de `seg` tras el prefijo de asignaciones/sintaxis/envoltorios: el
+ * `programa` de la invocación, o `seg.length` si el segmento es solo prefijo.
+ */
+function finDelPrefijo(seg) {
+  let idx = 0;
+  while (idx < seg.length) {
+    const tok = seg[idx];
+    if (!tok.entrecomillado) {
+      const salto = saltarEnvoltorioConValor(seg, idx);
+      if (salto !== null) { idx = salto; continue; }
+    }
+    if (esPrefijoDescartable(tok)) { idx += 1; continue; }
+    break;
+  }
+  return idx;
+}
+
+function nuevoScript(estado) {
+  estado.scripts += 1;
+  return estado.scripts;
+}
+
+function invocacion(programa, palabras, flags, entorno, globales, ctx) {
+  return {
+    programa,
+    palabras,
+    flags,
+    entorno,
+    globales,
+    separadorAntes: ctx.antes,
+    separadorDespues: ctx.despues,
+    grupos: ctx.grupos ? [...ctx.grupos] : null,
+    script: ctx.script,
+  };
+}
+
+// Alias en línea de las `-c` anteriores al subcomando: nombre (en minúsculas, como lo normaliza
+// git) -> valor. Una definición posterior del mismo nombre sustituye a la anterior, como en git.
+function aliasesDe(globales) {
+  const aliases = new Map();
+  for (const [opcion, valor] of globales) {
+    if (opcion !== '-c' || typeof valor !== 'string') continue;
+    const igual = valor.indexOf('=');
+    if (igual === -1) continue;
+    const clave = valor.slice(0, igual).toLowerCase();
+    if (clave.startsWith('alias.') && clave.length > 'alias.'.length) {
+      aliases.set(clave.slice('alias.'.length), valor.slice(igual + 1));
+    }
+  }
+  return aliases;
+}
+
+/**
+ * Invocaciones que añade un alias en línea de git (`git -c alias.x='commit -n' x`). El subcomando
+ * se expande solo si no es un builtin, y la cadena (`alias.x=y`, `alias.y=commit`) se sigue hasta
+ * un builtin o una palabra sin alias; los argumentos de cada paso se acumulan delante de los que
+ * seguían al subcomando. Un nombre repetido es un bucle, que git rechaza: no se añade nada. Un
+ * alias con `!` es un script de shell propio, sin las `globales` de la original.
+ */
+function expandirAlias(original, seg, idxSubcomando, ctx) {
+  const aliases = aliasesDe(original.globales);
+  if (aliases.size === 0) return [];
+
+  const subcomando = seg[idxSubcomando];
+  if (SUBCOMANDOS_BUILTIN_DE_GIT.has(subcomando.valor)) return [];
+
+  const visitados = new Set();
+  let actual = subcomando;
+  const pasos = [];
+  let scriptDeShell = null;
+  for (;;) {
+    const nombre = actual.valor.toLowerCase();
+    if (!aliases.has(nombre)) break;
+    if (visitados.has(nombre)) return [];
+    visitados.add(nombre);
+
+    const definicion = aliases.get(nombre);
+    if (definicion.startsWith('!')) { scriptDeShell = definicion.slice(1); break; }
+    const tokens = tokenizar(definicion);
+    if (tokens.length === 0) return [];
+    pasos.push(tokens.slice(1));
+    actual = tokens[0];
+    if (SUBCOMANDOS_BUILTIN_DE_GIT.has(actual.valor)) break;
+  }
+  if (visitados.size === 0) return [];
+
+  // Cada paso va delante de los anteriores: se recorren en orden inverso una sola vez.
+  const delante = pasos.reverse().flat();
+  const argumentos = seg.slice(idxSubcomando + 1);
+  if (scriptDeShell !== null) {
+    const anidado = extraerFunciones([...tokenizar(scriptDeShell), ...delante, ...argumentos]);
+    return invocacionesDeTokens(anidado.tokens, anidado.funciones, ctx.estado, nuevoScript(ctx.estado));
+  }
+
+  const expandidas = parseSegmento(
+    [{ valor: 'git', entrecomillado: false }, actual, ...delante, ...argumentos],
+    ctx,
+  );
+  for (const inv of expandidas) {
+    if (inv.script !== ctx.script) continue;
+    inv.entorno = original.entorno.map(par => [...par]);
+    inv.globales = [...original.globales.map(par => [...par]), ...inv.globales];
+  }
+  return expandidas;
+}
+
+/**
  * Una invocacion (descarta el prefijo de asignaciones/sintaxis/envoltorios en cabeza de
  * segmento, toma el primer token restante como `programa`, y recorre el resto acumulando en
  * `flags` los tokens NO entrecomillados que empiezan por "-" y en `palabras` los demas). Las
@@ -303,77 +483,176 @@ function extraerFunciones(tokens) {
  * no en el patron mismo (que puede citar "git commit" como texto sin ser una invocacion). Se
  * localiza el primer `)` no entrecomillado del segmento y se re-analiza todo lo posterior.
  *
- * Si la cabeza de segmento es un nombre registrado en `funciones` (ver extraerFunciones), la
- * invocacion real es la de su cuerpo: se re-analiza el cuerpo guardado en vez del segmento.
+ * Si la cabeza de segmento es un nombre registrado en `funciones` (ver extraerFunciones), se
+ * añaden las invocaciones de su cuerpo (ver invocacionesDeFuncion) y el segmento sigue
+ * analizándose como invocación ordinaria.
+ *
+ * `ctx` lleva las funciones, el estado de identificadores, el script, los separadores y los
+ * grupos que heredan las invocaciones de este segmento.
  */
-function parseSegmento(seg, funciones = new Map()) {
-  let idx = 0;
-  while (idx < seg.length) {
-    const tok = seg[idx];
-    if (!tok.entrecomillado) {
-      const salto = saltarEnvoltorioConValor(seg, idx);
-      if (salto !== null) { idx = salto; continue; }
-    }
-    if (esPrefijoDescartable(tok)) { idx += 1; continue; }
-    break;
-  }
+function parseSegmento(seg, ctx) {
+  const { funciones, estado } = ctx;
+  let idx = finDelPrefijo(seg);
   if (idx >= seg.length) return [];
+
+  const entorno = [];
+  for (const tok of seg.slice(0, idx)) {
+    const asignacion = tok.entrecomillado ? null : ASIGNACION_ENTORNO_CAPTURA_RE.exec(tok.valor);
+    if (asignacion) entorno.push([asignacion[1], asignacion[2]]);
+  }
 
   const cabeza = seg[idx];
   if (!cabeza.entrecomillado && cabeza.valor === 'case') {
     const cierre = seg.findIndex((t, i) => i > idx && !t.entrecomillado && t.valor === ')');
-    return cierre === -1 ? [] : parseSegmento(seg.slice(cierre + 1), funciones);
+    return cierre === -1 ? [] : parseSegmento(seg.slice(cierre + 1), ctx);
   }
-  if (!cabeza.entrecomillado && funciones.has(cabeza.valor)) {
-    return invocacionesDeTokens(funciones.get(cabeza.valor), funciones);
-  }
+  const delCuerpo = !cabeza.entrecomillado && funciones.has(cabeza.valor)
+    ? invocacionesDeFuncion(funciones.get(cabeza.valor), ctx)
+    : [];
 
   const programa = path.basename(cabeza.valor);
   idx += 1;
   const palabras = [];
   const flags = [];
+  const globales = [];
+  let idxSubcomando = -1;
 
   while (idx < seg.length) {
     const tok = seg[idx];
     if (!tok.entrecomillado && esFlagDeScript(programa, tok.valor)) {
       flags.push(tok.valor);
+      const propia = invocacion(programa, palabras, flags, entorno, globales, ctx);
       const resto = seg.slice(idx + 1);
-      if (resto.length === 1 && resto[0].entrecomillado) {
-        return [{ programa, palabras, flags }, ...invocaciones(resto[0].valor)];
+      // El script en una sola palabra se re-tokeniza: entrecomillado entero (`bash -c "git
+      // commit"`) o mixto con blanco dentro (`bash -c git' commit --no-verify'`), que si no
+      // quedaría como un `programa` con la cadena entera.
+      if (resto.length === 1 && (resto[0].entrecomillado || /[ \t\r\n]/.test(resto[0].valor))) {
+        return [propia, ...delCuerpo, ...invocacionesDeCadena(resto[0].valor, estado, nuevoScript(estado))];
       }
-      return [{ programa, palabras, flags }, ...parseSegmento(resto, funciones)];
+      return [propia, ...delCuerpo, ...invocacionesDeTokens(resto, funciones, estado, nuevoScript(estado))];
     }
-    if (!tok.entrecomillado && OPCIONES_GLOBALES_CON_VALOR.has(tok.valor)) { idx += 2; continue; }
+    if (!tok.entrecomillado && OPCIONES_GLOBALES_CON_VALOR.has(tok.valor)) {
+      if (palabras.length === 0) globales.push([tok.valor, idx + 1 < seg.length ? seg[idx + 1].valor : null]);
+      idx += 2;
+      continue;
+    }
     if (!tok.entrecomillado && tok.valor.startsWith('-')) flags.push(tok.valor);
-    else palabras.push(tok.valor);
+    else {
+      if (palabras.length === 0) idxSubcomando = idx;
+      palabras.push(tok.valor);
+    }
     idx += 1;
   }
 
-  return [{ programa, palabras, flags }];
-}
-
-/** Parte `tokens` en segmentos por separadores de shell no entrecomillados y analiza cada uno. */
-function invocacionesDeTokens(tokens, funciones) {
-  const segmentos = [[]];
-  for (const t of tokens) {
-    if (!t.entrecomillado && SEPARADORES.has(t.valor)) segmentos.push([]);
-    else segmentos[segmentos.length - 1].push(t);
-  }
-
-  const resultado = [];
-  for (const seg of segmentos) resultado.push(...parseSegmento(seg, funciones));
-  return resultado;
+  const propia = invocacion(programa, palabras, flags, entorno, globales, ctx);
+  if (programa !== 'git' || idxSubcomando === -1) return [propia, ...delCuerpo];
+  return [propia, ...delCuerpo, ...expandirAlias(propia, seg, idxSubcomando, ctx)];
 }
 
 /**
- * invocaciones(cmd) -> [{ programa, palabras, flags }]
+ * Invocaciones del cuerpo de una función llamada desde el segmento de `ctx` (reglas 2 y 3 de la
+ * cabecera): vacío si el cuerpo ya se expandió en esta orden; la invocación `incompleta` si se
+ * supera el tope de anidamiento; si no, las del cuerpo como script propio.
+ */
+function invocacionesDeFuncion(cuerpo, ctx) {
+  const { funciones, estado } = ctx;
+  if (estado.expandidos.has(cuerpo)) return [];
+  if (estado.profundidad >= PROFUNDIDAD_MAXIMA_DE_FUNCIONES) {
+    const incompleta = invocacion('git', ['commit'], ['--no-verify'], [], [], ctx);
+    incompleta.incompleta = true;
+    return [incompleta];
+  }
+  estado.expandidos.add(cuerpo);
+  estado.profundidad += 1;
+  try {
+    return invocacionesDeTokens(cuerpo, funciones, estado, nuevoScript(estado));
+  } finally {
+    estado.profundidad -= 1;
+  }
+}
+
+/** Parte `tokens` en segmentos por los separadores de shell no entrecomillados. */
+function segmentar(tokens) {
+  return segmentarConSeparadores(tokens).map(s => s.seg);
+}
+
+// Igual que segmentar, pero cada segmento conserva el separador que lo precede y el que lo sigue.
+function segmentarConSeparadores(tokens) {
+  const segmentos = [{ seg: [], antes: null, despues: null }];
+  for (const t of tokens) {
+    if (!t.entrecomillado && SEPARADORES.has(t.valor)) {
+      segmentos[segmentos.length - 1].despues = t.valor;
+      segmentos.push({ seg: [], antes: t.valor, despues: null });
+    } else {
+      segmentos[segmentos.length - 1].seg.push(t);
+    }
+  }
+  return segmentos;
+}
+
+// Aperturas y cierres de grupo. Los paréntesis cuentan en cualquier posición; las llaves y las
+// palabras clave, solo en posición de orden (en el prefijo que finDelPrefijo descarta).
+const CIERRE_DE_GRUPO = { '(': ')', '{': '}', if: 'fi', while: 'done', until: 'done', for: 'done' };
+const CIERRES_DE_GRUPO = new Set(Object.values(CIERRE_DE_GRUPO));
+
+/**
+ * Parte `tokens` en segmentos y analiza cada uno como parte del script `script`. Sigue la pila de
+ * grupos abiertos para el campo `grupos`; si las aperturas y cierres no cuadran, las invocaciones
+ * de este script llevan `grupos: null`.
+ */
+function invocacionesDeTokens(tokens, funciones, estado, script) {
+  const resultado = [];
+  const pila = [];
+  let cuadra = true;
+
+  const aplicar = (tok, enOrden) => {
+    if (tok.entrecomillado) return;
+    const v = tok.valor;
+    if (v === '(' || (enOrden && Object.prototype.hasOwnProperty.call(CIERRE_DE_GRUPO, v))) {
+      estado.grupos += 1;
+      pila.push({ id: estado.grupos, cierre: CIERRE_DE_GRUPO[v] });
+    } else if (v === ')' || (enOrden && CIERRES_DE_GRUPO.has(v))) {
+      const abierto = pila.pop();
+      if (!abierto || abierto.cierre !== v) cuadra = false;
+    }
+  };
+
+  for (const { seg, antes, despues } of segmentarConSeparadores(tokens)) {
+    const fin = finDelPrefijo(seg);
+    for (let k = 0; k < fin; k += 1) aplicar(seg[k], true);
+    const grupos = pila.map(g => g.id);
+    for (let k = fin; k < seg.length; k += 1) {
+      if (seg[k].valor === '(' || seg[k].valor === ')') aplicar(seg[k], false);
+    }
+    // Un bucle y no `push(...)`: un segmento puede devolver un número no acotado de invocaciones
+    // (el cuerpo de una función), y pasarlas como argumentos agotaría la pila.
+    for (const inv of parseSegmento(seg, { funciones, estado, script, antes, despues, grupos })) {
+      resultado.push(inv);
+    }
+  }
+
+  if (!cuadra || pila.length > 0) {
+    for (const inv of resultado) if (inv.script === script) inv.grupos = null;
+  }
+  return resultado;
+}
+
+// Extrae las funciones de `cmd` y analiza el resto como el script `script`.
+function invocacionesDeCadena(cmd, estado, script) {
+  const { tokens, funciones } = extraerFunciones(tokenizar(cmd));
+  return invocacionesDeTokens(tokens, funciones, estado, script);
+}
+
+/**
+ * invocaciones(cmd) -> [{ programa, palabras, flags, entorno, globales, separadorAntes,
+ *                         separadorDespues, grupos, script[, incompleta] }]
  *
  * Extrae las definiciones de funcion del comando (ver extraerFunciones) y analiza el resto del
- * stream con invocacionesDeTokens. Ver parseSegmento para el criterio por invocacion.
+ * stream con invocacionesDeTokens. Ver parseSegmento para el criterio por invocación y la
+ * cabecera del modulo para el contrato de cada campo.
  */
 function invocaciones(cmd) {
-  const { tokens, funciones } = extraerFunciones(tokenizar(cmd));
-  return invocacionesDeTokens(tokens, funciones);
+  return invocacionesDeCadena(cmd, { scripts: 0, grupos: 0, expandidos: new Set(), profundidad: 0 }, 0);
 }
 
 /** Invocaciones de `cmd` cuyo programa y prefijo de palabras casan con los dados. */
@@ -408,4 +687,4 @@ function usaFlag(invocacion, { largo, corto } = {}) {
   return false;
 }
 
-module.exports = { tokenizar, invocaciones, invocacionesDe, esInvocacion, usaFlag };
+module.exports = { tokenizar, segmentar, invocaciones, invocacionesDe, esInvocacion, usaFlag };

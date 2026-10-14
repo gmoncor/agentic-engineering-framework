@@ -1,0 +1,173 @@
+{
+  "_comment": "Payloads de hook que Claude Code envió de verdad, capturados una vez en un proyecto de prueba vacío con un hook que vuelca su entrada. Anonimizados: ruta del proyecto -> /proyecto, ruta del transcript bajo /usuario, y session_id, prompt_id, tool_use_id y agent_id sustituidos por valores ficticios de la misma forma. Ningún otro campo se ha tocado ni añadido. Lo consume tests/hook-payload-fixtures.test.js.",
+  "backend": "claude-code",
+  "cli_version": "2.1.296",
+  "capturado": "2026-10-13",
+  "modo": "claude -p (no interactivo), permission_mode default",
+  "payloads": [
+    {
+      "id": "SessionStart-startup",
+      "subagente": false,
+      "payload": {
+        "session_id": "00000000-0000-4000-8000-000000000001",
+        "transcript_path": "/usuario/.claude/projects/-proyecto/00000000-0000-4000-8000-000000000001.jsonl",
+        "cwd": "/proyecto",
+        "hook_event_name": "SessionStart",
+        "source": "startup"
+      }
+    },
+    {
+      "id": "PreToolUse-Read",
+      "subagente": false,
+      "payload": {
+        "session_id": "00000000-0000-4000-8000-000000000001",
+        "transcript_path": "/usuario/.claude/projects/-proyecto/00000000-0000-4000-8000-000000000001.jsonl",
+        "cwd": "/proyecto",
+        "prompt_id": "00000000-0000-4000-8000-000000000002",
+        "permission_mode": "default",
+        "effort": {
+          "level": "medium"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Read",
+        "tool_input": {
+          "file_path": "/proyecto/nota.txt"
+        },
+        "tool_use_id": "toolu_000000000000000000000001"
+      }
+    },
+    {
+      "id": "PreToolUse-Write",
+      "subagente": false,
+      "payload": {
+        "session_id": "00000000-0000-4000-8000-000000000001",
+        "transcript_path": "/usuario/.claude/projects/-proyecto/00000000-0000-4000-8000-000000000001.jsonl",
+        "cwd": "/proyecto",
+        "prompt_id": "00000000-0000-4000-8000-000000000002",
+        "permission_mode": "default",
+        "effort": {
+          "level": "medium"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Write",
+        "tool_input": {
+          "file_path": "/proyecto/nuevo.txt",
+          "content": "uno"
+        },
+        "tool_use_id": "toolu_000000000000000000000002"
+      }
+    },
+    {
+      "id": "PreToolUse-Edit",
+      "subagente": false,
+      "payload": {
+        "session_id": "00000000-0000-4000-8000-000000000001",
+        "transcript_path": "/usuario/.claude/projects/-proyecto/00000000-0000-4000-8000-000000000001.jsonl",
+        "cwd": "/proyecto",
+        "prompt_id": "00000000-0000-4000-8000-000000000002",
+        "permission_mode": "default",
+        "effort": {
+          "level": "medium"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Edit",
+        "tool_input": {
+          "file_path": "/proyecto/nuevo.txt",
+          "old_string": "uno",
+          "new_string": "dos",
+          "replace_all": false
+        },
+        "tool_use_id": "toolu_000000000000000000000003"
+      }
+    },
+    {
+      "id": "PreToolUse-Bash",
+      "subagente": false,
+      "payload": {
+        "session_id": "00000000-0000-4000-8000-000000000001",
+        "transcript_path": "/usuario/.claude/projects/-proyecto/00000000-0000-4000-8000-000000000001.jsonl",
+        "cwd": "/proyecto",
+        "prompt_id": "00000000-0000-4000-8000-000000000002",
+        "permission_mode": "default",
+        "effort": {
+          "level": "medium"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "git status --short",
+          "description": "Show short working tree status"
+        },
+        "tool_use_id": "toolu_000000000000000000000004"
+      }
+    },
+    {
+      "id": "PreToolUse-Agent",
+      "subagente": false,
+      "payload": {
+        "session_id": "00000000-0000-4000-8000-000000000001",
+        "transcript_path": "/usuario/.claude/projects/-proyecto/00000000-0000-4000-8000-000000000001.jsonl",
+        "cwd": "/proyecto",
+        "prompt_id": "00000000-0000-4000-8000-000000000002",
+        "permission_mode": "default",
+        "effort": {
+          "level": "medium"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Agent",
+        "tool_input": {
+          "description": "Read nota.txt and ls",
+          "prompt": "Do exactly two things and nothing else: 1) Use the Read tool on /proyecto/nota.txt. 2) Use the Bash tool to run 'ls' in /proyecto. Report the file contents and the ls output.",
+          "subagent_type": "general-purpose",
+          "run_in_background": false
+        },
+        "tool_use_id": "toolu_000000000000000000000005"
+      }
+    },
+    {
+      "id": "PreToolUse-Read-subagente",
+      "subagente": true,
+      "payload": {
+        "session_id": "00000000-0000-4000-8000-000000000001",
+        "transcript_path": "/usuario/.claude/projects/-proyecto/00000000-0000-4000-8000-000000000001.jsonl",
+        "cwd": "/proyecto",
+        "prompt_id": "00000000-0000-4000-8000-000000000002",
+        "permission_mode": "default",
+        "agent_id": "a0000000000000007",
+        "agent_type": "general-purpose",
+        "effort": {
+          "level": "medium"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Read",
+        "tool_input": {
+          "file_path": "/proyecto/nota.txt"
+        },
+        "tool_use_id": "toolu_000000000000000000000006"
+      }
+    },
+    {
+      "id": "PreToolUse-Bash-subagente",
+      "subagente": true,
+      "payload": {
+        "session_id": "00000000-0000-4000-8000-000000000001",
+        "transcript_path": "/usuario/.claude/projects/-proyecto/00000000-0000-4000-8000-000000000001.jsonl",
+        "cwd": "/proyecto",
+        "prompt_id": "00000000-0000-4000-8000-000000000002",
+        "permission_mode": "default",
+        "agent_id": "a0000000000000007",
+        "agent_type": "general-purpose",
+        "effort": {
+          "level": "medium"
+        },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "ls /proyecto",
+          "description": "List project directory"
+        },
+        "tool_use_id": "toolu_000000000000000000000008"
+      }
+    }
+  ]
+}

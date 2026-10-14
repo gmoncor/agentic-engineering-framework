@@ -14,6 +14,7 @@ ANTES de implementar, verifica:
 2. Verifica que tiene "Estado: APROBADA"
 3. Busca las tasks derivadas que referencien esta spec en ai_docs/tasks/
 4. Si no existe spec aprobada o no hay tasks: DETENTE y di al usuario que ejecute /planificar primero
+5. Comprueba que el árbol está limpio fuera de los documentos de plan y del registro de sesiones: `git status --porcelain -- . ':(exclude)ai_docs/tasks' ':(exclude)ai_docs/audits'` debe salir vacío. Si no, DETENTE: el commit de la primera task absorbería esos cambios. Ofrece commitearlos, apartarlos con `git stash push --include-untracked` o lanzar la spec en otra copia de trabajo de git limpia. Lo que esté sucio en ai_docs/core/ se propone commitearlo: es el contexto del proyecto
 
 PROCESO (ejecuta en orden):
 
@@ -23,28 +24,30 @@ Para cada task, extrae sus dependencias (paths de otras tasks de las que depende
 Si una dependencia apunta a una task que no existe, DETENTE: es un error del plan; nombra la task ausente y pide corregirlo.
 Si las dependencias forman un ciclo, DETENTE: nombra las tasks del ciclo y pide corregir el plan.
 Ordena las tasks topologicamente: cada task va despues de todas sus dependencias.
-Muestra al usuario el orden de ejecucion antes de continuar.
+Muestra al usuario el orden de ejecución antes de continuar.
 
 PASO 2 — IMPLEMENTACION (orden de dependencias)
-Recorre las tasks en el orden del PASO 1. Para cada task, en este orden:
-a. Lee ai_docs/dev_templates/implementar.md y sigue su proceso completo
-b. Lee ai_docs/core/ para el contexto del proyecto
-c. Implementa los cambios descritos en la task
-d. Escribe tests (RED-GREEN cuando aplique: el test debe fallar sin tu cambio)
+Recorre las tasks en el orden del PASO 1. Una task con alguna dependencia que no esté COMPLETADA no se toca: su Estado sigue como estaba y se reporta como bloqueada. Para cada task, en este orden:
+a. Escribe en la task `Estado: EN_PROGRESO`
+b. Lee ai_docs/dev_templates/implementar.md y sigue su proceso completo
+c. Lee ai_docs/core/ para el contexto del proyecto
+d. Implementa los cambios descritos en la task y escribe tests (RED-GREEN cuando aplique: el test debe fallar sin tu cambio)
 e. Ejecuta como gate el comando de test real del proyecto (p. ej. `npm test`, `pytest`, el que declare el stack) y lee su exit code. Si es distinto de 0, corrige antes de continuar; no commitees en rojo
-f. Revision adversarial de ESTA task: lee ai_docs/dev_templates/revision_adversarial.md y aplicalo SOLO al diff de esta task, con postura esceptica (busca bugs, edge cases, regresiones, codigo muerto, seguridad). Emite veredicto: APROBADA, NECESITA_CORRECCIONES o RECHAZADA
-g. Si NO es APROBADA: corrige los problemas y vuelve a revisar. Si sigue sin aprobarse, marca la task como FALLIDA y NO la commitees
-h. Si es APROBADA: haz commit de esa task. Subject "<tipo>: <descripcion>" (max 72 chars); cuerpo con QUE cambio y POR QUE. Tipos validos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore
-Si una task queda FALLIDA, las que dependan de ella NO se implementan: se reportan como bloqueadas.
+f. Revisión adversarial de ESTA task: lee ai_docs/dev_templates/revision_adversarial.md y aplícalo SOLO al diff de esta task, con postura escéptica (busca bugs, edge cases, regresiones, código muerto, seguridad). Emite veredicto: APROBADA, NECESITA_CORRECCIONES o RECHAZADA. Es una revisión no independiente: la hace el mismo agente que implementó
+g. Si NO es APROBADA: corrige solo los hallazgos bloqueantes, vuelve a pasar el gate de tests y revisa de nuevo con los hallazgos previos. Tope: 3 rondas de corrección. Agotado el tope, la task queda `BLOQUEADA_REVISION`: no la commitees y presenta al usuario los hallazgos abiertos con su corrección propuesta; decide él
+h. Si es APROBADA: haz commit de esa task. Subject "<tipo>: <descripción>" (max 72 chars); cuerpo con QUÉ cambió y POR QUÉ. Tipos válidos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore. Tras el commit, escribe `Estado: COMPLETADA`
+i. Una task que no se commitea queda `PARCIAL`, `FALLIDA` o `BLOQUEADA_REVISION` según su resultado, como fija la tabla del ciclo de vida del Estado en ai_docs/dev_templates/tareas.md. Su trabajo se aparta sin destruirlo, recuperable con `git stash pop`: `git stash push --include-untracked -m "sdd-apartado: <titulo>" -- . ':(exclude)ai_docs/tasks' ':(exclude)ai_docs/audits'`. Nunca se descarta con `git reset` ni con `git clean`
+Solo COMPLETADA satisface una dependencia: las tasks que dependan de una que no lo está NO se implementan.
 
 PASO 3 — RESUMEN
-Presenta: orden de ejecucion, tasks completadas, tasks fallidas o bloqueadas, archivos modificados, tests creados.
-Si alguna task fallo: detalla que corregir y DETENTE aqui (no ejecutes el sub-paso de convergencia).
+Presenta: orden de ejecución, tasks completadas, tasks que no quedaron COMPLETADA con su Estado, trabajo apartado, archivos modificados, tests creados.
+Si alguna task no quedó COMPLETADA: detalla qué corregir y DETENTE aquí (no ejecutes el sub-paso de convergencia).
+Como la revisión de cada task no fue independiente, recomienda ejecutar /revision en una sesión nueva antes de /pr.
 
-PASO 3bis — CONVERGENCIA (solo si todas las tasks se completaron)
+PASO 3bis — CONVERGENCIA (solo si todas las tasks quedaron COMPLETADA)
 Aplica el Paso 4bis de ai_docs/dev_templates/revision_adversarial.md en modo standalone contra la spec: reconcilia el resultado real de cada task con sus criterios de exito asignados y con la seccion "No incluye".
-Si el veredicto es DIVERGE: por cada hallazgo BLOQUEANTE, genera una task de convergencia numerada con scripts/next-task-number.sh (si el script no existe en este proyecto, numera la task manualmente y dejalo indicado).
-Si el veredicto es CONVERGIDA: indica que la spec esta cerrada y sugiere /pr.
+Si el veredicto es DIVERGE: por cada hallazgo BLOQUEANTE, genera una task de convergencia numerada con scripts/next-task-number.sh. Si el script no está disponible, no crees tasks: reporta el error y lista los hallazgos.
+Si el veredicto es CONVERGIDA: indica que la spec está cerrada y sugiere /revision en una sesión nueva y después /pr.
 
 Solicitud del usuario:
 

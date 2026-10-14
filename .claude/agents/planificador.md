@@ -4,6 +4,9 @@ description: "Crea specs y las parte en tasks granulares. Se despacha cuando el 
 model: inherit
 tools:
   - Read
+  - Grep
+  - Glob
+  - Edit
   - Write
   - Bash
   - Agent

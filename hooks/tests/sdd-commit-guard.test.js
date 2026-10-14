@@ -10,8 +10,9 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { runHook, tempDir, writeFile } = require('./helpers');
-const { commitWarnings, usesNoVerify } = require('../sdd-commit-rules');
+const { runHook, tempDir, writeFile, HOOKS_DIR, motorDeWorkflowsInstalado } = require('./helpers');
+const { commitWarnings, usesNoVerify, isGitCommit, estaPendiente } = require('../sdd-commit-rules');
+const { estadoVigente } = require('../sdd-plan-state');
 
 const HOOK = 'sdd-commit-guard.js';
 
@@ -223,6 +224,77 @@ test('gh pr create sin ai_docs/tasks/ -> sin aviso ni excepcion', () => {
   assert.ok(!warnings.some(w => /CONVERGENCE_PENDING/.test(w)));
 });
 
+// Formato real de una task: el bloque de la plantilla de dev_templates/tareas.md, cuya cabecera
+// escribe `**Estado:** PENDIENTE` en negrita. Si la plantilla cambia de formato, estos casos lo ven.
+function taskDeLaPlantilla() {
+  const plantilla = fs.readFileSync(path.join(HOOKS_DIR, '..', 'ai_docs', 'dev_templates', 'tareas.md'), 'utf8');
+  const bloque = /```markdown\n([\s\S]*?)\n```/.exec(plantilla);
+  assert.ok(bloque, 'la plantilla de tareas.md no tiene el bloque ```markdown de la task');
+  assert.match(bloque[1], /^\*\*Estado:\*\* PENDIENTE$/m, 'la cabecera de la plantilla ya no es **Estado:** PENDIENTE');
+  return bloque[1] + '\n';
+}
+
+function avisosConTask(contenido) {
+  const dir = tempDir('sdd-convergencia-');
+  writeFile(path.join(dir, 'ai_docs/tasks/001_convergencia_test.md'), contenido);
+  return withCwd(dir, () => commitWarnings(PR_CMD)).filter(w => /CONVERGENCE_PENDING/.test(w));
+}
+
+test('task de convergencia con la cabecera de la plantilla (**Estado:** PENDIENTE) -> warn CONVERGENCE_PENDING', () => {
+  assert.strictEqual(avisosConTask(taskDeLaPlantilla()).length, 1);
+});
+
+test('task de convergencia con **Estado:** COMPLETADA -> sin aviso', () => {
+  const completada = taskDeLaPlantilla().replace('**Estado:** PENDIENTE', '**Estado:** COMPLETADA');
+  assert.strictEqual(avisosConTask(completada).length, 0);
+});
+
+test('Estado: PENDIENTE mencionado en mitad de una frase -> sin aviso', () => {
+  const doc = '# Task\n\nLa revisión la dejó en Estado: PENDIENTE hasta el siguiente ciclo.\n';
+  assert.strictEqual(avisosConTask(doc).length, 0);
+});
+
+// Composición con el escritor del Estado del motor de workflows (marcarEstado): solo existe donde
+// se instala .claude/workflows/ (backend Claude); hooks/tests/ se instala en todos los backends.
+if (!motorDeWorkflowsInstalado()) {
+  test('composición de estaPendiente con marcarEstado', {
+    skip: 'sin motor de workflows de Claude Code (.claude/workflows/implementar-spec.js y/o .claude/settings.json ausentes): .claude/workflows/lib/orquestacion no existe en este backend',
+  }, () => {});
+} else {
+  const { marcarEstado } = require('../../.claude/workflows/lib/orquestacion');
+  const silencio = { log: () => {} };
+
+  function docDeConvergencia(contenido) {
+    const dir = tempDir('sdd-convergencia-');
+    const ruta = path.join(dir, 'ai_docs', 'tasks', '001_convergencia_test.md');
+    writeFile(ruta, contenido);
+    return ruta;
+  }
+
+  test('composición: la task de la plantilla sin marcar sigue PENDIENTE; marcada COMPLETADA deja de estarlo', () => {
+    const sinMarcar = docDeConvergencia(taskDeLaPlantilla());
+    assert.strictEqual(estaPendiente(sinMarcar), true);
+
+    const marcada = docDeConvergencia(taskDeLaPlantilla());
+    assert.strictEqual(marcarEstado(marcada, 'COMPLETADA', silencio), true);
+    const texto = fs.readFileSync(marcada, 'utf8');
+    assert.strictEqual(estadoVigente(texto), 'COMPLETADA');
+    assert.strictEqual(estaPendiente(marcada), false);
+  });
+
+  test('composición: con una segunda línea Estado: PENDIENTE en el cuerpo, lector y escritor miran la misma', () => {
+    const doc = taskDeLaPlantilla() + '\n## Notas\n\nEstado: PENDIENTE\n';
+    assert.ok(doc.split('\n').indexOf('Estado: PENDIENTE') >= 10, 'la línea del cuerpo debe quedar después de la línea 10');
+    const ruta = docDeConvergencia(doc);
+    assert.strictEqual(estaPendiente(ruta), true);
+
+    assert.strictEqual(marcarEstado(ruta, 'COMPLETADA', silencio), true);
+    const texto = fs.readFileSync(ruta, 'utf8');
+    assert.strictEqual(estadoVigente(texto), 'COMPLETADA');
+    assert.strictEqual(estaPendiente(ruta), false);
+  });
+}
+
 // El mensaje de `git commit -F <ruta>` se lee del fichero, resuelto contra el directorio en curso:
 // estos tests fijan el cwd en un directorio temporal con el fichero de mensaje y lo borran al acabar.
 function conDirMensaje(fn) {
@@ -290,3 +362,61 @@ test('-F de otro programa en el mismo comando no se lee como mensaje del commit'
 
   assert.deepStrictEqual(warnings, []);
 }));
+
+// Palabras con comillas pegadas y alias en línea de git: los resuelve sdd-git-command.js, y el
+// guard los recibe ya como invocaciones de `git commit`. En proceso, sin lanzar el hook.
+
+test('usesNoVerify: un valor de -c con blanco entrecomillado no oculta el commit', () => {
+  assert.strictEqual(usesNoVerify("git -c user.name='a b' commit --no-verify"), true);
+});
+
+test('usesNoVerify: alias en línea con -n', () => {
+  assert.strictEqual(usesNoVerify("git -c alias.x='commit -n' x"), true);
+});
+
+test('usesNoVerify: alias en cadena hasta commit --no-verify', () => {
+  assert.strictEqual(usesNoVerify("git -c alias.x=y -c alias.y='commit --no-verify' x"), true);
+});
+
+test('usesNoVerify: alias con nombre en mayúsculas', () => {
+  assert.strictEqual(usesNoVerify('git -c alias.X=commit x --no-verify'), true);
+});
+
+test('usesNoVerify: un alias con nombre de builtin no tapa el commit, que sigue bloqueado', () => {
+  assert.strictEqual(usesNoVerify('git -c alias.commit=log commit --no-verify'), true);
+});
+
+test("git commit --file='msg.txt' (valor entrecomillado pegado) se lee como mensaje", () => conDirMensaje(dir => {
+  writeFile(path.join(dir, 'msg.txt'), 'docs: ' + 'x'.repeat(74) + '\n');
+
+  const warnings = withCwd(dir, () => commitWarnings("git commit --file='msg.txt'"));
+
+  assert.ok(warnings.some(w => /COMMIT_SUBJECT_TOO_LONG/.test(w)), warnings.join('\n'));
+}));
+
+// Una función que se llama a sí misma no tumba el análisis: sin excepción no hay fallo abierto,
+// y la invocación original de la llamada sigue a la vista del guard.
+
+const WRAPPER_NO_VERIFY = 'git() { command git "$@"; }; git commit --no-verify -m x';
+
+test('usesNoVerify: un wrapper recursivo de git no oculta --no-verify', () => {
+  assert.strictEqual(usesNoVerify(WRAPPER_NO_VERIFY), true);
+});
+
+test('isGitCommit: un wrapper recursivo de git sigue siendo un commit', () => {
+  assert.strictEqual(isGitCommit(WRAPPER_NO_VERIFY), true);
+});
+
+test('wrapper recursivo de git con --no-verify: deny, sin error interno', () => {
+  const r = runHook(HOOK, bash(WRAPPER_NO_VERIFY));
+
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.code, 2);
+  assert.match(r.decision.reason, /--no-verify/);
+  assert.doesNotMatch(r.stderr, /\[SDD_INTERNAL_ERROR\]/);
+});
+
+test('usesNoVerify: una función con 200 000 segmentos no agota la pila ni oculta --no-verify', () => {
+  const cmd = `f() { ${'true; '.repeat(200000)}}; f; git commit --no-verify -m x`;
+  assert.strictEqual(usesNoVerify(cmd), true);
+});

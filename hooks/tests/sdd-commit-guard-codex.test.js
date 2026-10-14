@@ -107,3 +107,29 @@ test('tool que no es shell: allow', () => {
 
   assert.strictEqual(r.code, 0);
 });
+
+// Forma medida en codex-cli 0.162.1: el shell llega como tool_name "Bash" con el comando en cadena.
+const bashReal = command => ({ tool_name: 'Bash', tool_input: { command } });
+
+test('payload real de codex-cli 0.162.1 (tool_name Bash) con --no-verify: deny', () => {
+  const r = runHook(HOOK, bashReal('git commit --no-verify -m x'));
+
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.code, 2);
+  assert.match(r.decision.reason, /--no-verify/);
+});
+
+test('payload real de codex-cli 0.162.1 (tool_name Bash) con git status: sin salida', () => {
+  const r = runHook(HOOK, bashReal('git status'));
+
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null);
+  assert.strictEqual(r.stdout.trim(), '');
+});
+
+test('alias defensivo exec_command (no observado como tool_name en codex-cli 0.162.1): deny con --no-verify', () => {
+  const r = runHook(HOOK, { tool_name: 'exec_command', tool_input: { command: 'git commit --no-verify -m x' } });
+
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.code, 2);
+});

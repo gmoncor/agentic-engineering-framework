@@ -1,5 +1,6 @@
 ---
 description: "Implementa UNA task en orden secuencial"
+argument-hint: "[task NNN o descripción]"
 ---
 
 ANTES de implementar, verifica estos requisitos:
@@ -11,6 +12,12 @@ ANTES de implementar, verifica estos requisitos:
 Ejecuta UNA task a la vez, en orden secuencial. Cuando termine, el usuario decidira cual sigue.
 
 Lee y sigue el proceso completo de `ai_docs/dev_templates/implementar.md`.
+
+Mantén el campo `Estado` de la task (la última línea propia `Estado:` de su documento; no añadas otra):
+
+- Al empezar, pásalo a `EN_PROGRESO`.
+- `COMPLETADA` solo si en esta misma sesión se crea el commit de la task. Si no se commitea, déjala en `EN_PROGRESO` y dilo en el resumen final.
+- Si la implementación queda a medias, `PARCIAL`; si falla (tests en rojo, revisión adversa, error), `FALLIDA`. En los dos casos, anota el motivo en la task.
 
 Contexto del proyecto: lee `ai_docs/core/` para entender vision, planificacion y roadmap.
 

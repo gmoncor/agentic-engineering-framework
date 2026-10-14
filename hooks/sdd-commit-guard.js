@@ -9,7 +9,7 @@
 //
 // Herramienta de shell por CLI (el payload se normaliza en sdd-hook-utils.js):
 //   - Claude Code:     Bash,        el comando llega en tool_input.command
-//   - Gemini CLI:      run_command, el comando llega en tool_input.command
+//   - Gemini CLI:      run_shell_command, el comando llega en tool_input.command
 //   - Antigravity CLI: run_command, el comando llega en args.CommandLine
 //
 // Escape de emergencia: SDD_GUARD_SKIP=1 degrada el bloqueo de --no-verify a aviso.
@@ -17,7 +17,7 @@
 const { readPayload, readToolCall, skipRequested, warn, deny, runWithFailOpen } = require('./sdd-hook-utils');
 const { isGitCommit, isGhPr, commitWarnings, usesNoVerify, NO_VERIFY_REASON } = require('./sdd-commit-rules');
 
-const SHELL_TOOLS = new Set(['Bash', 'run_command']);
+const SHELL_TOOLS = new Set(['Bash', 'run_shell_command', 'run_command']);
 
 async function main() {
   const data = await readPayload();

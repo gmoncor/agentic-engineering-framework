@@ -219,3 +219,76 @@ test('tool que no aplica parches: allow', () => {
 
   assert.strictEqual(r.code, 0);
 });
+
+// Forma medida en codex-cli 0.162.1: el parche entero llega en tool_input.command, con rutas
+// relativas al cwd de la sesión.
+function payloadReal(root, rel) {
+  return {
+    tool_name: 'apply_patch',
+    cwd: root,
+    tool_input: { command: `*** Begin Patch\n*** Add File: ${rel}\n+module.exports = {};\n*** End Patch\n` },
+  };
+}
+
+test('payload real de codex-cli 0.162.1 (tool_input.command) con un fichero no declarado: deny', () => {
+  const root = conSpec();
+  const r = runHook(HOOK, payloadReal(root, 'nodeclarado.js'));
+
+  assert.strictEqual(r.decision && r.decision.decision, 'deny', r.stdout);
+  assert.strictEqual(r.code, 2);
+  assert.match(r.decision.reason, /nodeclarado\.js/);
+});
+
+test('payload real de codex-cli 0.162.1 (tool_input.command) con un fichero declarado: sin deny', () => {
+  const root = conSpec();
+  const r = runHook(HOOK, payloadReal(root, 'src/auth/login.js'));
+
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null);
+});
+
+test('tool_input sin ningún campo de parche: el aviso de ruta ilegible, no deny', () => {
+  const root = conSpec();
+  const r = runHook(HOOK, { tool_name: 'apply_patch', cwd: root, tool_input: {} });
+
+  assert.strictEqual(r.decision.decision, 'warn');
+  assert.strictEqual(r.code, 0);
+  assert.match(r.decision.reason, /no expone ninguna ruta/);
+});
+
+function moverReal(root, desde, hacia) {
+  return {
+    tool_name: 'apply_patch',
+    cwd: root,
+    tool_input: { command: `*** Begin Patch\n*** Update File: ${desde}\n*** Move to: ${hacia}\n@@\n-a\n+b\n*** End Patch\n` },
+  };
+}
+
+test('Update de un fichero declarado con Move to hacia una ruta no declarada: deny', () => {
+  const root = conSpec();
+  const r = runHook(HOOK, moverReal(root, 'src/auth/login.js', 'src/pagos/checkout.js'));
+
+  assert.strictEqual(r.decision && r.decision.decision, 'deny', r.stdout);
+  assert.strictEqual(r.code, 2);
+  assert.match(r.decision.reason, /checkout\.js/);
+});
+
+test('Update de un fichero declarado con Move to hacia otra ruta declarada: sin deny', () => {
+  const root = conSpec();
+  const r = runHook(HOOK, moverReal(root, 'src/auth/login.js', 'src/auth/session.js'));
+
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.decision, null);
+});
+
+test('command sin cabeceras de parche: se lee el parche de input', () => {
+  const root = conSpec();
+  const r = runHook(HOOK, {
+    tool_name: 'apply_patch',
+    cwd: root,
+    tool_input: { command: 'apply_patch', input: '*** Begin Patch\n*** Add File: nodeclarado.js\n+x\n*** End Patch\n' },
+  });
+
+  assert.strictEqual(r.decision && r.decision.decision, 'deny', r.stdout);
+  assert.strictEqual(r.code, 2);
+});

@@ -11,6 +11,11 @@ export const meta = {
   ],
 }
 
+// Tamaño: de 4 + T a 6 + 2T agentes (T = tasks; 1 si el intake detiene) — intake, spec, tasks, un
+// revisor por task en paralelo y la auditoría; con veredicto adverso, una corrección, la re-revisión
+// de las tasks pendientes y otra auditoría. Revisar cada task en su propio contexto permite
+// lanzarlas a la vez sin que una revisión contamine a otra.
+
 // Como mucho una segunda pasada de revision/auditoria tras un veredicto adverso.
 // El presupuesto de pasadas es esta constante y nada mas: no hay motor de
 // convergencia. Con 1 no habria segunda pasada; con 2, una sola.
@@ -62,7 +67,9 @@ const REVIEW_SCHEMA = {
     edge_cases: { type: 'string' },
     riesgos: { type: 'string' },
     problemas: { type: 'array', items: { type: 'string' } },
-    ajustes_propuestos: { type: 'array', items: { type: 'string' } }
+    ajustes_propuestos: { type: 'array', items: { type: 'string' } },
+    // Dudas sin evidencia: se informan al auditor y no cambian el veredicto. Opcional.
+    avisos: { type: 'array', items: { type: 'string' } }
   },
   required: ['task_path', 'task_titulo', 'veredicto', 'problemas', 'ajustes_propuestos']
 }
@@ -181,7 +188,7 @@ REGLAS:
    "alternativa". Recomienda; la decision es del usuario.
 
 Solicitud del usuario: ${args}
-`, { label: 'intake', phase: 'Intake', schema: INTAKE_SCHEMA })
+`, { agentType: 'asesor', label: 'intake', phase: 'Intake', schema: INTAKE_SCHEMA })
 
 const decision = evaluarIntake(intakeResult)
 if (!decision.continuar) {
@@ -203,7 +210,7 @@ const contextoIntake = [
 phase('Spec')
 const specResult = await agent(`
 Lee ai_docs/dev_templates/spec.md y sigue su proceso completo para crear una especificacion.
-Lee ai_docs/core/ para contexto del proyecto.
+Lee de ai_docs/core/ solo las secciones que cite la solicitud o el análisis del intake.
 
 IMPORTANTE:
 - NO hagas preguntas de clarificacion. El intake ya cerro los huecos criticos.
@@ -224,7 +231,7 @@ ${contextoIntake}
 
 Guarda la spec en ai_docs/tasks/spec_<descriptor>.md (snake_case, sin acentos).
 Retorna SOLO el path del archivo creado (ej: ai_docs/tasks/spec_autenticacion.md).
-`, { label: 'crear-spec', phase: 'Spec' })
+`, { agentType: 'planificador', label: 'crear-spec', phase: 'Spec' })
 
 const specPath = (typeof specResult === 'string' ? specResult : '').trim()
 if (!specPath || specPath.length < 5) {
@@ -237,7 +244,7 @@ phase('Tasks')
 const tasksResult = await agent(`
 Lee ai_docs/dev_templates/tareas.md y sigue su proceso completo.
 Lee la spec (en BORRADOR, pendiente de aprobacion del usuario) en: ${specPath}
-Lee ai_docs/core/ para contexto del proyecto.
+Lee de ai_docs/core/ solo las secciones que cite la spec.
 
 IMPORTANTE:
 - NO hagas preguntas ni esperes aprobacion. Trabaja con lo que hay.
@@ -252,7 +259,7 @@ IMPORTANTE:
 
 Retorna un JSON con spec_path y la lista de tasks creadas (path, titulo,
 dependencias y contratos que produce o consume).
-`, { label: 'derivar-tasks', phase: 'Tasks', schema: TASKS_SCHEMA })
+`, { agentType: 'planificador', label: 'derivar-tasks', phase: 'Tasks', schema: TASKS_SCHEMA })
 
 const taskList = (tasksResult && tasksResult.tasks) ? tasksResult.tasks : []
 log(taskList.length + ' tasks derivadas')
@@ -310,18 +317,11 @@ async function pasadaRevisionAuditoria(numeroPasada, reviewsPrevias, indicesARev
       const task = taskList[i]
       const previa = reviewsPrevias ? reviewsPrevias[i] : null
       return agent(`
-Lee ai_docs/dev_templates/revisar_tarea.md y sigue TODOS sus pasos sin saltar ninguno.
+Lee ai_docs/dev_templates/revisar_tarea.md y sigue sus pasos pertinentes; declara con motivo los que omites.
 Lee la task en: ${task.path}
 Lee la spec madre en: ${specPath}
-Lee ai_docs/core/ para contexto del proyecto.
+Lee de ai_docs/core/ solo las secciones que cite la task o la spec.
 ${hallazgosPreviosTexto(previa)}
-POSTURA OBLIGATORIA:
-- Tu trabajo es ENCONTRAR PROBLEMAS, no confirmar que todo esta bien.
-- Asume que hay errores hasta demostrar lo contrario.
-- Si la evidencia es ambigua, reporta el hallazgo como problema.
-- NO modifiques nada. Solo analiza y reporta.
-- NO hagas preguntas. Trabaja con lo que hay.
-
 Ejecuta todas las verificaciones:
 1. Coherencia con spec madre (objetivo, alcance, archivos, criterios)
 2. Alcance minimo KISS (cambios innecesarios, refactors de paso)
@@ -332,7 +332,9 @@ Ejecuta todas las verificaciones:
 7. Riesgos (que puede salir mal, reversibilidad, impacto en otros modulos)
 
 Retorna tu veredicto estructurado con problemas y ajustes concretos.
+Las dudas sin evidencia van en avisos, no en problemas; no cambian el veredicto.
 `, {
+        agentType: 'revisor',
         label: 'revisar-p' + numeroPasada + '-' + (i + 1) + '-' + task.titulo.substring(0, 22),
         phase: 'Revision',
         schema: REVIEW_SCHEMA
@@ -359,15 +361,8 @@ Retorna tu veredicto estructurado con problemas y ajustes concretos.
   if (numeroPasada === 1) phase('Auditoria')
   else log('Segunda pasada: re-auditoria cruzada')
 
-  const reviewSummary = JSON.stringify(validReviews.map(function(r) {
-    return {
-      task: r.task_path,
-      titulo: r.task_titulo,
-      veredicto: r.veredicto,
-      problemas: r.problemas,
-      ajustes: r.ajustes_propuestos
-    }
-  }), null, 2)
+  // Los avisos de cada revisión llegan al auditor en avisos_no_bloqueantes.
+  const reviewSummary = JSON.stringify(aud.resumenDeRevisiones(validReviews), null, 2)
 
   // Los contratos rotos detectados mecanicamente se pasan al auditor como hallazgos
   // ya confirmados, para que no los pase por alto.
@@ -382,21 +377,15 @@ Retorna tu veredicto estructurado con problemas y ajustes concretos.
   // Es redundante ahora que la plantilla usa guion_bajo: mantener como red de seguridad
   // frente a variaciones del modelo al generar el veredicto en texto libre.
   const auditResult = await agent(`
-Lee ai_docs/dev_templates/auditar_spec.md y sigue TODOS sus pasos sin saltar ninguno.
+Lee ai_docs/dev_templates/auditar_spec.md y sigue sus pasos pertinentes; declara con motivo los que omites.
 Lee la spec en: ${specPath}
 Lee TODAS las tasks: ${taskPaths}
-Lee ai_docs/core/ para contexto del proyecto.
+Lee de ai_docs/core/ solo las secciones que citen la spec o las tasks.
 
 Resultados de la revision individual de cada task (ya hecha por revisores independientes):
 ${reviewSummary}
 ${contratosTexto}
-POSTURA OBLIGATORIA:
-- Tu trabajo es ENCONTRAR PROBLEMAS, no confirmar que todo esta bien.
-- Asume que hay huecos hasta demostrar lo contrario.
-- Cada hallazgo con evidencia concreta (cita archivo y seccion).
-- Integra los hallazgos de las revisiones individuales — no los ignores.
-- NO modifiques nada. Solo audita y reporta.
-- NO hagas preguntas. Trabaja con lo que hay.
+Integra los hallazgos de esas revisiones: no los ignores. Cada hallazgo, con su evidencia (archivo y sección).
 
 Ejecuta todas las verificaciones:
 1. COBERTURA: cada criterio de aceptacion de la spec tiene al menos una task
@@ -412,9 +401,10 @@ Si hay problemas estructurales graves, el veredicto es NECESITA_REPLANTEAMIENTO.
 Las dudas sin evidencia (WARNING) van en avisos: se informan y no bloquean. En huecos,
 incoherencias y cobertura.sin_cobertura solo hallazgos con evidencia: cualquiera de ellos
 impide un APROBADO.
+Los \`avisos_no_bloqueantes\` de las revisiones van a tus avisos, no a huecos ni incoherencias.
 
 Retorna tu veredicto estructurado.
-`, { label: 'auditoria-cruzada-p' + numeroPasada, phase: 'Auditoria', schema: AUDIT_SCHEMA })
+`, { agentType: 'revisor', label: 'auditoria-cruzada-p' + numeroPasada, phase: 'Auditoria', schema: AUDIT_SCHEMA })
 
   // Un contrato roto no puede quedar aprobado aunque el auditor no lo reflejara:
   // se incorpora como incoherencia y fuerza un veredicto adverso. Lo mismo un
@@ -475,7 +465,7 @@ REGLAS:
 - Manten la spec en BORRADOR. La aprobacion es del usuario.
 - Si un contrato producer/consumer esta roto, ajusta las dependencias o anade la task productora.
 - NO hagas preguntas. Trabaja con lo que hay.
-`, { label: 'corregir-tasks-p' + numeroPasadaPrevia, phase: 'Auditoria' })
+`, { agentType: 'planificador', label: 'corregir-tasks-p' + numeroPasadaPrevia, phase: 'Auditoria' })
 }
 
 // Presupuesto de pasadas: MAX_REVISION_PASSES, una simple constante. Primera pasada

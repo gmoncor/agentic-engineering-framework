@@ -2,7 +2,7 @@
 name: implementador
 description: "Ejecuta UNA task de una spec APROBADA: escribe código y tests y valida, sin commitear dentro del workflow. Se despacha cuando el workflow de implementación o el usuario asigna una task concreta."
 model: gemini-2.5-pro
-tools: [read_file, write_file, edit_file, run_command, glob, grep_search]
+tools: [read_file, write_file, replace, run_shell_command, grep_search, glob]
 ---
 
 # Implementador

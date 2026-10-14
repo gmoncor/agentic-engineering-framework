@@ -39,7 +39,7 @@
 | `planificador` | Crea specs, deriva tasks | Pasos 1-2 |
 | `revisor` | Revisa tasks y hace revision adversarial (esceptico) | Pasos 2, 5 |
 | `implementador` | Ejecuta UNA task individual (codigo + tests) | Paso 4 |
-| `asesor` | Analiza problemas, evalua opciones, recomienda (read-only) | Cualquier momento |
+| `asesor` | Analiza problemas, evalua opciones, recomienda | Cualquier momento |
 
 ## Reglas clave
 
@@ -49,7 +49,7 @@
 4. **Revision adversarial obligatoria** — el paso 5 verifica la implementacion completa antes de mergear
 5. **Tasks atomicas** — una task, un cambio acotado, un commit
 6. **Roadmap global** — el plan de trabajo vive en `ai_docs/core/` y guia cada planificacion
-7. **El revisor es esceptico** — su trabajo es encontrar problemas, validar con evidencia
+7. **El revisor es escéptico y bloquea solo lo material** — su trabajo es encontrar problemas, validar con evidencia
 
 ## Ejecucion en este backend
 
@@ -109,13 +109,15 @@ Los 4 agentes (`asesor`, `implementador`, `planificador`, `revisor`) fijan `mode
 
 | Hook | Evento | Que enforcea | Modo |
 |------|--------|-------------|------|
-| `sdd-pipeline-guard.js` | write_file/edit_file | **Bloquea** escribir un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de la spec APROBADA activa | Bloqueante |
-| `sdd-commit-guard.js` | run_command (git commit/push) | **Bloquea** `--no-verify`; warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Bloqueante en `--no-verify`, advisory en el resto |
-| `sdd-read-before-edit.js` | write_file/edit_file | Warn al escribir un archivo existente sin haberlo leido antes en la sesion. Se autolimita a silencio en backends que no exponen el evento de lectura | Advisory |
+| `sdd-pipeline-guard.js` | write_file/replace | **Bloquea** escribir un archivo que no esta declarado en la tabla "Archivos afectados" de alguna task de la spec APROBADA activa | Bloqueante |
+| `sdd-commit-guard.js` | run_shell_command (git commit/push) | **Bloquea** `--no-verify`; warn si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Bloqueante en `--no-verify`, advisory en el resto |
+| `sdd-read-before-edit.js` | write_file/replace | Warn al escribir un archivo existente sin haberlo leido antes en la sesion. Se autolimita a silencio en backends que no exponen el evento de lectura | Advisory |
 | `sdd-turn-budget.js` | Todas las tool calls | Cuenta las acciones sin commit y avisa al superar cada umbral (warn/block/hard_stop). `git commit` resetea el contador | Advisory (default) |
-| `sdd-session-start.js` | SessionStart | No enforcea nada: **escribe**. Anade una linea al registro de sesiones (`ai_docs/audits/provenance.jsonl`) con directorio de trabajo, rama, commit, modelo de la sesion y hashes de los componentes instalados | Registro (activo por defecto) |
+| `sdd-session-start.js` | SessionStart | No enforcea nada: **escribe**. Anade una linea al registro de sesiones (`ai_docs/audits/provenance.jsonl`) con directorio de trabajo, rama, commit, el modelo de la sesión si el CLI lo envía en el arranque (si no, `null`) y hashes de los componentes instalados | Registro (activo por defecto) |
 
-Configurados en `hooks/hooks.json`. Las rutas se resuelven desde la raiz del proyecto, asi que `hooks/` tiene que estar copiado ahi (tambien si instalas la extension).
+Configurados en `hooks/hooks.json`. La columna Evento usa los nombres reales de las herramientas de Gemini CLI (`write_file`, `replace`, `run_shell_command`). Cada hook se lanza desde la raíz del proyecto aunque Gemini arranque en un subdirectorio: el lanzador sube hasta el primer directorio con `.git` o `hooks/hooks.json` y ejecuta el hook de ahí, así que `hooks/` tiene que estar copiado en la raíz (también si instalas la extensión).
+
+**Aviso de skills duplicadas con `--backend all`.** Si instalas todos los backends, Gemini lee las skills de `.agents/skills` y de `.gemini/skills` e informa `Skill conflict detected: "<skill>" ... is overriding ...`. Es inocuo: las dos copias salen de la misma fuente. Para evitarlo, instala solo el backend que usas (`--backend gemini`).
 
 **El registro de sesiones se apaga con una clave.** `sdd-session-start.js` viene activo y escribe una linea por arranque de sesion en un fichero dentro de tu repositorio. Para que deje de escribir: `sdd_session_start.enabled: false` en `hooks/config.json`; con `false` no escribe nada, ni la linea ni el fichero. Para cambiar el destino o anadir campos propios sin tocar ficheros que la actualizacion sobreescribe: `docs/extension-config-schema.md`.
 
@@ -129,6 +131,27 @@ Configurados en `hooks/hooks.json`. Las rutas se resuelven desde la raiz del pro
 - Nombres de archivos y de ramas: solo ASCII, sin acentos. Los ficheros, ademas, en snake_case y descriptivos
 - Comunicacion: clara, directa, sin hedging
 - Commits: `<tipo>: <descripcion>` (tipos: feat, fix, update, refactor, create, optimize, remove, rename, docs, test, style, chore)
+
+## Coste de la verificación
+
+Un test, un hook o un job de CI se decide por riesgo y por coste: en qué punto del ciclo corre, quién espera y cuánto cuesta medido, no supuesto. Va en el punto más barato que aún atrapa el riesgo; el mismo check dos veces se paga dos veces. Ese cálculo mueve o acota una verificación, nunca deja un riesgo sin cubrir.
+
+## Operativa y esperas
+
+- Informes y respuestas finales: el veredicto primero, sin narrar el proceso seguido.
+- Salida filtrada en origen con las opciones del propio comando (formato, límite, `--stat`), no recortada después.
+- Texto con comillas, multilínea o código va a un fichero temporal fuera del árbol de trabajo y se pasa por ruta absoluta literal, sin variables (`git commit -F <fichero>`), no citado en la orden; quien crea el fichero lo retira al terminar.
+- Un comando que termina solo: una llamada con timeout si tu herramienta lo admite. Uno largo (CI, despliegue, servidor): el mecanismo de segundo plano del backend, si figura en tus herramientas. Nunca bucles `sleep`/`until` ni `tail -f`.
+- Todo proceso propio se detiene antes de cerrar; nunca uno ajeno.
+
+## Dónde va cada cosa
+
+| Dónde | Qué guarda |
+|-------|------------|
+| Instrucciones raíz (este fichero) | Reglas y convenciones del proyecto |
+| `ai_docs/core/` | Decisiones que condicionan trabajo futuro, con su porqué |
+| Task doc | Alcance de una task: qué cambia y cómo se valida |
+| Memoria del agente | Solo lo no derivable del código ni de los documentos |
 
 ## Limites del framework
 

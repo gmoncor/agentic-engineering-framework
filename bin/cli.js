@@ -1042,6 +1042,49 @@ function leerModeloClaudeConfigurado() {
 }
 
 /**
+ * Extrae el `model` de primer nivel de un texto TOML (el de `.codex/config.toml`):
+ * solo las claves anteriores a la primera tabla `[...]`, con el valor entre
+ * comillas dobles o simples. Devuelve null si no hay una cadena no vacía.
+ * Límite: no reconoce cadenas multilínea (`"""…"""` o `'''…'''`) de primer nivel;
+ * un `model` escrito así devuelve null y la nota sale sin nombre.
+ */
+function extraerModeloToml(texto) {
+  for (const linea of String(texto).split(/\r?\n/)) {
+    const limpia = linea.trim();
+    if (limpia.startsWith('[')) return null;
+    const m = /^model\s*=\s*(?:"([^"]*)"|'([^']*)')\s*(?:#.*)?$/.exec(limpia);
+    if (m) {
+      const valor = m[1] !== undefined ? m[1] : m[2];
+      return valor || null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Lee el modelo de `.codex/config.toml` del proyecto destino, el fichero ya
+ * instalado: su modo es preservar, así que en un update puede llevar el modelo
+ * que eligió el usuario. Misma tolerancia que leerModeloClaudeConfigurado:
+ * fichero ausente, ilegible o sin `model` devuelven null.
+ */
+function leerModeloCodexConfigurado() {
+  try {
+    return extraerModeloToml(fs.readFileSync(path.join(DEST, '.codex', 'config.toml'), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** Nota del modelo de Codex, común a install y update con el backend codex o all. */
+function reportarModeloCodex(backend) {
+  if (backend !== 'codex' && backend !== 'all') return;
+  const modelo = leerModeloCodexConfigurado();
+  console.log(modelo
+    ? `Nota: .codex/config.toml configura ${modelo}; compruébalo con \`codex debug models\` y ajústalo a tu cuenta.`
+    : 'Nota: revisa el modelo de .codex/config.toml; compruébalo con `codex debug models` y ajústalo a tu cuenta.');
+}
+
+/**
  * Reporta el resultado de install. El mensaje final depende de `huboFallos`:
  * con fallos (rutas de copia o directorios del proyecto malformados), el
  * texto declara la instalacion incompleta en vez de exitosa, para que
@@ -1070,6 +1113,7 @@ function reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, sc
       ? `Nota: .claude/settings.json configura ${modelo} como modelo de sesion (tier capaz, precio alto). Cambialo con /model o editando settings.json.`
       : 'Nota: revisa el modelo de sesion configurado en .claude/settings.json. Cambialo con /model o editando settings.json.');
   }
+  reportarModeloCodex(backend);
   if (huboFallos) {
     console.log('Instalacion incompleta: revisa los errores anteriores antes de continuar.');
     return;
@@ -1078,7 +1122,7 @@ function reportarInstalacion(copiadas, saltadas, creados, saltadasPorEdicion, sc
 }
 
 /** Reporta el resultado de update. Mismo criterio que reportarInstalacion: `huboFallos` decide el mensaje final. */
-function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, convergidas, version, scriptsTestMergeado, huboFallos, dryRun) {
+function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, convergidas, version, scriptsTestMergeado, huboFallos, dryRun, backend) {
   if (copiadas.length) {
     console.log('Rutas actualizadas:');
     copiadas.forEach(ruta => console.log(`  - ${ruta}`));
@@ -1093,6 +1137,7 @@ function reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, convergid
   if (scriptsTestMergeado) {
     console.log('Anadido scripts.test a package.json para correr los tests de los hooks.');
   }
+  reportarModeloCodex(backend);
   if (huboFallos) {
     console.log('Actualizacion incompleta: revisa los errores anteriores antes de continuar.');
     return;
@@ -1140,7 +1185,7 @@ async function cmdUpdate(args) {
   const version = obtenerVersion();
   if (!dryRun) sincronizarMarcadores(backend, copiadas, version);
   const huboFallos = fallidas.length > 0 || dirsFallidos.length > 0;
-  reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, convergidas, version, scriptsTestMergeado, huboFallos, dryRun);
+  reportarActualizacion(copiadas, saltadas, saltadasPorEdicion, convergidas, version, scriptsTestMergeado, huboFallos, dryRun, backend);
   escribirEcosistema(backend, dryRun);
   if (huboFallos) process.exit(1);
 }
@@ -1203,4 +1248,4 @@ if (require.main === module) {
 }
 
 // Funciones puras expuestas para los tests en proceso.
-module.exports = { hashContenido, diferenciaCableado };
+module.exports = { hashContenido, diferenciaCableado, extraerModeloToml };

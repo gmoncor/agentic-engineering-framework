@@ -6,28 +6,36 @@
     "codex": "PreToolUse",
     "antigravity": "PreToolUse"
   },
+  "launcher": {
+    "template": "node -e \"const p=require('path'),f=require('fs'),c=require('child_process');const M=[['.git'],['.codex','hooks.json'],['hooks','hooks.json']];let d=process.cwd(),r=null;for(let i=0;i<11;i++){if(M.some(m=>f.existsSync(p.join(d,...m)))){r=d;break}const u=p.dirname(d);if(u===d)break;d=u}const h=r&&p.join(r,'hooks','{hook}.js');if(h&&f.existsSync(h)){const s=c.spawnSync(process.execPath,[h],{cwd:r,stdio:'inherit'});process.exit(s.status===null?1:s.status)}console.error('[SDD] hooks/ no encontrado desde '+process.cwd());process.exit(0)\"",
+    "backends": [
+      "codex",
+      "gemini"
+    ],
+    "note": "Orden que ejecuta cada hook desde la raíz del proyecto, aunque el CLI lance el hook con el cwd en un subdirectorio. {hook} es el hook_file. Asciende como mucho 10 niveles desde process.cwd() y para en el PRIMER directorio con un marcador de proyecto: .git (directorio o fichero), .codex/hooks.json o hooks/hooks.json. Es una sola plantilla para todos los backends que la adoptan: los tres marcadores señalan la raíz de una instalación, y un subdirectorio que tenga cualquiera de ellos es otro proyecto (un submódulo, por ejemplo). Solo ejecuta hooks/{hook}.js de ese directorio; nunca sigue subiendo, porque un ancestro puede ser un monorepo, el directorio personal u otro proyecto con código no revisado. Lo ejecuta como programa principal (spawnSync con stdio heredado y cwd en la raíz), porque los hooks solo arrancan bajo require.main === module, y sale con el código del hijo (1 si muere por señal). Sin marcador, o con el marcador pero sin hooks/{hook}.js en ese directorio (un submódulo con su propio .git), avisa por stderr «[SDD] hooks/ no encontrado desde <cwd>» y sale con 0: falla en abierto (exit 0) con aviso por stderr. Gemini 0.63.0 muestra ese stderr: con exit 0 lo convierte en un systemMessage (según la lectura de su código, convertPlainTextToHookOutput, no medido en ejecución); no está medido si Codex lo muestra. La plantilla no lleva $, backtick, barra invertida, %, comilla doble interna ni !, para que no la expandan sh, cmd ni PowerShell (Gemini 0.63.0 ejecuta los hooks en Windows con powershell.exe o pwsh -Command, no con cmd); en PowerShell no está medido. Claude no la usa ($CLAUDE_PROJECT_DIR) y Antigravity queda fuera mientras no se mida."
+  },
   "actions": {
     "pipeline-guard": {
       "claude": { "matcher": "Write|Edit|NotebookEdit", "hook_file": "sdd-pipeline-guard", "wired": true },
-      "gemini": { "matcher": "write_file|edit_file", "hook_file": "sdd-pipeline-guard", "wired": true },
-      "codex": { "matcher": "apply_patch", "hook_file": "sdd-pipeline-guard", "wired": true },
+      "gemini": { "matcher": "write_file|replace", "hook_file": "sdd-pipeline-guard", "wired": true },
+      "codex": { "matcher": "apply_patch", "hook_file": "sdd-pipeline-guard-codex", "wired": true },
       "antigravity": { "matcher": "write_to_file|replace_file_content|multi_replace_file_content|create_file", "hook_file": "sdd-pipeline-guard", "wired": true }
     },
     "commit-guard": {
       "claude": { "matcher": "Bash", "hook_file": "sdd-commit-guard", "wired": true },
-      "gemini": { "matcher": "run_command", "hook_file": "sdd-commit-guard", "wired": true },
-      "codex": { "matcher": "shell", "hook_file": "sdd-commit-guard", "wired": true },
+      "gemini": { "matcher": "run_shell_command", "hook_file": "sdd-commit-guard", "wired": true },
+      "codex": { "matcher": "Bash", "hook_file": "sdd-commit-guard-codex", "wired": true },
       "antigravity": { "matcher": "run_command", "hook_file": "sdd-commit-guard", "wired": true }
     },
     "read-before-edit": {
       "claude": { "matcher": "Read|Write|Edit", "hook_file": "sdd-read-before-edit", "wired": true },
-      "gemini": { "matcher": "read_file|write_file|edit_file", "hook_file": "sdd-read-before-edit", "wired": true },
+      "gemini": { "matcher": "read_file|write_file|replace", "hook_file": "sdd-read-before-edit", "wired": true },
       "codex": { "matcher": null, "hook_file": "sdd-read-before-edit", "wired": false },
       "antigravity": { "matcher": "read_file|view_file|write_to_file|replace_file_content|multi_replace_file_content|create_file", "hook_file": "sdd-read-before-edit", "wired": true }
     },
     "turn-budget": {
       "claude": { "matcher": "*", "hook_file": "sdd-turn-budget", "wired": true },
-      "gemini": { "matcher": "read_file|write_file|edit_file|run_command", "hook_file": "sdd-turn-budget", "wired": true },
+      "gemini": { "matcher": "read_file|write_file|replace|run_shell_command", "hook_file": "sdd-turn-budget", "wired": true },
       "codex": { "matcher": null, "hook_file": "sdd-turn-budget", "wired": false },
       "antigravity": { "matcher": "read_file|view_file|write_to_file|replace_file_content|multi_replace_file_content|create_file|run_command", "hook_file": "sdd-turn-budget", "wired": true }
     },
@@ -39,6 +47,9 @@
     }
   },
   "notes": {
+    "codex": "Los hooks de Codex son un guardarraíl, no una frontera completa de enforcement: no cubren todas las rutas de escritura ni todas las llamadas al shell (procesos hijos, herramientas externas). El refuerzo adicional vive en .codex/rules/; el resto lo sostiene la disciplina del flujo más la comprobación manual previa al push. Codex pide confirmar (trust) los hooks del proyecto la primera vez que los ejecuta y cada vez que cambia su contenido: revisa el código de hooks/ antes de confiar en él. En .codex/hooks.json la raíz acepta description y hooks (codex-cli 0.162.1 rechaza el fichero entero ante una clave desconocida: «expected description or hooks»); los grupos y los hooks se limitan a matcher/hooks y type/command (restricción conservadora, no medida). Por eso su documentación vive aquí.",
+    "pipeline-guard": "Codex: bloqueante. Deniega aplicar un parche sobre un archivo que ninguna task de una spec APROBADA declara. Lo ejecuta sdd-pipeline-guard-codex, que lee el parche de apply_patch; el guard genérico no lo lee.",
+    "commit-guard": "Codex: bloqueante. Deniega git commit/push con --no-verify y avisa de commits mal formados. Matcher Bash: es el tool_name con el que llega el shell (herramienta exec_command) en codex-cli 0.162.1; un matcher shell no dispara nunca.",
     "read-before-edit": "Codex no cablea este aviso: carece de un evento de lectura equivalente a read_file en los demas backends para alimentar el rastreador. Las reglas de .codex/rules/ NO compensan este hueco: solo cubren --no-verify en git commit/push, nada relacionado con leer antes de editar.",
     "turn-budget": "Codex no cablea este aviso: el conteo de acciones sin commit depende de un session_id persistente que este backend no expone de la misma forma que los demas.",
     "review-gate": "Solo Claude Code cablea este aviso: la senal que lo silencia la emite el motor de workflows de comandos/agentes, que solo existe en ese backend. Cablearlo donde no hay emisor daria un aviso que nada puede silenciar por una via legitima."
@@ -52,6 +63,6 @@
     }
   },
   "notes_lifecycle_events": {
-    "session-start": "Antigravity queda fuera del cableado: sin confirmación de que su CLI expone un evento de ciclo de vida equivalente a SessionStart, cablearlo daria un hook que nunca corre. matcher null cubre todos los origenes de sesion (startup/resume/clear/compact/fork) en los tres backends: omitir o dejar en null el matcher activa el grupo en cada ocurrencia del evento."
+    "session-start": "Advisory: escribe una línea de provenance por sesión y nunca bloquea el arranque. Antigravity queda fuera del cableado: sin confirmación de que su CLI expone un evento de ciclo de vida equivalente a SessionStart, cablearlo daria un hook que nunca corre. matcher null cubre todos los origenes de sesion (startup/resume/clear/compact/fork) en los tres backends: omitir o dejar en null el matcher activa el grupo en cada ocurrencia del evento."
   }
 }

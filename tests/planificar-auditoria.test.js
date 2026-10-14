@@ -365,3 +365,54 @@ test('huellaDocumentos: una ruta no admitida (null) da huella null y cuenta como
   assert.deepStrictEqual(huella, { spec: null, tasks: { 't1.md': null } });
   assert.deepStrictEqual(tasksTocadas(huella, huella), ['t1.md']);
 });
+
+// ── Avisos de la revisión por task: llegan al auditor y no bloquean ───────────
+
+const { resumenDeRevisiones } = aud;
+
+test('resumenDeRevisiones: una revisión LISTO con un aviso lo reenvía en avisos_no_bloqueantes y problemas queda vacío', () => {
+  const resumen = resumenDeRevisiones([{
+    task_path: 't1.md',
+    task_titulo: 'Uno',
+    veredicto: 'LISTO_PARA_IMPLEMENTAR',
+    problemas: [],
+    ajustes_propuestos: [],
+    avisos: ['duda sin evidencia sobre el límite de tamaño'],
+  }]);
+  assert.strictEqual(resumen.length, 1);
+  assert.deepStrictEqual(resumen[0].avisos_no_bloqueantes, ['duda sin evidencia sobre el límite de tamaño']);
+  assert.deepStrictEqual(resumen[0].problemas, []);
+  assert.strictEqual(resumen[0].veredicto, 'LISTO_PARA_IMPLEMENTAR');
+});
+
+test('resumenDeRevisiones: en NECESITA_AJUSTES el problema sigue en problemas y el aviso no lo sustituye', () => {
+  const [r] = resumenDeRevisiones([{
+    task_path: 't2.md',
+    task_titulo: 'Dos',
+    veredicto: 'NECESITA_AJUSTES',
+    problemas: ['falta el test negativo'],
+    ajustes_propuestos: ['añadir el test negativo'],
+    avisos: ['duda menor'],
+  }]);
+  assert.deepStrictEqual(r.problemas, ['falta el test negativo']);
+  assert.deepStrictEqual(r.ajustes, ['añadir el test negativo']);
+  assert.deepStrictEqual(r.avisos_no_bloqueantes, ['duda menor']);
+  assert.strictEqual(r.veredicto, 'NECESITA_AJUSTES');
+});
+
+test('resumenDeRevisiones: una revisión sin avisos da una lista vacía', () => {
+  const [r] = resumenDeRevisiones([revision('LISTO_PARA_IMPLEMENTAR')]);
+  assert.deepStrictEqual(r.avisos_no_bloqueantes, []);
+});
+
+test('planificar.js: REVIEW_SCHEMA declara avisos opcional, reviewSummary usa resumenDeRevisiones y el prompt por task los pide', () => {
+  const inicio = WORKFLOW.indexOf('const REVIEW_SCHEMA = {');
+  const fin = WORKFLOW.indexOf('const AUDIT_SCHEMA = {');
+  assert.ok(inicio >= 0 && fin > inicio);
+  const schema = WORKFLOW.slice(inicio, fin);
+  assert.match(schema, /avisos: \{ type: 'array', items: \{ type: 'string' \} \}/);
+  assert.doesNotMatch(schema, /required: \[[^\]]*'avisos'/, 'avisos debe ser opcional');
+  assert.match(WORKFLOW, /const reviewSummary = JSON\.stringify\(aud\.resumenDeRevisiones\(validReviews\)/);
+  assert.match(WORKFLOW, /dudas sin evidencia van en avisos, no en problemas; no cambian el veredicto/);
+  assert.match(WORKFLOW, /Los \\`avisos_no_bloqueantes\\` de las revisiones van a tus avisos, no a huecos ni incoherencias\./);
+});

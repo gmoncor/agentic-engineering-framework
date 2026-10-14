@@ -39,7 +39,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { readPayload, readToolCall, warn, loadConfig } = require('./sdd-hook-utils');
+const { readPayload, readToolCall, warn, loadConfig, hookEnabled } = require('./sdd-hook-utils');
 const { trackRead, hasRead, hasAnyRead } = require('./sdd-read-tracker');
 const { resolveRepoPath } = require('./sdd-plan-state');
 
@@ -56,7 +56,7 @@ const READ_RELIABLE_WRITE_TOOLS = new Set(['Write', 'Edit']);
 
 const WRITE_TOOLS = new Set([
   'Write', 'Edit',              // Claude Code
-  'write_file', 'edit_file',    // Gemini CLI
+  'write_file', 'replace',      // Gemini CLI (replace es parcial: no va en FULL_WRITE_TOOLS)
   'write_to_file',              // Antigravity CLI
   'replace_file_content',
   'multi_replace_file_content',
@@ -64,7 +64,7 @@ const WRITE_TOOLS = new Set([
 ]);
 
 // Escrituras que fijan el contenido entero del fichero (crear o sobrescribir), frente a las
-// parciales (Edit, replace_*), que modifican un contenido que el agente puede no conocer.
+// parciales (Edit, replace, replace_*), que modifican un contenido que el agente puede no conocer.
 const FULL_WRITE_TOOLS = new Set([
   'Write',          // Claude Code
   'write_file',     // Gemini CLI
@@ -86,7 +86,7 @@ async function main() {
   if (!data) process.exit(0);
 
   const cfg = loadConfig(path.join(__dirname, 'config.json')).sdd_read_before_edit || {};
-  if (cfg.enabled === false) process.exit(0);
+  if (!hookEnabled('sdd_read_before_edit', cfg)) process.exit(0);
   if ((cfg.mode || 'advisory') !== 'advisory') {
     if (cfg.mode) {
       try {

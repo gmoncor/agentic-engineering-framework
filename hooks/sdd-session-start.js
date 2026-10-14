@@ -42,18 +42,34 @@
  * el escritor de ese fichero); si no existe el fichero o la clave, cae al hash de hooks/ +
  * package.json.
  *
- * cc_version se resuelve leyendo variables de entorno candidatas, nunca lanzando el
- * binario del cliente: medido en un hook hermano, ese lanzamiento tarda mas de 2s y a
- * veces agota el timeout, inaceptable en un hook que corre en cada arranque de sesion.
- * Ninguna de las tres CLIs objetivo documenta hoy una variable de version para hooks:
- * el campo degrada a null hasta que exista una fuente instantanea.
+ * session_model sale del payload de SessionStart y vale null si el CLI no lo envía. El
+ * SessionStart capturado de Claude Code en modo `claude -p` no trae `model`, así que en ese
+ * caso el campo es null. No se rellena desde la clave `model` de `.claude/settings.json`:
+ * es el default sugerido, no el modelo que corre (`/model` o `--model` lo cambian), y el
+ * transcript aún no tiene ningún mensaje del asistente en el arranque. Escribir cualquiera
+ * de los dos sería afirmar lo que el registro no sabe.
+ *
+ * cohort_id es el hash de config, settings, hooks y modelo, con el modelo ausente como ''.
+ * Sin modelo, la cohorte agrupa solo por configuración, y el consumidor distingue ese caso
+ * porque session_model es null. La fórmula no cambia aunque falte el modelo: el consumidor
+ * externo lee cohort_id por nombre y otra fórmula partiría la continuidad de las cohortes
+ * ya escritas; un cohort_id null perdería además la agrupación por configuración.
+ *
+ * cc_version es null mientras no exista una fuente que el propio CLI fije para el hook. El
+ * payload de SessionStart capturado no trae la versión, y ninguna de las tres CLIs objetivo
+ * documenta una variable de versión para hooks. El campo no lee el entorno heredado: una
+ * variable presente ahí mide la versión del proceso que lanzó el CLI, no la del CLI que
+ * lanza el hook, y un valor falso es peor que null porque el consumidor no lo distingue de
+ * uno cierto. Tampoco lanza el binario del cliente: medido en un hook hermano, ese
+ * lanzamiento tarda más de 2 s y a veces agota el timeout. El campo conserva nombre y
+ * posición porque forma parte de los 20 que lee el consumidor externo.
  */
 
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { readPayload, loadConfig } = require('./sdd-hook-utils');
+const { readPayload, loadConfig, hookEnabled, HOOK_ENABLED_DEFAULTS } = require('./sdd-hook-utils');
 const { toNativePath, resolveRepoPath, loadExtensionConfig, isPlainObject } = require('./sdd-plan-state');
 
 const SCHEMA_VERSION = 1;
@@ -65,7 +81,6 @@ const SKILL_DIRS = ['.claude/skills', '.gemini/skills', '.agents/skills']
   .map((rel) => path.join(ROOT, rel));
 const WIRING_FILES = ['.claude/settings.json', 'hooks/hooks.json', '.codex/hooks.json', '.agents/hooks.json']
   .map((rel) => path.join(ROOT, rel));
-const VERSION_ENV_CANDIDATES = ['CLAUDE_CODE_VERSION', 'GEMINI_CLI_VERSION', 'CODEX_CLI_VERSION', 'CLI_VERSION'];
 
 function sha256(text) {
   return crypto.createHash('sha256').update(text).digest('hex');
@@ -160,29 +175,28 @@ function resolveFrameworkSource(root) {
   return 'local';
 }
 
-function resolveClientVersion(env) {
-  for (const name of VERSION_ENV_CANDIDATES) {
-    if (env[name]) return env[name];
-  }
-  return null;
-}
-
+/**
+ * Puertas encendidas según el mismo predicado que usa cada hook (`hookEnabled`). Se evalúan las
+ * secciones de la config y también los hooks de la tabla de valores por defecto aunque no tengan
+ * sección: un hook encendido por defecto corre sin ella, y el registro tiene que decirlo.
+ */
 function gatesOn(config) {
-  return Object.keys(config)
+  const cfg = config || {};
+  const keys = new Set([...Object.keys(HOOK_ENABLED_DEFAULTS), ...Object.keys(cfg)]);
+  return [...keys]
     .filter((key) => !key.startsWith('_'))
-    .filter((key) => config[key] && config[key].enabled === true)
+    .filter((key) => hookEnabled(key, cfg[key]))
     .sort();
 }
 
 /**
  * Si este hook debe correr, segun `sdd_session_start.enabled` de hooks/config.json.
- * Ausente o distinto de `false` -> corre; el default es encendido. Con `false` no se escribe
+ * Sin booleano declarado -> corre; el default es encendido (HOOK_ENABLED_DEFAULTS). Con `false` no se escribe
  * ninguna linea: la unica forma de que `gates_on` no pueda mentir sobre esta puerta es que la
  * puerta apagada no produzca registro.
  */
 function sessionStartEnabled(config) {
-  const cfg = (config && config.sdd_session_start) || {};
-  return cfg.enabled !== false;
+  return hookEnabled('sdd_session_start', config && config.sdd_session_start);
 }
 
 /**
@@ -300,7 +314,7 @@ function buildLine(payload, startedAt, configuracion) {
     skills_hash: hashes.skills,
     session_model: sessionModel,
     gates_on: gatesOn(config),
-    cc_version: resolveClientVersion(process.env),
+    cc_version: null,
     cohort_id: cohortId,
     stamp_ms: Date.now() - startedAt,
   });
@@ -357,7 +371,6 @@ module.exports = {
   buildLine,
   hashPaths,
   resolveFrameworkSource,
-  resolveClientVersion,
   gatesOn,
   sessionStartEnabled,
   provenanceDest,

@@ -1,6 +1,6 @@
 export const meta = {
   name: 'implementar-spec',
-  description: 'Implementa todas las tasks de una spec en orden topologico, una tras otra',
+  description: 'Implementa todas las tasks de una spec en orden de dependencias; con --parallel, a la vez dentro de cada nivel',
   phases: [
     { title: 'Descubrimiento', detail: 'Identificar tasks, dependencias y orden de ejecucion' },
     { title: 'Implementacion', detail: 'Implementar cada task, revisarla y commitearla antes de pasar a la siguiente' },
@@ -8,6 +8,9 @@ export const meta = {
   ],
 }
 
+// Tamaño: 1 + N×(1 a 8) + 0 a 2 agentes — por task, implementador y revisor, y hasta tres rondas
+// de corrector + revisor; uno de descubrimiento y, al final, verificación de convergencia y, con
+// brechas bloqueantes, su creación de tasks. Cada agente acota un contexto que otro no debe heredar.
 const DISCOVER_SCHEMA = {
   type: 'object',
   properties: {
@@ -51,6 +54,9 @@ const IMPL_SCHEMA = {
     commit_message: { type: 'string' },
     commit_cuerpo: { type: 'string' },
     hallazgos_fuera_alcance: { type: 'array', items: { type: 'string' } },
+    // Lo que el cambio hizo distinto de lo declarado: ficheros fuera de la tabla, contratos
+    // cambiados, criterios no cumplidos. El revisor las contrasta con el diff.
+    desviaciones: { type: 'array', items: { type: 'string' } },
     notas: { type: 'string' }
   },
   required: ['task_path', 'task_titulo', 'resultado', 'archivos_modificados']
@@ -63,7 +69,19 @@ const REVISION_SCHEMA = {
     problemas_criticos: { type: 'array', items: { type: 'string' } },
     problemas_menores: { type: 'array', items: { type: 'string' } },
     positivos: { type: 'array', items: { type: 'string' } },
-    resumen: { type: 'string' }
+    resumen: { type: 'string' },
+    hallazgos_previos: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          hallazgo: { type: 'string' },
+          estado: { type: 'string', enum: ['resuelto', 'persistente', 'refutado'] }
+        },
+        required: ['hallazgo', 'estado']
+      }
+    },
+    correcciones_propuestas: { type: 'array', items: { type: 'string' } }
   },
   required: ['veredicto', 'problemas_criticos', 'problemas_menores', 'resumen']
 }
@@ -73,9 +91,30 @@ const CONVERGENCIA_SCHEMA = {
   properties: {
     veredicto: { type: 'string', enum: ['CONVERGIDA', 'DIVERGE'] },
     criterios_verificados: { type: 'integer' },
-    tasks_generadas: { type: 'array', items: { type: 'string' } }
+    brechas: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          criterio: { type: 'string' },
+          hallazgo: { type: 'string' },
+          evidencia: { type: 'string' },
+          severidad: { type: 'string', enum: ['BLOQUEANTE', 'WARNING'] }
+        },
+        required: ['criterio', 'hallazgo', 'evidencia', 'severidad']
+      }
+    }
   },
-  required: ['veredicto']
+  required: ['veredicto', 'brechas']
+}
+
+const CREACION_CONVERGENCIA_SCHEMA = {
+  type: 'object',
+  properties: {
+    tasks_creadas: { type: 'array', items: { type: 'string' } },
+    error: { type: 'string' }
+  },
+  required: ['tasks_creadas']
 }
 
 // ── Modulos del repo ──────────────────────────────────────────────────────────
@@ -174,7 +213,8 @@ async function calcularAmbitoTask(task) {
 
   if (!fs.existsSync(ruta)) {
     log('Ambito de ' + task.titulo + ' vacio: el proyecto no tiene hooks/sdd-task-files.js instalado, '
-      + 'asi que no hay tabla "Archivos afectados" que parsear. No se acota el commit.')
+      + 'asi que no hay tabla "Archivos afectados" que parsear; el commit solo se acota al '
+      + 'proyecto.')
     return []
   }
 
@@ -183,7 +223,7 @@ async function calcularAmbitoTask(task) {
     const contenido = fs.readFileSync(await resolverEnProyecto(task.path), 'utf8')
     return parser.parseAffectedFiles(contenido)
   } catch (e) {
-    log('Ambito de ' + task.titulo + ' vacio: ' + e.message + '. No se acota el commit.')
+    log('Ambito de ' + task.titulo + ' vacio: ' + e.message + '; el commit solo se acota al proyecto.')
     return []
   }
 }
@@ -210,7 +250,8 @@ async function git(argv) {
 
 // Aparta, sin destruirlo, el trabajo sin commitear de una task que no se commitea: queda en
 // `git stash` con nombre y se recupera con `git stash pop`. En secuencial, todo el árbol salvo
-// ai_docs/; en concurrente, solo el ámbito de la task. El criterio vive en
+// orq.RUTAS_FUERA (documentos de plan y registro de sesiones); en concurrente, solo el ámbito de
+// la task. El criterio vive en
 // orquestacion.apartarTrabajo, probado con dobles y con git real.
 async function apartarTrabajo(task) {
   return orq.apartarTrabajo(task, {
@@ -221,7 +262,8 @@ async function apartarTrabajo(task) {
   })
 }
 
-// Antes de cada task del recorrido secuencial: el árbol tiene que seguir limpio fuera de ai_docs/.
+// Antes de cada task del recorrido secuencial: el árbol tiene que seguir limpio fuera de
+// orq.RUTAS_FUERA.
 async function arbolLimpio() {
   return orq.comprobarArbolLimpio(git)
 }
@@ -236,9 +278,19 @@ function registro(mensaje) {
 // El exit code es la unica evidencia que cuenta: no se lee ningun numero de tests
 // auto-reportado por el implementador. Un timeout o un fallo del spawn deja code
 // distinto de 0, que evaluarGateTests trata como rojo (bloquea).
+//
+// Corre en la raíz del proyecto, donde se descubrió el comando. Solo se usan el código de salida
+// y la cola de stderr: stdout se descarta, y stderr tiene un maxBuffer amplio para que una suite
+// verbosa no se corte con ENOBUFS y pase por roja.
 async function ejecutarTests(comando) {
   const cp = await import('node:child_process')
-  const r = cp.spawnSync(comando.cmd, comando.args, { encoding: 'utf8', timeout: 600000 })
+  const r = cp.spawnSync(comando.cmd, comando.args, {
+    cwd: raizProyecto,
+    encoding: 'utf8',
+    timeout: 600000,
+    stdio: ['ignore', 'ignore', 'pipe'],
+    maxBuffer: 64 * 1024 * 1024,
+  })
   return { code: r.status, err: (r.stderr || '').slice(-400) }
 }
 
@@ -248,20 +300,27 @@ async function ejecutarTests(comando) {
 // concurrente ese listado es justo el dato que F1 contamina: sin acotarlo al
 // ambito de la task, este gate leeria tambien los ficheros que una hermana dejo
 // preparados en el mismo indice compartido.
+//
+// La preparación y el listado usan el mismo pathspec que la revisión y el commit
+// (orq.prepararTask → orq.pathspecDeTask): en secuencial, el proyecto salvo orq.RUTAS_FUERA; en
+// concurrente, solo las rutas del ámbito que cambiaron. Sin rutas cambiadas no hay nada que
+// preparar ni que listar, y el gate decide sobre la lista vacía.
 async function gateTests(task) {
   const ambito = modoParalelo ? await ambitoTask(task) : undefined
-  const pathspec = (ambito && ambito.length > 0) ? ['--'].concat(ambito) : []
 
-  const preparado = await orq.gitVerificado(['add', '-A'].concat(pathspec), git)
+  const preparado = await orq.prepararTask(git, ambito)
   if (!preparado.ok) return { estado: 'FALLIDA', infraestructura: true, nota: preparado.error }
 
-  const listado = await orq.gitVerificado(['diff', '--cached', '--name-only'].concat(pathspec), git)
-  // Sin listado fiable no se puede decidir la exencion de docs/config: una lista vacia por fallo
-  // de git eximiria a una task que si toca codigo.
-  if (!listado.ok) return { estado: 'FALLIDA', infraestructura: true, nota: listado.error }
+  var archivos = []
+  if (preparado.pathspec) {
+    const listado = await orq.gitVerificado(['diff', '--cached', '--name-only'].concat(preparado.pathspec), git)
+    // Sin listado fiable no se puede decidir la exencion de docs/config: una lista vacia por fallo
+    // de git eximiria a una task que si toca codigo.
+    if (!listado.ok) return { estado: 'FALLIDA', infraestructura: true, nota: listado.error }
 
-  const archivos = listado.out
-    .split('\n').map(function(s) { return s.trim() }).filter(Boolean)
+    archivos = listado.out
+      .split('\n').map(function(s) { return s.trim() }).filter(Boolean)
+  }
 
   const comando = orq.descubrirComandoTest(raizProyecto)
   var exitCode = null
@@ -322,10 +381,17 @@ const raizProyecto = await raizDelProyecto()
 
 // El modo de ejecucion y la ruta de la spec llegan en el mismo argumento.
 // --parallel activa, en la Fase 2, la ejecucion concurrente de las tasks de un
-// mismo nivel de dependencias; el defecto es una task tras otra. Que garantiza
-// ese modo y que no: `recorrerNiveles` en lib/orquestacion.js.
-const { modoParalelo, specPath, error: errorArgs } = orq.parsearArgs(args)
+// mismo nivel de dependencias; el defecto es una task tras otra. --parallel=N fija el tope de
+// tasks en vuelo a la vez (sin N, orq.MAX_CONCURRENCIA). Que garantiza ese modo y que no:
+// `recorrerNiveles` en lib/orquestacion.js.
+const { modoParalelo, concurrencia, specPath, error: errorArgs } = orq.parsearArgs(args)
 if (errorArgs) return { error: errorArgs }
+
+// Exclusión mutua del gate de tests y del git que muta el índice (preparación, commit, apartado):
+// orquestacion.js lo aplica alrededor de cada una de esas operaciones. Y las tasks en vuelo, que
+// recorrerNiveles mantiene: la unión de sus ámbitos es lo que NO cuenta como fuera de alcance.
+const exclusivo = orq.crearMutex()
+const enVuelo = new Set()
 
 const discovery = await agent(`
 Encuentra todas las tasks asociadas a la spec: ${specPath}
@@ -342,7 +408,7 @@ Proceso:
 IMPORTANTE: Retorna las dependencias como paths exactos de archivos, no como titulos ni descripciones.
 
 Retorna el path de la spec, su titulo, y la lista completa de tasks.
-`, { label: 'descubrir-tasks', phase: 'Descubrimiento', schema: DISCOVER_SCHEMA })
+`, { agentType: 'asesor', label: 'descubrir-tasks', phase: 'Descubrimiento', schema: DISCOVER_SCHEMA })
 
 const taskList = (discovery && discovery.tasks) ? discovery.tasks : []
 if (taskList.length === 0) {
@@ -365,24 +431,28 @@ for (var ci = 0; ci < contratosRotos.length; ci++) {
 }
 
 log(taskList.length + ' tasks, ' + niveles.length + ' nivel(es) de dependencia, modo '
-  + (modoParalelo ? 'concurrente (--parallel)' : 'secuencial'))
+  + (modoParalelo
+    ? 'concurrente (--parallel, hasta ' + (concurrencia || orq.MAX_CONCURRENCIA) + ' tasks a la vez)'
+    : 'secuencial'))
 for (var w = 0; w < niveles.length; w++) {
   log('Nivel ' + (w + 1) + ': ' + niveles[w].map(function(t) { return t.titulo }).join(', '))
 }
 
-// El árbol tiene que estar limpio fuera de ai_docs/ antes de implementar: en secuencial, el `add
-// -A` de la primera task absorberia esos cambios en su commit, y apartar el trabajo de una task
-// fallida se los llevaría con él. Los documentos de plan quedan fuera: el guard también los exime.
+// El árbol tiene que estar limpio fuera de orq.RUTAS_FUERA antes de implementar: en secuencial, el
+// `add -A` de la primera task absorberia esos cambios en su commit, y apartar el trabajo de una
+// task fallida se los llevaría con él. Quedan fuera los documentos de plan (el guard también los
+// exime) y el registro de sesiones, que se reescribe en cada arranque. ai_docs/core/ no: sucio, el
+// mensaje propone commitearlo antes de lanzar.
 const estadoInicial = await orq.comprobarArbolLimpio(git)
 if (!estadoInicial.limpio) {
   return { spec: specPath, error: orq.mensajeArbolSucio(estadoInicial) }
 }
 
 // ── Fase 2: Implementacion (con revision por task antes del commit) ───────────
-// Las tasks se implementan una tras otra en orden topologico: cada nivel de
-// dependencia antes que el siguiente y, dentro de un nivel, una task despues de
-// otra. Por cada task: el implementador deja los cambios en el working tree (no
-// commitea); el workflow revisa ESE diff con un agente aparte (contexto limpio);
+// Las tasks se implementan en orden de dependencias; con `--parallel`, a la vez dentro de cada
+// nivel: cada nivel de dependencia antes que el siguiente. Por cada task: el implementador
+// deja los cambios en el working tree (no commitea); el workflow revisa ESE diff con un
+// agente aparte (contexto limpio);
 // si la revision aprueba, emite la senal atada al diff y crea el commit. Asi cada
 // unidad se valida antes de avanzar a la siguiente.
 phase('Implementacion')
@@ -394,13 +464,13 @@ function promptImplementacion(task) {
 
   return '\
 Lee ai_docs/dev_templates/implementar.md y sigue su proceso completo para implementar esta task.\n\
-Lee ai_docs/core/ para contexto del proyecto.\n\
+Lee de ai_docs/core/ solo las secciones que cite la task o la spec.\n\
 \n\
 Task a implementar: ' + task.path + '\n\
 Spec madre: ' + specPath + '\n\
 \n\
 CONTEXTO DEL WORKFLOW:\n' + deps + '\n\
-- Las tasks se implementan una tras otra en orden; sus dependencias ya estan completadas.\n\
+- Tus dependencias ya están completadas; con `--parallel`, otras tasks del mismo nivel trabajan a la vez en el mismo árbol: no toques ficheros fuera de tu tabla.\n\
 - Escribe SOLO los archivos declarados en la tabla "Archivos afectados" de tu task.\n\
 \n\
 PROCESO OBLIGATORIO:\n\
@@ -408,7 +478,7 @@ PROCESO OBLIGATORIO:\n\
 2. Investiga el codigo existente\n\
 3. Implementa los cambios descritos en la task\n\
 4. Escribe tests. Para funcionalidad nueva, RED-GREEN es obligatorio: el test debe FALLAR sin tu cambio\n\
-5. Ejecuta validaciones (linting, tests, build). El workflow re-ejecuta la suite como gate antes de commitear\n\
+5. Ejecuta los tests dirigidos a tu cambio y, si aplica, linting y build. La suite completa la corre el workflow como gate antes de revisar: no la repitas\n\
 \n\
 REGLAS:\n\
 - SOLO implementa lo que dice la task\n\
@@ -424,71 +494,140 @@ NO COMMITEAR:\n\
   optimize, remove, rename, docs, test, style, chore.\n\
 \n\
 Retorna: path de la task, titulo, resultado, archivos modificados,\n\
-commit_message, commit_cuerpo, hallazgos fuera de alcance.'
+commit_message, commit_cuerpo, hallazgos fuera de alcance y desviaciones: ficheros que tocaste\n\
+fuera de la tabla, contratos que cambiaste y criterios de aceptación que no se cumplen (vacío si no hay).'
 }
 
 async function implementarTask(task) {
   return agent(promptImplementacion(task), {
+    agentType: 'implementador',
     label: 'impl-' + task.titulo.substring(0, 25),
     phase: 'Implementacion',
     schema: IMPL_SCHEMA
   })
 }
 
-// Revision adversarial de UNA task: contexto limpio, solo el diff de la task.
-async function revisarDiff(task, diff) {
+// Bloque del prompt de una re-revisión: los hallazgos que se pidió corregir, su corrección
+// propuesta y el delta desde la revisión anterior (orq.revisarYComitear lo calcula sobre el
+// pathspec de la task). Sin `previa` es la primera revisión y el bloque no existe.
+function bloqueRevisionPrevia(previa) {
+  if (!previa) return ''
+  const lista = function (xs, vacio) { return xs && xs.length ? '- ' + xs.join('\n- ') : vacio }
+  return '\
+\n\
+RE-REVISIÓN (ronda de corrección ' + previa.ronda + '):\n\
+Hallazgos críticos que la revisión anterior pidió corregir:\n' + lista(previa.hallazgos_previos, '(ninguno detallado)') + '\n\
+Corrección propuesta entonces:\n' + lista(previa.correcciones_propuestas, '(ninguna)') + '\n\
+\n\
+Delta desde la revisión anterior (lo que cambió la corrección):\n\
+```diff\n' + (previa.delta || '(sin cambios)') + '\n```\n\
+\n\
+- Pronúnciate sobre CADA hallazgo previo en `hallazgos_previos`, con estado `resuelto`, `persistente` o `refutado` (con su motivo en el resumen). Un persistente se repite en problemas_criticos.\n\
+- Un hallazgo nuevo fuera del delta solo cuenta si es material (BLOQUEANTE): lo que ya estaba y no señalaste antes no se convierte ahora en crítico por una preferencia.\n'
+}
+
+// Bloque del prompt de revisión con la evidencia del workflow: el resultado del gate de tests, que
+// es la única suite completa de la task, los ficheros cambiados que no declara ninguna task en
+// vuelo (null: no se calculó) y las desviaciones que declararon el implementador y los correctores.
+function bloqueEvidencia(contexto) {
+  const c = contexto || {}
+  const g = c.gate
+  // Solo con comando corrió una suite: sin él (ADVISORY, o sin resultado) no hay suite que no repetir.
+  const gate = !g
+    ? 'Gate de tests: no consta resultado; no corrió ninguna suite.\n'
+    : g.comando
+      ? 'Gate de tests del workflow (suite completa, ya ejecutada): `' + g.comando + '` → exit '
+        + (g.exitCode == null ? 'sin código' : g.exitCode) + '. ' + (g.nota || '') + '\n'
+        + 'No repitas la suite completa: ejecuta solo pruebas dirigidas a una sospecha concreta.\n'
+      : 'Gate de tests del workflow: no corrió ninguna suite. ' + (g.nota || g.estado || '') + '\n'
+  const fuera = c.fuera_de_alcance == null
+    ? ''
+    : c.fuera_de_alcance.length
+      ? 'Ficheros cambiados que no declara ninguna task en vuelo: ' + c.fuera_de_alcance.join(', ') + '.\n'
+        + 'Decide si alguno lo escribió esta task fuera de su alcance (en modo concurrente no entran en su '
+        + 'diff ni en su commit); si es así, es un hallazgo.\n'
+      : 'Ficheros cambiados que no declara ninguna task en vuelo: ninguno.\n'
+  const desviaciones = (c.desviaciones || []).length
+    ? 'Desviaciones declaradas por quien implementó (contrástalas con el diff):\n- ' + c.desviaciones.join('\n- ') + '\n'
+    : 'Desviaciones declaradas: ninguna. Si el diff muestra alguna, es un hallazgo.\n'
+  return '\n' + gate + fuera + desviaciones
+}
+
+// Revision adversarial de UNA task: contexto limpio, solo el diff de la task, con la evidencia del
+// gate y las desviaciones declaradas. En una re-revisión (`contexto.previa`), además, los
+// hallazgos previos y el delta. La postura del revisor la cargan su agente y la plantilla.
+async function revisarDiff(task, diff, contexto) {
   return agent('\
 Lee ai_docs/dev_templates/revision_adversarial.md y sigue sus pasos, aplicados a UNA task.\n\
 Lee la task en: ' + task.path + '\n\
-Lee ai_docs/core/ para contexto del proyecto.\n\
-\n\
-POSTURA OBLIGATORIA:\n\
-- Tu trabajo es ENCONTRAR PROBLEMAS en esta task, no confirmar que todo esta bien.\n\
-- Asume que hay bugs hasta demostrar lo contrario.\n\
-- NO modifiques codigo. Solo analiza y reporta.\n\
-- NO hagas preguntas. Trabaja con lo que hay.\n\
+Lee de ai_docs/core/ solo las secciones que cite la task o la spec.\n\
+' + bloqueEvidencia(contexto) + '\
 \n\
 Diff de la task (lo que se va a commitear):\n\
-```diff\n' + diff + '\n```\n\
+```diff\n' + diff + '\n```\n' + bloqueRevisionPrevia(contexto && contexto.previa) + '\
 \n\
 Revisa: correccion frente a la task, tests presentes y utiles, edge cases,\n\
 regresiones, codigo muerto y seguridad.\n\
+En problemas_criticos van solo los hallazgos BLOQUEANTES: son los únicos que abren una ronda de corrección.\n\
+Los WARNING van en problemas_menores: no bloquean el commit y viajan en su cuerpo.\n\
+Para cada crítico, propón su corrección en correcciones_propuestas.\n\
 Emite tu veredicto: APROBADA, NECESITA_CORRECCIONES o RECHAZADA.', {
+    agentType: 'revisor',
     label: 'revision-' + task.titulo.substring(0, 20),
     phase: 'Implementacion',
     schema: REVISION_SCHEMA
   })
 }
 
-// Una unica pasada de correccion de los problemas que encontro la revision. Deja
-// los cambios en el working tree; no commitea. El workflow re-revisa despues.
+// Una ronda de correccion: recibe solo los criticos de la revision (y su correccion propuesta);
+// los menores no bloquean y no se le pasan. Deja los cambios en el working tree; no commitea.
+// El workflow vuelve a pasar el gate y re-revisa despues.
 async function corregirTask(task, revision) {
-  const problemas = (revision.problemas_criticos || []).concat(revision.problemas_menores || [])
+  const problemas = revision.problemas_criticos || []
+  const propuestas = revision.correcciones_propuestas || []
   return agent('\
-La revision adversarial encontro problemas en esta task. Corrigelos en el working tree.\n\
+La revision adversarial encontro problemas criticos en esta task. Corrigelos en el working tree.\n\
 Lee ai_docs/dev_templates/implementar.md para el proceso.\n\
 Task: ' + task.path + '\n\
 \n\
-Problemas a corregir:\n- ' + (problemas.length ? problemas.join('\n- ') : '(ver el resumen de la revision)') + '\n\
+Problemas criticos a corregir:\n- ' + (problemas.length ? problemas.join('\n- ') : '(ver el resumen de la revision)') + '\n\
+Correccion propuesta por la revision:\n- ' + (propuestas.length ? propuestas.join('\n- ') : '(ninguna)') + '\n\
 Resumen de la revision: ' + (revision.resumen || '') + '\n\
 \n\
 REGLAS:\n\
 - Corrige SOLO los problemas listados, dentro de los archivos de esta task.\n\
 - Deja los cambios en el working tree. NO hagas git add ni git commit.\n\
-- Ejecuta los tests y asegurate de que pasan.\n\
+- Ejecuta los tests dirigidos a tu corrección y asegúrate de que pasan; la suite completa la vuelve a correr el gate.\n\
+- Declara en desviaciones lo que la corrección hizo fuera de lo pedido (ficheros, contratos, criterios).\n\
 - NO hagas preguntas.', {
+    agentType: 'implementador',
     label: 'correccion-' + task.titulo.substring(0, 18),
     phase: 'Implementacion',
     schema: IMPL_SCHEMA
   })
 }
 
+// Ficheros que declaran las tasks en vuelo (en secuencial, solo esta): lo que cambie fuera de
+// ellos llega al revisor como fuera de alcance.
+async function alcanceEnVuelo(task) {
+  const tasks = enVuelo.has(task) ? Array.from(enVuelo) : Array.from(enVuelo).concat([task])
+  const union = []
+  for (const t of tasks) {
+    for (const ruta of await ambitoTask(t)) {
+      if (!union.includes(ruta)) union.push(ruta)
+    }
+  }
+  return union
+}
+
 // Revisa el diff de la task y, si aprueba, emite la senal atada al diff y commitea.
 // El criterio (que diff se revisa, cuando se descarta el trabajo, como se lee cada
 // comando de git, y como se acota el ambito del commit en modo concurrente) vive
 // en orquestacion.js, donde se prueba con dobles; aqui solo se cablean las piezas
-// que hablan con el mundo exterior. El ambito solo se calcula (y se pasa) en modo
-// concurrente: en secuencial no hay hermanas que contaminen el indice compartido.
+// que hablan con el mundo exterior. El ámbito del commit solo se calcula (y se pasa) en modo
+// concurrente: en secuencial no hay hermanas que contaminen el índice compartido. El alcance en
+// vuelo (`alcanceEnVuelo`), en cambio, se pasa en ambos modos.
+// En cada ronda de correccion el gate de tests se vuelve a pasar antes de re-revisar.
 async function revisarYComitear(task, resultado) {
   const ambito = modoParalelo ? await ambitoTask(task) : undefined
   return orq.revisarYComitear(task, resultado, {
@@ -498,11 +637,14 @@ async function revisarYComitear(task, resultado) {
     corregir: corregirTask,
     emitirSenal: emitirSenalRevision,
     descartar: apartarTrabajo,
+    gateTests: gateTests,
     ambito: ambito,
+    alcance: alcanceEnVuelo,
+    exclusivo: exclusivo,
   })
 }
 
-// Ejecuta una task completa: gate de dependencias fallidas, implementacion, gate de
+// Ejecuta una task completa: gate de dependencias no completadas, implementacion, gate de
 // tests y, si pasa, revision + commit. El gate de tests corre la suite real y lee su
 // exit code: rojo bloquea el commit y aparta el trabajo de la task; la falta de
 // comando bloquea solo si la task toca codigo. SDD_GUARD_SKIP=1 degrada ese bloqueo a
@@ -520,14 +662,21 @@ async function ejecutarTask(task, resultadosPrevios) {
     revisarYComitear: revisarYComitear,
     descartar: apartarTrabajo,
     arbolLimpio: modoParalelo ? undefined : arbolLimpio,
+    exclusivo: exclusivo,
   })
 }
 
 // Recorrido topologico: los niveles en orden y, dentro de cada nivel, una task tras
-// otra (defecto) o todas a la vez con --parallel. La frontera de lo que el modo
-// concurrente garantiza y de lo que deja en manos de quien lo pide esta documentada
-// sobre `recorrerNiveles`, en lib/orquestacion.js.
-const allResults = await orq.recorrerNiveles(niveles, ejecutarTask, { modoParalelo })
+// otra (defecto) o, con --parallel, las de ficheros disjuntos a la vez hasta el tope y las que
+// chocan después, en serie. La frontera de lo que el modo concurrente garantiza y de lo que deja
+// en manos de quien lo pide esta documentada sobre `recorrerNiveles`, en lib/orquestacion.js.
+const allResults = await orq.recorrerNiveles(niveles, ejecutarTask, {
+  modoParalelo,
+  concurrencia,
+  ambito: ambitoTask,
+  enVuelo,
+  log: registro,
+})
 
 const { completadas, fallidas } = orq.resumirResultados(allResults)
 log('Implementacion: ' + completadas + ' completadas, ' + fallidas + ' fallidas de ' + taskList.length)
@@ -539,6 +688,8 @@ log('Implementacion: ' + completadas + ' completadas, ' + fallidas + ' fallidas 
 // revision_adversarial.md en modo standalone (sin repetir Pasos 1-3/5, que ya
 // se cubrieron por task). Se omite si alguna task quedo FALLIDA/bloqueada: no
 // tiene sentido verificar convergencia sobre un resultado incompleto.
+// La verificación solo reporta brechas; con alguna BLOQUEANTE, un paso aparte
+// con escritura las convierte en tasks (orq.resolverConvergencia lo decide).
 phase('Convergencia')
 
 async function verificarConvergencia() {
@@ -546,12 +697,42 @@ async function verificarConvergencia() {
 Aplica solo el Paso 4bis de ai_docs/dev_templates/revision_adversarial.md en modo\n\
 standalone contra la spec ' + specPath + ' y sus tasks.\n\
 No repitas Pasos 1-3/5. No toques codigo.\n\
-Si hay brechas BLOQUEANTES, genera tasks de convergencia via scripts/next-task-number.sh.\n\
-Emite el veredicto.', {
+No crees ficheros; reporta. Devuelve cada brecha en `brechas` con:\n\
+- `criterio`: la sección o el criterio de la spec afectado;\n\
+- `hallazgo`: la brecha y la corrección sugerida;\n\
+- `evidencia`: lo que la acredita, con archivo:línea cuando aplique;\n\
+- `severidad`: BLOQUEANTE o WARNING.\n\
+Sin brechas, `brechas` va vacía. Emite el veredicto.', {
+    agentType: 'revisor',
     label: 'convergencia',
     phase: 'Convergencia',
     schema: CONVERGENCIA_SCHEMA
   })
+}
+
+// Paso de creación: convierte en tasks las brechas BLOQUEANTES que la verificación reportó.
+// La verificación no escribe; este paso sí. Devuelve las rutas creadas, o null si no hubo
+// respuesta utilizable: entonces las brechas siguen en el resultado del flujo.
+async function crearTasksConvergencia(brechas) {
+  const r = await agent('\
+La verificación de convergencia de la spec ' + specPath + ' reportó estas brechas BLOQUEANTES:\n\
+```json\n' + JSON.stringify(brechas, null, 2) + '\n```\n\
+Crea una task de convergencia por cada brecha, como indica la sección «Tasks de convergencia»\n\
+del Paso 4bis de ai_docs/dev_templates/revision_adversarial.md, con el formato de\n\
+ai_docs/dev_templates/tareas.md. Numera cada una con scripts/next-task-number.sh.\n\
+\n\
+REGLAS:\n\
+- Solo creas ficheros nuevos: no modifiques la spec, las tasks existentes ni el código.\n\
+- Si next-task-number.sh no está disponible, no crees nada y explica el motivo en `error`.\n\
+- NO hagas preguntas.\n\
+Devuelve en `tasks_creadas` la ruta de cada task creada.', {
+    agentType: 'planificador',
+    label: 'crear-convergencia',
+    phase: 'Convergencia',
+    schema: CREACION_CONVERGENCIA_SCHEMA
+  })
+  if (r && r.error) registro('Convergencia: el paso de creación informa: ' + r.error)
+  return r && Array.isArray(r.tasks_creadas) ? r.tasks_creadas : null
 }
 
 const convergencia = await orq.resolverConvergencia({
@@ -559,6 +740,7 @@ const convergencia = await orq.resolverConvergencia({
   fallidas: fallidas,
   total: taskList.length,
   verificar: verificarConvergencia,
+  crearTasks: crearTasksConvergencia,
   log: registro,
 })
 

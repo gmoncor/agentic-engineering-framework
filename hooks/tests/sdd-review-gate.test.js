@@ -291,3 +291,162 @@ test('el hook solo se cablea donde el flujo emite la senal: Claude Code', { skip
     'sin motor de workflows no hay emisor de la senal: cablear el gate ahi no tendria via de satisfacerse'
   );
 });
+
+// Raíz del diff: con git real y dos repositorios. El hook debe leer el diff cacheado del
+// repositorio que el commit va a usar (`-C`, `--git-dir`/`--work-tree`, `GIT_DIR=` o, sin
+// nada de eso, el cwd del payload), no el del directorio en el que corre su proceso.
+// Los repositorios viven bajo un HOME inyectado para ejercitar la `~` sin tocar el real.
+const { spawnSync, execFileSync } = require('child_process');
+
+let reposCache = null;
+function dosRepos() {
+  if (reposCache) return reposCache;
+  const home = tempDir('sdd-review-repos-');
+  const crear = (nombre, fichero) => {
+    const dir = path.join(home, nombre);
+    fs.mkdirSync(dir);
+    execFileSync('git', ['init', '-q'], { cwd: dir });
+    fs.writeFileSync(path.join(dir, fichero), 'contenido de ' + nombre + '\n');
+    execFileSync('git', ['add', fichero], { cwd: dir });
+    return { dir, diff: execFileSync('git', ['diff', '--cached', '--no-ext-diff', '--no-textconv'], { cwd: dir, encoding: 'utf8' }) };
+  };
+  reposCache = { home, A: crear('A', 'a.txt'), B: crear('B', 'b.txt') };
+  return reposCache;
+}
+
+// Lanza el hook con el proceso situado en `cwd` y sin SDD_STAGED_DIFF: el diff sale de git.
+function runHookEn(cwd, payload, env) {
+  const childEnv = Object.assign({}, process.env, { HOME: dosRepos().home, USERPROFILE: dosRepos().home }, env);
+  for (const k of ['SDD_STAGED_DIFF', 'SDD_GUARD_SKIP', 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_CONFIG_GLOBAL']) {
+    if (!(env && k in env)) delete childEnv[k];
+  }
+  const r = spawnSync(process.execPath, [path.join(HOOKS_DIR, HOOK)], {
+    cwd, input: JSON.stringify(payload), encoding: 'utf8', timeout: 10000, env: childEnv,
+  });
+  let decision = null;
+  try { decision = JSON.parse((r.stdout || '').trim()); } catch { decision = null; }
+  return decision ? decision.decision : 'silencio';
+}
+
+// Cada caso: [comando, señal revisada, veredicto esperado], con el proceso del hook en A.
+function comprobar(casos) {
+  const { A, B } = dosRepos();
+  for (const [cmd, revisado, esperado] of casos) {
+    const env = entorno(CONFIG_ON);
+    emitirSenal(env, revisado === 'A' ? A.diff : B.diff);
+    assert.strictEqual(runHookEn(A.dir, bashPayload(cmd), env), esperado, cmd + ' (señal de ' + revisado + ')');
+  }
+}
+
+test('git -C <B> commit con el proceso en A: contrasta el diff de B, no el de A', () => {
+  const { B } = dosRepos();
+  comprobar([
+    ['git -C ' + B.dir + ' commit -m x', 'B', 'silencio'],
+    ['git -C ' + B.dir + ' commit -m x', 'A', 'deny'],
+    ['git -C ../B commit -m x', 'B', 'silencio'],
+    ['git -C ~/B commit -m x', 'B', 'silencio'],
+    ['git -C ~/B commit -m x', 'A', 'deny'],
+    ['bash -lc "git -C ' + B.dir + ' commit -m x"', 'B', 'silencio'],
+  ]);
+});
+
+test('-C que depende del shell o no existe: conserva la raíz de partida y deniega lo no revisado', () => {
+  comprobar([
+    ['git -C "$HOME/B" commit -m x', 'B', 'deny'],
+    ['git -C "$HOME/B" commit -m x', 'A', 'silencio'],
+    ['git -C `pwd`/../B commit -m x', 'B', 'deny'],
+    ['git -C /no/existe/B commit -m x', 'B', 'deny'],
+  ]);
+});
+
+test('--git-dir/--work-tree y GIT_DIR=/GIT_WORK_TREE= fijan el repositorio del diff', () => {
+  const { B } = dosRepos();
+  const g = path.join(B.dir, '.git');
+  comprobar([
+    ['git --git-dir=' + g + ' --work-tree=' + B.dir + ' commit -m x', 'B', 'silencio'],
+    ['git --git-dir=' + g + ' --work-tree=' + B.dir + ' commit -m x', 'A', 'deny'],
+    ['git --git-dir ' + g + ' --work-tree ' + B.dir + ' commit -m x', 'B', 'silencio'],
+    ['git --git-dir ' + g + ' --work-tree ' + B.dir + ' commit -m x', 'A', 'deny'],
+    ['GIT_DIR=' + g + ' GIT_WORK_TREE=' + B.dir + ' git commit -m x', 'B', 'silencio'],
+    ['GIT_DIR=' + g + ' GIT_WORK_TREE=' + B.dir + ' git commit -m x', 'A', 'deny'],
+  ]);
+});
+
+test('un "git" que no está en posición de programa no cambia la raíz', () => {
+  const { B } = dosRepos();
+  comprobar([
+    ['echo git -C ' + B.dir + ' commit; git commit -m x', 'A', 'silencio'],
+    ['echo git -C ' + B.dir + ' commit; git commit -m x', 'B', 'deny'],
+  ]);
+});
+
+test('sin -C, el cwd del payload manda sobre el del proceso del hook', () => {
+  const { A, B } = dosRepos();
+  const env = entorno(CONFIG_ON);
+  emitirSenal(env, B.diff);
+
+  const payload = Object.assign(bashPayload('git commit -m x'), { cwd: B.dir });
+  assert.strictEqual(runHookEn(A.dir, payload, env), 'silencio');
+
+  const enA = Object.assign(bashPayload('git commit -m x'), { cwd: A.dir });
+  assert.strictEqual(runHookEn(B.dir, enA, env), 'deny');
+});
+
+test('con diff.external y textconv globales, ni el hook ni el emisor los ejecutan, y calculan el mismo hash: no deniega', { skip: SIN_MOTOR }, async () => {
+  // El emisor vive en el motor de workflows: se carga solo donde está instalado.
+  const orq = require('../../.claude/workflows/lib/orquestacion');
+  const { A } = dosRepos();
+  const home = tempDir('sdd-review-home-');
+  try {
+    // La herramienta externa deja un centinela fuera del repositorio cada vez que git la ejecuta.
+    const centinela = path.join(home, 'centinela');
+    const externo = writeFile(path.join(home, 'externo.js'),
+      'require("fs").writeFileSync(' + JSON.stringify(centinela) + ', "x");\n'
+      + "process.stdout.write('diff externo\\n');\n");
+    const centinelaConv = path.join(home, 'centinela-textconv');
+    const conv = writeFile(path.join(home, 'conv.js'),
+      'require("fs").writeFileSync(' + JSON.stringify(centinelaConv) + ', "x");\n'
+      + "process.stdout.write('texto convertido\\n');\n");
+    const atributos = writeFile(path.join(home, 'atributos'), '* diff=conv\n');
+    const barras = p => p.split(path.sep).join('/');
+    writeFile(path.join(home, '.gitconfig'),
+      '[core]\n\tattributesFile = "' + barras(atributos) + '"\n'
+      + '[diff]\n\texternal = "' + barras(process.execPath) + '" "' + barras(externo) + '"\n'
+      + '[diff "conv"]\n\ttextconv = "' + barras(process.execPath) + '" "' + barras(conv) + '"\n');
+    const gitEnv = Object.assign({}, process.env, { HOME: home, USERPROFILE: home });
+    delete gitEnv.GIT_CONFIG_GLOBAL;
+
+    // Controles: sin --no-ext-diff ni --no-textconv, git sí ejecuta cada herramienta. Si no, el caso
+    // no prueba nada.
+    const conExterno = execFileSync('git', ['diff', '--cached'], { cwd: A.dir, env: gitEnv, encoding: 'utf8' });
+    assert.match(conExterno, /diff externo/, 'el diff.external global debe aplicarse');
+    assert.ok(fs.existsSync(centinela), 'la herramienta externa debe dejar el centinela');
+    fs.rmSync(centinela);
+    const conTextconv = execFileSync('git', ['diff', '--cached', '--no-ext-diff'], { cwd: A.dir, env: gitEnv, encoding: 'utf8' });
+    assert.match(conTextconv, /texto convertido/, 'el textconv global debe aplicarse');
+    assert.ok(fs.existsSync(centinelaConv), 'el textconv debe dejar su centinela');
+    fs.rmSync(centinelaConv);
+
+    // Emisor real de la señal: la lectura del diff preparado del flujo por task.
+    const spawn = argv => {
+      const r = spawnSync('git', argv, { cwd: A.dir, env: gitEnv, encoding: 'utf8', timeout: 15000 });
+      return { code: r.status, out: r.stdout || '', err: r.stderr || (r.error ? r.error.message : '') };
+    };
+    const emitido = await orq.diffPreparado(spawn);
+    assert.ok(emitido.ok, emitido.error);
+    assert.doesNotMatch(emitido.diff, /diff externo|texto convertido/);
+    assert.match(emitido.diff, /contenido de A/);
+    assert.ok(!fs.existsSync(centinela), 'el emisor no debe ejecutar la herramienta externa');
+    assert.ok(!fs.existsSync(centinelaConv), 'el emisor no debe ejecutar el textconv');
+
+    const env = entorno(CONFIG_ON, { HOME: home, USERPROFILE: home });
+    emitirSenal(env, emitido.diff);
+    assert.strictEqual(runHookEn(A.dir, bashPayload('git commit -m x'), env), 'silencio');
+    assert.ok(!fs.existsSync(centinela), 'el hook no debe ejecutar la herramienta externa');
+    assert.ok(!fs.existsSync(centinelaConv), 'el hook no debe ejecutar el textconv');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test.after(() => { if (reposCache) fs.rmSync(reposCache.home, { recursive: true, force: true }); });

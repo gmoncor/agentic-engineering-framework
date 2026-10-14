@@ -41,10 +41,15 @@
  */
 
 const { spawnSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const { readPayload, readToolCall, warn, deny, skipRequested, loadConfig, runWithFailOpen } = require('./sdd-hook-utils');
+const {
+  readPayload, readToolCall, warn, deny, skipRequested, loadConfig, hookEnabled, runWithFailOpen,
+} = require('./sdd-hook-utils');
 const { DEFAULT_TTL_MS, readSignal, hashDiff } = require('./sdd-review-signal');
-const { invocacionesDe } = require('./sdd-git-command');
+const { invocacionesDe, tokenizar, segmentar } = require('./sdd-git-command');
+const { toNativePath } = require('./sdd-plan-state');
 
 const SHELL_TOOLS = new Set(['Bash', 'run_command', 'shell']);
 
@@ -87,14 +92,14 @@ async function main() {
   if (!invocaGitCommitOMerge(cmd)) process.exit(0);
 
   const config = loadConfig(path.join(__dirname, 'config.json')).sdd_review_gate || {};
-  if (config.enabled !== true) process.exit(0);
+  if (!hookEnabled('sdd_review_gate', config)) process.exit(0);
 
   if (skipRequested()) { warn(SKIP_AVISO, call); return; }
 
   const sessionId = data.session_id || '';
   if (!sessionId) process.exit(0);
 
-  const diff = stagedDiff();
+  const diff = stagedDiff(raizDelCommit(cmd, data));
   if (diff == null || diff.trim() === '') { warn(SIN_DIFF, call); return; }
 
   const signal = readSignal(sessionId, ttlMs(config));
@@ -104,13 +109,127 @@ async function main() {
   process.exit(0);
 }
 
-// El diff que se va a commitear. SDD_STAGED_DIFF permite inyectarlo en tests y
-// entornos aislados, igual que SDD_CONFIG_PATH / SDD_SIGNAL_DIR; sin el, se lee del
-// repositorio en curso. null si git no puede resolverlo.
-function stagedDiff() {
+// Dónde lee git el repositorio del commit observado. Se parte del cwd del payload (el
+// árbol de la sesión) o, sin él, del directorio del proceso, y se aplica lo que el comando
+// antepone a `commit`/`merge` en posición de programa: los `-C <ruta>` (acumulados, cada
+// uno relativo al anterior), `--git-dir`/`--work-tree` (con `=` o con espacio) y las
+// asignaciones `GIT_DIR=`/`GIT_WORK_TREE=` al inicio del segmento. Si el commit va en un
+// script anidado (`bash -lc "git -C x commit"`), se resuelve allí.
+//
+// Si un valor no se puede resolver sin ejecutar el shell (lleva `$` o comilla invertida)
+// o apunta a un directorio que no existe, se conserva la raíz de partida sin ningún
+// ajuste: el diff se contrasta como antes y, si no ata la señal, el gate deniega.
+const SINTAXIS_DE_SHELL = new Set([
+  '(', ')', '{', '}', '!', 'if', 'then', 'elif', 'else', 'fi', 'while', 'until', 'for', 'do', 'done',
+]);
+const ENVOLTORIOS = new Set(['env', 'command', 'nohup', 'stdbuf', 'nice', 'time', 'sudo', 'doas', 'timeout', 'xargs']);
+const FLAGS_DE_ENVOLTORIO_CON_VALOR = new Set(['-s', '--signal', '-n', '--adjustment']);
+const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh']);
+const GLOBALES_CON_VALOR = new Set(['-c', '--exec-path', '--namespace']);
+const ASIGNACION_RE = /^([A-Za-z_][A-Za-z0-9_]*)=([\s\S]*)$/;
+
+function raizDelCommit(cmd, data) {
+  const base = path.resolve(toNativePath(data && typeof data.cwd === 'string' ? data.cwd : '') || process.cwd());
+  const raiz = buscarRaiz(tokenizar(cmd), base);
+  return raiz || { dir: base, env: {} };
+}
+
+// Primera invocación de git commit/merge en posición de programa: devuelve su raíz, la
+// de partida si algún valor no se resuelve, o null si no hay ninguna.
+function buscarRaiz(tokens, base) {
+  for (const seg of segmentar(tokens)) {
+    const asignadas = {};
+    let i = 0;
+    while (i < seg.length && !seg[i].entrecomillado) {
+      const v = seg[i].valor;
+      const asignacion = ASIGNACION_RE.exec(v);
+      if (asignacion) { asignadas[asignacion[1]] = asignacion[2]; i += 1; continue; }
+      if (SINTAXIS_DE_SHELL.has(v)) { i += 1; continue; }
+      if (ENVOLTORIOS.has(path.basename(v))) {
+        const nombre = path.basename(v);
+        i += 1;
+        while (i < seg.length && !seg[i].entrecomillado && seg[i].valor.startsWith('-')) {
+          i += FLAGS_DE_ENVOLTORIO_CON_VALOR.has(seg[i].valor) ? 2 : 1;
+        }
+        if (nombre === 'timeout' && i < seg.length) i += 1;
+        continue;
+      }
+      break;
+    }
+    if (i >= seg.length) continue;
+    const programa = path.basename(seg[i].valor);
+
+    if (SHELLS.has(programa)) {
+      const flag = seg.findIndex((t, k) => k > i && !t.entrecomillado && /^-[A-Za-z]*c$/.test(t.valor));
+      if (flag !== -1 && flag + 1 < seg.length) {
+        const anidada = buscarRaiz(tokenizar(seg[flag + 1].valor), base);
+        if (anidada) return anidada;
+      }
+      continue;
+    }
+    if (programa !== 'git') continue;
+
+    let dir = base;
+    let gitDir = asignadas.GIT_DIR;
+    let workTree = asignadas.GIT_WORK_TREE;
+    let j = i + 1;
+    while (j < seg.length && seg[j].valor.startsWith('-')) {
+      const v = seg[j].valor;
+      if (v === '-C' && j + 1 < seg.length) {
+        const destino = resolverRuta(seg[j + 1].valor, dir);
+        if (!destino) return { dir: base, env: {} };
+        dir = destino;
+        j += 2;
+      } else if (v === '--git-dir' || v === '--work-tree') {
+        if (j + 1 >= seg.length) break;
+        if (v === '--git-dir') gitDir = seg[j + 1].valor; else workTree = seg[j + 1].valor;
+        j += 2;
+      } else if (v.startsWith('--git-dir=')) {
+        gitDir = v.slice('--git-dir='.length); j += 1;
+      } else if (v.startsWith('--work-tree=')) {
+        workTree = v.slice('--work-tree='.length); j += 1;
+      } else {
+        j += GLOBALES_CON_VALOR.has(v) ? 2 : 1;
+      }
+    }
+    if (j >= seg.length || (seg[j].valor !== 'commit' && seg[j].valor !== 'merge')) continue;
+
+    const env = {};
+    for (const [clave, valor] of [['GIT_DIR', gitDir], ['GIT_WORK_TREE', workTree]]) {
+      if (valor == null) continue;
+      const ruta = resolverRuta(valor, dir);
+      if (!ruta) return { dir: base, env: {} };
+      env[clave] = ruta;
+    }
+    return { dir, env };
+  }
+  return null;
+}
+
+// Ruta absoluta y existente para `valor` relativo a `desde`; null si depende del shell
+// (variables o sustitución de órdenes) o no existe. Expande la `~` inicial.
+function resolverRuta(valor, desde) {
+  let ruta = toNativePath(valor);
+  if (ruta === '' || /[$`]/.test(ruta)) return null;
+  if (ruta === '~' || ruta.startsWith('~/')) ruta = path.join(os.homedir(), ruta.slice(1));
+  else if (ruta.startsWith('~')) return null;
+  const absoluta = path.resolve(desde, ruta);
+  return fs.existsSync(absoluta) ? absoluta : null;
+}
+
+// El diff que se va a commitear, leído en la raíz de raizDelCommit. SDD_STAGED_DIFF
+// permite inyectarlo en tests y entornos aislados, igual que SDD_CONFIG_PATH /
+// SDD_SIGNAL_DIR. Sin fsmonitor, que ejecutaría el monitor configurado en el repositorio
+// nombrado, ni `diff.external` ni `textconv`, que ejecutarían la herramienta configurada
+// antes de decidir y meterían su salida en el hash. Con los mismos argumentos de diff que
+// el emisor de la señal (`git diff --cached --no-ext-diff --no-textconv`): el hash sigue
+// atando. null si git no puede resolverlo.
+function stagedDiff(raiz) {
   if (process.env.SDD_STAGED_DIFF != null) return process.env.SDD_STAGED_DIFF;
   try {
-    const r = spawnSync('git', ['diff', '--cached'], { cwd: process.cwd(), encoding: 'utf8', timeout: 5000 });
+    const r = spawnSync('git', ['-c', 'core.fsmonitor=false', 'diff', '--cached', '--no-ext-diff', '--no-textconv'], {
+      cwd: raiz.dir, env: Object.assign({}, process.env, raiz.env), encoding: 'utf8', timeout: 5000,
+    });
     if (r.error || r.status !== 0) return null;
     return r.stdout;
   } catch {

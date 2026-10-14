@@ -16,7 +16,10 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { readPayload, warn, deny, loadConfig, purgeExpired, sessionStatePath } = require('../sdd-hook-utils');
+const {
+  readPayload, warn, deny, loadConfig, purgeExpired, purgeLegacyOnce, purgeHookState, hookStateDir, stateDirSafe,
+  sessionStatePath,
+} = require('../sdd-hook-utils');
 
 const originalStdin = process.stdin;
 
@@ -395,6 +398,132 @@ test('purgeExpired: directorio no listable -> falla en silencio, no lanza', () =
   });
 });
 
+// La purga no sigue enlaces: un enlace simbólico con el prefijo propio no es
+// un registro del hook aunque el fichero al que apunta esté caducado.
+test('purgeExpired: enlace simbólico con el prefijo -> ni se borra el enlace ni su destino', () => {
+  const dir = tempPurgeDir();
+  const fuera = tempPurgeDir();
+  const destino = path.join(fuera, 'ajeno.json');
+  fs.writeFileSync(destino, '{}');
+  conMtime(destino, 48 * 60 * 60 * 1000);
+  const enlace = path.join(dir, 'sdd-turns-enlace.json');
+  fs.symlinkSync(destino, enlace);
+  const viejo = Date.now() / 1000 - 48 * 60 * 60;
+  fs.lutimesSync(enlace, viejo, viejo);
+  try {
+    purgeExpired(dir, 'sdd-turns-', path.join(dir, 'sdd-turns-actual.json'), 24 * 60 * 60 * 1000);
+    assert.strictEqual(fs.lstatSync(enlace).isSymbolicLink(), true, 'el enlace no se borra');
+    assert.strictEqual(fs.existsSync(destino), true, 'el destino del enlace queda intacto');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(fuera, { recursive: true, force: true });
+  }
+});
+
+test('purgeExpired: directorio que es un enlace simbólico -> no purga lo que hay al otro lado', () => {
+  const real = tempPurgeDir();
+  const base = tempPurgeDir();
+  const viejo = path.join(real, 'sdd-turns-vieja.json');
+  fs.writeFileSync(viejo, '{}');
+  conMtime(viejo, 48 * 60 * 60 * 1000);
+  const enlace = path.join(base, 'estado');
+  fs.symlinkSync(real, enlace, 'dir');
+  try {
+    assert.strictEqual(purgeExpired(enlace, 'sdd-turns-', null, 24 * 60 * 60 * 1000), -1);
+    assert.strictEqual(fs.existsSync(viejo), true);
+  } finally {
+    fs.rmSync(real, { recursive: true, force: true });
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('purgeLegacyOnce: purga la raíz con la misma regla y deja marca cuando ya no queda ninguno', () => {
+  const estado = tempPurgeDir();
+  const raiz = tempPurgeDir();
+  const ttl = 24 * 60 * 60 * 1000;
+  const caducado = path.join(raiz, 'sdd-turns-antigua.log');
+  const reciente = path.join(raiz, 'sdd-turns-reciente.log');
+  const ajeno = path.join(raiz, 'otro-programa.log');
+  for (const f of [caducado, reciente, ajeno]) fs.writeFileSync(f, '1\n');
+  conMtime(caducado, 25 * 60 * 60 * 1000);
+  conMtime(ajeno, 48 * 60 * 60 * 1000);
+  const marca = path.join(estado, '.legacy-sdd-turns-purged');
+  try {
+    purgeLegacyOnce(estado, raiz, 'sdd-turns-', ttl);
+    assert.strictEqual(fs.existsSync(caducado), false, 'el registro antiguo caducado se purga');
+    assert.strictEqual(fs.existsSync(reciente), true, 'el registro antiguo dentro del TTL se conserva');
+    assert.strictEqual(fs.existsSync(ajeno), true, 'un fichero sin el prefijo no se toca');
+    assert.strictEqual(fs.existsSync(marca), false, 'sin marca mientras queden registros en la raíz');
+
+    fs.unlinkSync(reciente);
+    purgeLegacyOnce(estado, raiz, 'sdd-turns-', ttl);
+    assert.strictEqual(fs.existsSync(marca), true, 'con la raíz limpia queda la marca');
+
+    const posterior = path.join(raiz, 'sdd-turns-posterior.log');
+    fs.writeFileSync(posterior, '1\n');
+    conMtime(posterior, 25 * 60 * 60 * 1000);
+    purgeLegacyOnce(estado, raiz, 'sdd-turns-', ttl);
+    assert.strictEqual(fs.existsSync(posterior), true, 'con la marca la raíz ya no se recorre');
+  } finally {
+    fs.rmSync(estado, { recursive: true, force: true });
+    fs.rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+// os.tmpdir() lee TMPDIR (TEMP/TMP en Windows) en cada llamada: redirigirlo
+// aísla el directorio por defecto sin tocar el temporal real.
+function conTmpdir(dir, fn) {
+  const claves = ['TMPDIR', 'TEMP', 'TMP'];
+  const previos = claves.map((k) => process.env[k]);
+  for (const k of claves) process.env[k] = dir;
+  try {
+    return fn();
+  } finally {
+    claves.forEach((k, i) => {
+      if (previos[i] === undefined) delete process.env[k];
+      else process.env[k] = previos[i];
+    });
+  }
+}
+
+const NOMBRE_ESTADO = typeof process.getuid === 'function' ? 'sdd-hooks-' + process.getuid() : 'sdd-hooks';
+
+test('hookStateDir: sin override crea y devuelve la subcarpeta propia del temporal; con override, el override', () => {
+  const raiz = fs.realpathSync(tempPurgeDir());
+  try {
+    conTmpdir(raiz, () => {
+      const dir = hookStateDir(undefined);
+      assert.strictEqual(dir, path.join(raiz, NOMBRE_ESTADO));
+      assert.strictEqual(fs.statSync(dir).isDirectory(), true);
+      assert.strictEqual(hookStateDir('/otro/sitio'), '/otro/sitio');
+    });
+  } finally {
+    fs.rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('purgeHookState: con el directorio por defecto purga también la raíz; con override, la raíz no se toca', () => {
+  const raiz = fs.realpathSync(tempPurgeDir());
+  const propio = tempPurgeDir();
+  const ttl = 24 * 60 * 60 * 1000;
+  const antiguo = path.join(raiz, 'sdd-turns-antigua.log');
+  try {
+    conTmpdir(raiz, () => {
+      fs.writeFileSync(antiguo, '1\n');
+      conMtime(antiguo, 25 * 60 * 60 * 1000);
+      purgeHookState(propio, 'sdd-turns-', path.join(propio, 'sdd-turns-actual.log'), ttl);
+      assert.strictEqual(fs.existsSync(antiguo), true, 'con override la raíz del temporal no se toca');
+
+      const dir = hookStateDir(undefined);
+      purgeHookState(dir, 'sdd-turns-', path.join(dir, 'sdd-turns-actual.log'), ttl);
+      assert.strictEqual(fs.existsSync(antiguo), false, 'con el directorio por defecto se purga el registro antiguo de la raíz');
+    });
+  } finally {
+    fs.rmSync(raiz, { recursive: true, force: true });
+    fs.rmSync(propio, { recursive: true, force: true });
+  }
+});
+
 test('readPayload() con Node >= 20 -> no emite aviso de version', async () => {
   const rutaModulo = require.resolve('../sdd-hook-utils');
   delete require.cache[rutaModulo];
@@ -414,5 +543,74 @@ test('readPayload() con Node >= 20 -> no emite aviso de version', async () => {
     fs.writeSync = originalWriteSync;
     restoreStdin();
     delete require.cache[rutaModulo];
+  }
+});
+
+test('stateDirSafe: carpeta propia real -> válida, y le retira los permisos de grupo y otros', () => {
+  const dir = tempPurgeDir();
+  try {
+    fs.chmodSync(dir, 0o777);
+    assert.strictEqual(stateDirSafe(dir), true);
+    if (typeof process.getuid === 'function') {
+      assert.strictEqual(fs.statSync(dir).mode & 0o777, 0o700);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('stateDirSafe: la carpeta es un enlace simbólico -> no válida', () => {
+  const real = tempPurgeDir();
+  const base = tempPurgeDir();
+  const enlace = path.join(base, 'estado');
+  fs.symlinkSync(real, enlace, 'dir');
+  try {
+    assert.strictEqual(stateDirSafe(enlace), false);
+  } finally {
+    fs.rmSync(real, { recursive: true, force: true });
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('stateDirSafe: carpeta de otro dueño -> no válida y sin tocar sus permisos', () => {
+  const dir = tempPurgeDir();
+  let chmods = 0;
+  try {
+    const ajena = fs.lstatSync(dir).uid + 1;
+    assert.strictEqual(stateDirSafe(dir, { uid: ajena, chmodSync: () => { chmods++; } }), false);
+    assert.strictEqual(chmods, 0);
+    assert.strictEqual(stateDirSafe(dir, { uid: null }), true, 'sin uid (Windows) se omite la comprobación de dueño');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('hookStateDir: si la carpeta propia no es segura degrada a la raíz del temporal', () => {
+  const raiz = fs.realpathSync(tempPurgeDir());
+  try {
+    conTmpdir(raiz, () => {
+      const ajena = { uid: -1 };
+      assert.strictEqual(hookStateDir(undefined, ajena), raiz);
+      assert.strictEqual(hookStateDir(undefined), path.join(raiz, NOMBRE_ESTADO));
+    });
+  } finally {
+    fs.rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('purgeExpired: un fichero de otro usuario ni se borra ni cuenta como pendiente', () => {
+  const dir = tempPurgeDir();
+  const viejo = path.join(dir, 'sdd-turns-vieja.json');
+  fs.writeFileSync(viejo, '{}');
+  conMtime(viejo, 48 * 60 * 60 * 1000);
+  const original = process.getuid;
+  const propio = fs.lstatSync(viejo).uid;
+  process.getuid = () => propio + 1;
+  try {
+    assert.strictEqual(purgeExpired(dir, 'sdd-turns-', null, 24 * 60 * 60 * 1000), 0);
+    assert.strictEqual(fs.existsSync(viejo), true);
+  } finally {
+    process.getuid = original;
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

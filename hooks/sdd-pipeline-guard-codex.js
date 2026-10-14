@@ -29,8 +29,8 @@ const { isInsideAiDocs, findTasksDir, denialReason, resolveRepoPath } = require(
 
 const PATCH_TOOLS = new Set(['apply_patch', 'ApplyPatch']);
 
-// Cabeceras del formato de parche: "*** Add File: ruta", Update, Delete, Move to.
-const PATCH_HEADER_RE = /^\*\*\*\s+(?:Add|Update|Delete|Move to)\s+File:\s*(.+)$/gim;
+// Cabeceras del formato de parche: "*** Add File: ruta", Update File, Delete File y "*** Move to: ruta".
+const PATCH_HEADER_RE = /^\*\*\*\s+(?:(?:Add|Update|Delete)\s+File|Move\s+to):\s*(.+)$/gim;
 
 // Misma firma que sdd-pipeline-guard.js (ver hooks/gate-signatures.json): ambos hooks aplican
 // el mismo criterio de bloqueo, solo cambia el formato del payload que lo dispara.
@@ -101,7 +101,8 @@ function firstDenial(targets) {
  * Rutas que toca el parche. Best-effort sobre las formas conocidas del payload:
  *   - campos directos: file_path / path
  *   - mapa de cambios: changes: { "ruta": {...} }
- *   - texto del parche: input / patch / content, con cabeceras "*** Update File: ruta"
+ *   - texto del parche, con cabeceras "*** Update File: ruta": primero command (forma medida en
+ *     codex-cli 0.162.1: tool_input.command lleva el parche entero) y, si no trae cabeceras, input / patch / content
  */
 function extractPaths(toolInput) {
   const direct = toolInput.file_path || toolInput.path;
@@ -112,9 +113,14 @@ function extractPaths(toolInput) {
     if (keys.length > 0) return keys;
   }
 
-  const patch = toolInput.input || toolInput.patch || toolInput.content;
-  if (typeof patch !== 'string') return [];
+  const desdeCommand = headerPaths(toolInput.command);
+  if (desdeCommand.length > 0) return desdeCommand;
+  return headerPaths(toolInput.input || toolInput.patch || toolInput.content);
+}
 
+/** Rutas de las cabeceras de un texto de parche; [] si no es texto o no tiene cabeceras. */
+function headerPaths(patch) {
+  if (typeof patch !== 'string') return [];
   const files = [];
   for (const m of patch.matchAll(PATCH_HEADER_RE)) {
     const file = m[1].trim();

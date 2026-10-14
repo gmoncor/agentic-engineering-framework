@@ -24,7 +24,8 @@
 // ficheros de otras sesiones con mas de 24h sin actividad, para que no se
 // acumulen indefinidamente en maquinas de larga duracion.
 //
-// SDD_READS_DIR redirige el directorio (tests, entornos con tmp efimero).
+// SDD_READS_DIR redirige el directorio (tests, entornos con tmp efímero); sin ella,
+// la subcarpeta propia del temporal del sistema (hookStateDir en sdd-hook-utils.js).
 //
 // La clave con la que se registra y se consulta una lectura es la ruta absoluta que devuelve
 // resolveRepoPath: la misma ruta debe producir la misma clave llegue como la llegue (relativa,
@@ -32,15 +33,14 @@
 // registra una clave y consulta otra, y el aviso deja de sonar sin que nada falle.
 
 const fs = require('fs');
-const os = require('os');
-const { purgeExpired, sessionStatePath } = require('./sdd-hook-utils');
+const { purgeHookState, hookStateDir, sessionStatePath } = require('./sdd-hook-utils');
 const { resolveRepoPath } = require('./sdd-plan-state');
 
 const TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const PREFIX = 'sdd-reads-';
 
 function readsDir() {
-  return process.env.SDD_READS_DIR || os.tmpdir();
+  return hookStateDir(process.env.SDD_READS_DIR);
 }
 
 function readsPath(sessionId) {
@@ -90,7 +90,7 @@ function trackRead(sessionId, filePath, fromDir) {
     // concurrente que si producia falsos positivos ya no existe.
     return;
   }
-  purgeExpired(readsDir(), PREFIX, file, TTL_MS);
+  purgeHookState(readsDir(), PREFIX, file, TTL_MS);
 }
 
 function hasRead(sessionId, filePath, fromDir) {

@@ -364,3 +364,273 @@ test('control: git commit -m "docs: explica el flag -n" es invocacion, pero sin 
   assert.ok(inv);
   assert.strictEqual(usaFlag(inv, { largo: '--no-verify', corto: 'n' }), false);
 });
+
+// ─── Palabras como las forma el shell: piezas adyacentes con y sin comillas ──────────────────
+
+const NO_VERIFY = { largo: '--no-verify', corto: 'n' };
+
+function commits(cmd) {
+  return invocaciones(cmd).filter(i => i.programa === 'git' && i.palabras[0] === 'commit');
+}
+
+test('tokenizar: valor entrecomillado pegado a texto sin comillas es un solo token, no entrecomillado', () => {
+  const t = tokenizar("git -c alias.x='commit -n' x");
+  assert.deepStrictEqual(t.map(x => x.valor), ['git', '-c', 'alias.x=commit -n', 'x']);
+  assert.strictEqual(t[2].entrecomillado, false);
+});
+
+test('tokenizar: piezas entrecomilladas adyacentes forman un token entrecomillado', () => {
+  assert.deepStrictEqual(tokenizar('echo \'a\'"b"')[1], { valor: 'ab', entrecomillado: true });
+});
+
+test('tokenizar: un separador entre comillas dentro de una palabra no la corta', () => {
+  assert.deepStrictEqual(tokenizar("a';'b"), [{ valor: 'a;b', entrecomillado: false }]);
+});
+
+test('tokenizar: "--no-"verify llega como flag (basta una pieza sin comillas)', () => {
+  assert.deepStrictEqual(tokenizar('"--no-"verify'), [{ valor: '--no-verify', entrecomillado: false }]);
+});
+
+test('bash -c con el script en una sola palabra mixta con blanco se re-analiza', () => {
+  const inv = commits("bash -c git' commit --no-verify'");
+  assert.strictEqual(inv.length, 1);
+  assert.strictEqual(usaFlag(inv[0], NO_VERIFY), true);
+});
+
+test('git -c user.name=\'a b\' commit --no-verify: el valor con blanco no oculta el commit', () => {
+  const inv = commits("git -c user.name='a b' commit --no-verify");
+  assert.strictEqual(inv.length, 1);
+  assert.strictEqual(usaFlag(inv[0], NO_VERIFY), true);
+});
+
+test('GIT_DIR="/a b" git commit: asignación con blanco descartada y registrada en entorno', () => {
+  const cmd = 'GIT_DIR="/a b" git commit -m x';
+  assert.strictEqual(esInvocacion(cmd, 'git', ['commit']), true);
+  assert.deepStrictEqual(commits(cmd)[0].entorno, [['GIT_DIR', '/a b']]);
+});
+
+test('control negativo: --no-verify dentro del mensaje sigue siendo texto', () => {
+  const inv = commits('git commit -m "texto --no-verify"');
+  assert.strictEqual(inv.length, 1);
+  assert.strictEqual(usaFlag(inv[0], NO_VERIFY), false);
+});
+
+// ─── Alias en línea de git (-c alias.<x>=...) ──────────────────────────────────────────────
+
+test('alias: git -c alias.x=commit x es un commit', () => {
+  assert.notStrictEqual(commits('git -c alias.x=commit x').length, 0);
+});
+
+test('alias: git -c alias.x=\'commit -n\' x lleva -n en flags', () => {
+  const inv = commits("git -c alias.x='commit -n' x");
+  assert.strictEqual(inv.length, 1);
+  assert.ok(inv[0].flags.includes('-n'));
+});
+
+test('alias: la invocación expandida hereda las globales de la original (-C B)', () => {
+  const inv = commits('git -c alias.x=commit -C B x');
+  assert.strictEqual(inv.length, 1);
+  assert.ok(inv[0].globales.some(([o, v]) => o === '-C' && v === 'B'), JSON.stringify(inv[0].globales));
+});
+
+test('alias: con ! el script se analiza como anidado, con script propio y sin globales', () => {
+  const inv = commits("git -c alias.x='!git commit --no-verify' x");
+  assert.strictEqual(inv.length, 1);
+  assert.strictEqual(usaFlag(inv[0], NO_VERIFY), true);
+  assert.notStrictEqual(inv[0].script, 0);
+  assert.deepStrictEqual(inv[0].globales, []);
+});
+
+test('alias: la cadena x -> y -> commit se sigue hasta el builtin', () => {
+  const inv = commits("git -c alias.x=y -c alias.y='commit --no-verify' x");
+  assert.strictEqual(inv.length, 1);
+  assert.strictEqual(usaFlag(inv[0], NO_VERIFY), true);
+});
+
+test('alias: el nombre no distingue mayúsculas (alias.X sirve para x)', () => {
+  const inv = commits('git -c alias.X=commit x --no-verify');
+  assert.strictEqual(inv.length, 1);
+  assert.strictEqual(usaFlag(inv[0], NO_VERIFY), true);
+});
+
+test('alias negativo: un bucle x -> y -> x deja solo la invocación original', () => {
+  const inv = invocaciones('git -c alias.x=y -c alias.y=x x');
+  assert.strictEqual(inv.length, 1);
+  assert.deepStrictEqual(inv[0].palabras, ['x']);
+});
+
+test('alias negativo: un alias con nombre de builtin no lo tapa (alias.commit=log)', () => {
+  const inv = invocaciones('git -c alias.commit=log commit --no-verify');
+  assert.strictEqual(inv.filter(i => i.palabras[0] === 'log').length, 0);
+  const commit = inv.filter(i => i.palabras[0] === 'commit');
+  assert.strictEqual(commit.length, 1);
+  assert.strictEqual(usaFlag(commit[0], NO_VERIFY), true);
+});
+
+test('alias negativo: git -c alias.x=log x no es commit', () => {
+  assert.strictEqual(esInvocacion('git -c alias.x=log x', 'git', ['commit']), false);
+});
+
+test('alias negativo: un valor -c que no es alias no expande nada (user.name=commit log)', () => {
+  assert.strictEqual(esInvocacion('git -c user.name=commit log', 'git', ['commit']), false);
+});
+
+// ─── Campos por invocación: separadores, grupos, script y globales ───────────────────────────
+
+function porPrograma(cmd, programa) {
+  return invocaciones(cmd).find(i => i.programa === programa);
+}
+
+test('campos: separadores de cd B && git commit', () => {
+  const cmd = 'cd B && git commit';
+  assert.strictEqual(porPrograma(cmd, 'cd').separadorAntes, null);
+  assert.strictEqual(porPrograma(cmd, 'cd').separadorDespues, '&&');
+  assert.strictEqual(porPrograma(cmd, 'git').separadorAntes, '&&');
+  assert.strictEqual(porPrograma(cmd, 'git').separadorDespues, null);
+});
+
+test('campos: (cd B; true); git commit -> cd y true comparten un grupo que el commit no tiene', () => {
+  const cmd = '(cd B; true); git commit';
+  const cd = porPrograma(cmd, 'cd');
+  const verdad = porPrograma(cmd, 'true');
+  const git = porPrograma(cmd, 'git');
+  assert.strictEqual(cd.grupos.length, 1);
+  assert.deepStrictEqual(verdad.grupos, cd.grupos);
+  assert.deepStrictEqual(git.grupos, []);
+});
+
+for (const cmd of ['if true; then cd B; fi; git commit', 'while false; do cd B; done; git commit']) {
+  test(`campos: ${cmd} -> cd tiene un grupo que el commit no tiene`, () => {
+    const cd = porPrograma(cmd, 'cd');
+    const git = porPrograma(cmd, 'git');
+    assert.strictEqual(cd.grupos.length, 1);
+    assert.deepStrictEqual(git.grupos, []);
+  });
+}
+
+test('campos: if true; then cd B && git commit; fi -> cd y el commit comparten grupo', () => {
+  const cmd = 'if true; then cd B && git commit; fi';
+  const cd = porPrograma(cmd, 'cd');
+  assert.strictEqual(cd.grupos.length, 1);
+  assert.deepStrictEqual(porPrograma(cmd, 'git').grupos, cd.grupos);
+});
+
+test('campos: aperturas y cierres que no cuadran (fi cierra un while) -> grupos null', () => {
+  const cmd = 'while true; do cd B; fi; git commit';
+  assert.strictEqual(porPrograma(cmd, 'cd').grupos, null);
+  assert.strictEqual(porPrograma(cmd, 'git').grupos, null);
+});
+
+test('campos: una palabra clave fuera de posición de orden no abre grupo (echo if)', () => {
+  assert.deepStrictEqual(porPrograma('echo if; git commit', 'git').grupos, []);
+});
+
+test('campos: bash -c "cd B"; git commit -> el cd tiene un script distinto del de git', () => {
+  const cmd = 'bash -c "cd B"; git commit';
+  assert.strictEqual(porPrograma(cmd, 'git').script, 0);
+  assert.notStrictEqual(porPrograma(cmd, 'cd').script, 0);
+});
+
+test('campos: git -C B -c k=v commit -> globales en orden', () => {
+  assert.deepStrictEqual(porPrograma('git -C B -c k=v commit', 'git').globales, [['-C', 'B'], ['-c', 'k=v']]);
+});
+
+test('campos: git commit -C HEAD -m x -> sin globales (-C tras el subcomando es de commit)', () => {
+  assert.deepStrictEqual(porPrograma('git commit -C HEAD -m x', 'git').globales, []);
+});
+
+// ─── Funciones recursivas, cascadas y tope de anidamiento ────────────────────────────────────
+
+// f0(){ f1; }; …; f<n-1>(){ <ultima>; }; f0: n funciones distintas, n expansiones anidadas.
+function cadenaDeFunciones(n, ultima) {
+  let cmd = '';
+  for (let i = 0; i < n - 1; i += 1) cmd += `f${i}(){ f${i + 1}; }; `;
+  return `${cmd}f${n - 1}(){ ${ultima}; }; f0`;
+}
+
+// f0(){ f1; f1; }; …; f<n>(){ true; }; f0: sin la regla de una expansión por cuerpo, 2^n.
+function cascadaDeFunciones(n) {
+  let cmd = '';
+  for (let i = 0; i < n; i += 1) cmd += `f${i}(){ f${i + 1}; f${i + 1}; }; `;
+  return `${cmd}f${n}(){ true; }; f0`;
+}
+
+const WRAPPER_DE_GIT = 'git() { command git "$@"; }; ';
+
+test('función recursiva: un wrapper de git no oculta git commit --no-verify', () => {
+  const cmd = `${WRAPPER_DE_GIT}git commit --no-verify -m x`;
+  assert.doesNotThrow(() => invocaciones(cmd));
+  const delCommit = commits(cmd);
+  assert.ok(delCommit.length > 0);
+  assert.ok(delCommit.some(i => usaFlag(i, NO_VERIFY)));
+});
+
+test('función recursiva (−): el wrapper de git con git status no es commit ni lleva --no-verify', () => {
+  const cmd = `${WRAPPER_DE_GIT}git status`;
+  assert.strictEqual(esInvocacion(cmd, 'git', ['commit']), false);
+  assert.ok(!invocaciones(cmd).some(i => usaFlag(i, NO_VERIFY)));
+});
+
+test('función recursiva directa: f() { f; }; f no lanza y no es commit', () => {
+  assert.strictEqual(esInvocacion('f() { f; }; f', 'git', ['commit']), false);
+});
+
+test('funciones mutuamente recursivas: no lanza y no es commit', () => {
+  assert.strictEqual(esInvocacion('a() { b; }; b() { a; }; a', 'git', ['commit']), false);
+});
+
+test('función legítima anidada: g() { git commit -m x; }; f() { g; }; f es commit', () => {
+  assert.strictEqual(esInvocacion('g() { git commit -m x; }; f() { g; }; f', 'git', ['commit']), true);
+});
+
+test('cascada de 20 funciones que llaman dos veces a la siguiente: crecimiento lineal y no es commit', () => {
+  const cmd = cascadaDeFunciones(20);
+  assert.ok(invocaciones(cmd).length < 200);
+  assert.strictEqual(esInvocacion(cmd, 'git', ['commit']), false);
+});
+
+test('cascada de 12 funciones: cada cuerpo se expande una vez por orden, no una vez por rama', () => {
+  assert.ok(invocaciones(cascadaDeFunciones(12)).length < 200);
+});
+
+test('tope: una cadena de 40 funciones distintas cuenta como commit incompleto con --no-verify', () => {
+  const cmd = cadenaDeFunciones(40, 'true');
+  assert.strictEqual(esInvocacion(cmd, 'git', ['commit']), true);
+  assert.ok(invocaciones(cmd).some(i => i.incompleta === true && usaFlag(i, NO_VERIFY)));
+});
+
+test('tope (−): una cadena de 10 funciones con git status al final no es commit ni incompleta', () => {
+  const cmd = cadenaDeFunciones(10, 'git status');
+  assert.strictEqual(esInvocacion(cmd, 'git', ['commit']), false);
+  assert.ok(!invocaciones(cmd).some(i => 'incompleta' in i));
+});
+
+test('tope, frontera: 32 expansiones anidadas se analizan enteras; 33 dan la invocación incompleta', () => {
+  assert.ok(!invocaciones(cadenaDeFunciones(32, 'true')).some(i => 'incompleta' in i));
+  assert.strictEqual(invocaciones(cadenaDeFunciones(33, 'true')).filter(i => i.incompleta === true).length, 1);
+});
+
+test('tope: la invocación incompleta hereda el contexto del punto de llamada', () => {
+  const cmd = cadenaDeFunciones(33, 'true');
+  const todas = invocaciones(cmd);
+  const incompleta = todas.find(i => i.incompleta === true);
+  const llamada = todas.find(i => i.programa === 'f32');
+  assert.ok(llamada);
+  assert.strictEqual(incompleta.script, llamada.script);
+  assert.strictEqual(incompleta.separadorAntes, llamada.separadorAntes);
+  assert.strictEqual(incompleta.separadorDespues, llamada.separadorDespues);
+  assert.deepStrictEqual(incompleta.grupos, llamada.grupos);
+});
+
+test('tope: 40 funciones hermanas llamadas en secuencia no anidan ni dan la invocación incompleta', () => {
+  let cmd = '';
+  for (let i = 0; i < 40; i += 1) cmd += `f${i}(){ true; }; `;
+  for (let i = 0; i < 40; i += 1) cmd += `f${i}; `;
+  assert.ok(!invocaciones(cmd).some(i => 'incompleta' in i));
+});
+
+for (const llamada of ['bash -c true', 'bash -c "true"']) {
+  test(`una función llamada bash añade su cuerpo también con -c: bash(){ git commit -n; }; ${llamada} es commit`, () => {
+    assert.strictEqual(esInvocacion(`bash(){ git commit -n; }; ${llamada}`, 'git', ['commit']), true);
+  });
+}

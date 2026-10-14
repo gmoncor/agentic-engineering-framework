@@ -202,6 +202,16 @@ Funciona con cualquier LLM: ChatGPT, Copilot, Cursor, Windsurf, o cualquier otro
 
 No requiere configuracion, plugins ni integraciones. Lee `ai_docs/README.md` para entender que hay en cada carpeta.
 
+Algunas herramientas sin backend propio leen `AGENTS.md` como contexto del proyecto. El paso 1 no lo copia: para ellas, copia también `AGENTS.md` y `.agents/skills/` junto a `ai_docs/` en la raíz de tu proyecto (o instala con `--backend codex`, que los entrega junto con `.codex/`). Ahí llegan las reglas escritas, pero no el enforcement:
+
+| Herramienta | Qué lee | Hooks | Workflows |
+|-------------|---------|-------|-----------|
+| GitHub Copilot | `AGENTS.md` | No corren | No corren |
+| Windsurf | `AGENTS.md` | No corren | No corren |
+| Devin | `AGENTS.md` | No corren | No corren |
+
+Sin hooks, nada bloquea una escritura no planificada ni un commit sin revisión: el flujo SDD se sigue por disciplina y la frontera dura va en CI y en las protecciones de rama.
+
 ### Que se instala
 
 | Componente | Donde (Claude) | Donde (Gemini) | Donde (Codex) | Donde (Antigravity) |
@@ -404,7 +414,7 @@ La misma spec con el flag `--parallel` en los argumentos:
 Las dos tasks del nivel 1 arrancan a la vez; el nivel 2 espera a que ambas terminen:
 
 ```
-3 tasks, 2 nivel(es) de dependencia, modo concurrente (--parallel)
+3 tasks, 2 nivel(es) de dependencia, modo concurrente (--parallel, hasta 4 tasks a la vez)
 Nivel 1: Modelo de usuario, Cliente HTTP
 Nivel 2: Endpoint de registro
 Implementando: Modelo de usuario
@@ -412,7 +422,7 @@ Implementando: Cliente HTTP
 ...
 ```
 
-El flag se reconoce en cualquier posicion y se retira de los argumentos antes de resolver el path de la spec, asi que `--parallel ai_docs/tasks/spec_registro.md` es equivalente. Tambien puedes pedirlo en lenguaje natural ("implementa la spec en paralelo") para que el asistente lo pase al workflow. El flag es exclusivo de Claude Code, el unico backend con un motor de workflows que lo parsea; en Codex, Antigravity y Gemini el modo concurrente se pide igual, en lenguaje natural, y lo ejecuta el orquestador siguiendo su fichero de instrucciones raiz.
+El flag se reconoce en cualquier posicion y se retira de los argumentos antes de resolver el path de la spec, asi que `--parallel ai_docs/tasks/spec_registro.md` es equivalente. Por defecto hay como mucho 4 tasks en vuelo a la vez; `--parallel=N` cambia ese tope (N, un entero mayor que 0). Tambien puedes pedirlo en lenguaje natural ("implementa la spec en paralelo") para que el asistente lo pase al workflow. El flag es exclusivo de Claude Code, el unico backend con un motor de workflows que lo parsea; en Codex, Antigravity y Gemini el modo concurrente se pide igual, en lenguaje natural, y lo ejecuta el orquestador siguiendo su fichero de instrucciones raiz.
 
 | Backend | Como se pide el modo concurrente | Quien lo ejecuta |
 |---|---|---|
@@ -428,20 +438,26 @@ El flag `--parallel` no existe fuera de Claude Code. En los otros tres backends 
 Son puertas de calidad, no de paralelizacion. Se aplican **por task** en los dos modos, sin excepcion:
 
 - **Gate de tests** — la suite del proyecto se ejecuta de verdad antes de revisar, y cuenta su codigo de salida real, no un recuento auto-declarado. En rojo, la task no se commitea.
-- **Revision adversarial del diff** — un agente con contexto limpio revisa el diff de esa task. Sin veredicto APROBADA no hay commit; hay una sola pasada de correccion antes de darla por fallida.
+- **Revision adversarial del diff** — un agente con contexto limpio revisa el diff de esa task. Solo un hallazgo crítico (o un veredicto `RECHAZADA`, o una revisión sin veredicto) abre una ronda de corrección; los menores no bloquean y viajan en el cuerpo del commit. Cada ronda corrige los críticos, vuelve a pasar el gate de tests y re-revisa con los hallazgos previos y el delta. Tras tres rondas sin aprobar, la task queda `BLOQUEADA_REVISION`: su trabajo se aparta con nombre en `git stash`, sin destruir nada, y los hallazgos abiertos con su corrección propuesta pasan al usuario.
 - **Convergencia con la spec** — al cerrar la ultima task (ver "Garantia de convergencia").
 
 Una task fallida no cancela a sus hermanas: cada una reporta su propio resultado, y las que dependan de una fallida quedan bloqueadas sin implementar.
 
 ### Frontera de responsabilidad en modo concurrente
 
-El framework lanza a la vez las tasks de un nivel y reporta el resultado de cada una. Nada mas. En concreto **no**:
+Lo que el framework hace en modo concurrente:
 
-- **No hay un unico escritor por fichero.** Dos tasks del mismo nivel pueden escribir el mismo archivo.
-- **No detecta colisiones** entre tasks que tocan los mismos archivos, ni reparte el trabajo por ellas.
-- **No aisla el arbol de trabajo.** Todas las tasks de un nivel comparten el mismo working tree mientras se implementan. Si una falla su gate de tests o su revisión, sus ficheros de la tabla "Archivos afectados" que cambiaron se apartan en `git stash` y salen del árbol: lo que las hermanas tienen en el árbol no se toca, salvo en un fichero que declaren las dos. La entrada del stash guarda, eso sí, todo lo que hubiera preparado en el índice en ese momento, también lo de una hermana: para recuperar solo lo de la task, usa `git restore --source=stash@{N} -- <rutas>` (ver más abajo). Si falla una task sin tabla legible, no se aparta nada: su trabajo se queda sin commitear en el árbol, y lo dice la nota de su resultado.
+- **Tope de concurrencia.** Nunca hay más de 4 tasks en vuelo a la vez (`--parallel=N` lo cambia): cada una es un agente implementador y, después, un revisor.
+- **Colisiones serializadas.** Antes de lanzar un nivel cruza las tablas "Archivos afectados" de sus tasks. Las de ficheros disjuntos van a la vez; las que comparten un fichero (o un directorio y lo que cuelga de él) con otra del lote, y las que no tienen tabla legible, van después, una tras otra. Dos tasks que declaran el mismo fichero no se implementan nunca a la vez.
+- **Gate y git en exclusión mutua.** El gate de tests y las operaciones de git que tocan el índice (preparar el diff, commitear, apartar) van de una en una: dos suites no corren a la vez. La implementación y la revisión siguen en paralelo.
+- **Escrituras fuera de alcance, al revisor.** Los ficheros cambiados que no declara ninguna task en vuelo llegan al revisor de cada task, que decide si son un hallazgo. En secuencial, los que no declara la task.
 
-Evitar que dos tasks hermanas se pisen es **responsabilidad del invocador**, no del framework: pide `--parallel` solo cuando las tasks de cada nivel tocan archivos disjuntos, y si necesitas aislamiento real, separa el trabajo en specs distintas y corre cada una en su propio worktree de git (ver "Aislamiento por worktree" en `/implementar-spec`).
+Lo que **no** hace:
+
+- **No hay un único escritor real por fichero.** La partición se fía de las tablas declaradas: una task que escribe fuera de su tabla puede pisar a una hermana, y eso solo lo ve el revisor.
+- **No aísla el árbol de trabajo.** Todas las tasks en vuelo comparten el mismo working tree mientras se implementan. **Residuo declarado:** la exclusión mutua evita que dos suites corran a la vez, pero el gate de una task sigue viendo en el árbol el trabajo a medias de sus hermanas, así que un rojo espurio por esa contaminación sigue siendo posible. Ese rojo aparta el trabajo de la task en `git stash`, recuperable; no lo destruye. Eliminarlo exige un worktree por task, que el framework no crea. Si una falla su gate de tests o su revisión, sus ficheros de la tabla "Archivos afectados" que cambiaron se apartan en `git stash` y salen del árbol: lo que las hermanas tienen en el árbol no se toca. La entrada del stash guarda, eso sí, todo lo que hubiera preparado en el índice en ese momento, también lo de una hermana: para recuperar solo lo de la task, usa `git restore --source=stash@{N} -- <rutas>` (ver más abajo). Si falla una task sin tabla legible, no se aparta nada: su trabajo se queda sin commitear en el árbol, y lo dice la nota de su resultado.
+
+Que las tablas "Archivos afectados" digan la verdad sigue siendo **responsabilidad del invocador**: de ellas depende la partición. Si necesitas aislamiento real, separa el trabajo en specs distintas y corre cada una en su propio worktree de git (ver "Aislamiento por worktree" en `/implementar-spec`).
 
 ### Árbol limpio y trabajo apartado
 
@@ -565,7 +581,7 @@ El directorio `hooks/` contiene hooks compartidos por los cuatro backends. Los c
 | `sdd-commit-guard.js` | git commit / git push | **Bloquea** `--no-verify` (y el alias corto `-n` en commit); avisa si subject >72 chars, tipo invalido, o Co-Authored-By con IA | Advisory / Bloqueante (`--no-verify`) |
 | `sdd-read-before-edit.js` | Read/Write/Edit | Avisa al escribir un archivo existente sin haberlo leido antes en la sesion. Nunca bloquea; se autolimita a silencio en backends que no exponen el evento de lectura | Advisory |
 | `sdd-turn-budget.js` | Todas las tool calls | Cuenta las acciones sin commit y avisa al superar cada umbral (`git commit` resetea el contador). Umbrales y `mode` configurables; `mode: enforce` convierte los avisos en bloqueo | Advisory |
-| `sdd-session-start.js` | Arranque de sesion | No enforcea nada: **escribe**. Anade una linea al registro de sesiones (`ai_docs/audits/provenance.jsonl`, dentro de tu repositorio) con directorio de trabajo, rama, commit, modelo de la sesion y hashes de los componentes instalados | Registro (activo por defecto) |
+| `sdd-session-start.js` | Arranque de sesion | No enforcea nada: **escribe**. Anade una linea al registro de sesiones (`ai_docs/audits/provenance.jsonl`, dentro de tu repositorio) con directorio de trabajo, rama, commit, el modelo de la sesión si el CLI lo envía en el arranque (si no, `null`) y hashes de los componentes instalados | Registro (activo por defecto) |
 
 Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json`) y con Gemini CLI (via `hooks/hooks.json`). El gate de revision (`sdd-review-gate.js`) se cablea **unicamente en Claude Code**; los demas backends no lo cargan. El registro de sesiones (`sdd-session-start.js`) se cablea en Claude Code, Gemini CLI y Codex; en Antigravity no, porque no consta que su CLI exponga un evento de arranque de sesion equivalente.
 
@@ -574,21 +590,21 @@ Los hooks se activan automaticamente con Claude Code (via `.claude/settings.json
 | Hook | Evento | Que hace | Modo |
 |------|--------|----------|------|
 | `sdd-pipeline-guard-codex.js` | `apply_patch` | **Deniega** aplicar un parche sobre un archivo que ninguna task de una spec APROBADA declara | Bloqueante |
-| `sdd-commit-guard-codex.js` | `shell` | **Deniega** `git commit --no-verify` y `git push --no-verify`; avisa de commits mal formados | Bloqueante + advisory |
+| `sdd-commit-guard-codex.js` | `Bash` (shell) | **Deniega** `git commit --no-verify` y `git push --no-verify`; avisa de commits mal formados | Bloqueante + advisory |
 
 Ademas del par de guards, `.codex/hooks.json` cablea el registro de sesiones (`sdd-session-start.js`), que es el mismo codigo compartido con los demas backends.
 
-Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohibe esos mismos comandos via politica de ejecucion (funcionalidad experimental del CLI; si tu version no la carga, el hook sigue siendo la via principal).
+Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohíbe esos mismos comandos mediante la política de ejecución. En codex-cli 0.162.1 las reglas cargan con `justification` y bloquean `git commit --no-verify`; un parámetro que `prefix_rule` no reconoce impide arrancar Codex. Comprobación: `codex execpolicy check`.
 
 **Limite honesto de los hooks de Codex:** son un **guardarrail**, no una frontera completa de enforcement — asi lo declara el propio fabricante. No interceptan todas las llamadas al shell ni todas las rutas de escritura: un proceso hijo lanzado desde un comando permitido puede escapar al matcher, y el payload de `apply_patch` no tiene esquema publico estable (si el guard no puede leer las rutas del parche, avisa en vez de denegar, porque bloquear a ciegas seria arbitrario). Sirven para que el camino correcto sea el camino por defecto y para que desviarse sea deliberado. Si necesitas una frontera dura, ponla en el CI y en las protecciones de rama.
 
 **Antigravity** carga cuatro hooks via `.agents/hooks.json`: `sdd-pipeline-guard.js` (guard de escrituras), `sdd-commit-guard.js` (guard de commits), `sdd-read-before-edit.js` (aviso de lectura previa) y `sdd-turn-budget.js` (contador de acciones sin commit). No carga el registro de sesiones (`sdd-session-start.js`), por la razon ya dada arriba: no consta que su CLI exponga un evento de arranque de sesion equivalente.
 
-**Hay dos bloqueos reales: escrituras y commits sin revision.** `sdd-pipeline-guard.js` impide escribir codigo que nadie planifico: puede comprobarlo mecanicamente, porque el archivo que se va a escribir esta declarado en una task o no lo esta. `sdd-review-gate.js` impide commitear un diff que no consta revisado: la revision adversarial ocurre POR TASK, antes del commit, y su senal guarda el hash del diff revisado; el hook recalcula el hash de `git diff --cached` y lo contrasta. Sin senal, o con un hash que no ata el diff staged, deniega. Cuando no hay diff cacheado computable no bloquea a ciegas: degrada a aviso. Que el codigo entregado se revise lo sostiene el flujo (`/implementar-spec` revisa cada task antes de commitearla) reforzado por el gate. Si necesitas una frontera aun mas dura sobre lo que llega a la rama, ponla en CI y en las protecciones de rama.
+**Hay dos bloqueos reales: escrituras y commits sin revision.** `sdd-pipeline-guard.js` impide escribir codigo que nadie planifico: puede comprobarlo mecanicamente, porque el archivo que se va a escribir esta declarado en una task o no lo esta. Cubre las herramientas de edición del agente (en Claude Code, `Write`, `Edit` y `NotebookEdit`); lo que se escribe por shell (`>`, `tee`, `sed -i`, `cp`) no pasa por él y solo lo detecta la revisión del diff. `sdd-review-gate.js` impide commitear un diff que no consta revisado: la revision adversarial ocurre POR TASK, antes del commit, y su senal guarda el hash del diff revisado; el hook recalcula el hash de `git diff --cached` y lo contrasta. Sin senal, o con un hash que no ata el diff staged, deniega. Cuando no hay diff cacheado computable no bloquea a ciegas: degrada a aviso. Que el codigo entregado se revise lo sostiene el flujo (`/implementar-spec` revisa cada task antes de commitearla) reforzado por el gate. Si necesitas una frontera aun mas dura sobre lo que llega a la rama, ponla en CI y en las protecciones de rama.
 
 **Configuracion (`hooks/config.json`):** `sdd-review-gate.js` viene desactivado. Ponlo en `"enabled": true` para que bloquee cuando vayas a commitear codigo sin constancia de revision. El workflow `/implementar-spec` emite la senal que lo satisface; su contrato vive en `hooks/sdd-review-signal.js`. Solo se cablea en Claude Code: los demas backends no tienen motor de workflows y, por tanto, no tienen emisor de la senal — el gate ahi no podria satisfacerse por ninguna via legitima.
 
-**Registro de sesiones y como apagarlo (`hooks/config.json`):** `sdd-session-start.js` viene **activo**. En cada arranque de sesion anade una linea al fichero `ai_docs/audits/provenance.jsonl`, dentro de tu repositorio, con el directorio de trabajo, la rama, el commit, el modelo de la sesion y hashes de los componentes instalados. No envia nada a ningun sitio: escribe un fichero local (el `.gitignore` que instala el framework lo excluye del control de versiones). Para que deje de escribir, pon `"sdd_session_start": { "enabled": false }`: con `false` el hook no escribe nada, ni la linea ni el fichero.
+**Registro de sesiones y como apagarlo (`hooks/config.json`):** `sdd-session-start.js` viene **activo**. En cada arranque de sesion anade una linea al fichero `ai_docs/audits/provenance.jsonl`, dentro de tu repositorio, con el directorio de trabajo, la rama, el commit, el modelo de la sesión si el CLI lo envía en el arranque (si no, `null`) y hashes de los componentes instalados. No envia nada a ningun sitio: escribe un fichero local (el `.gitignore` que instala el framework lo excluye del control de versiones). Para que deje de escribir, pon `"sdd_session_start": { "enabled": false }`: con `false` el hook no escribe nada, ni la linea ni el fichero.
 
 **Configuracion propia de tu proyecto (`sdd.config.json`):** el destino de ese registro y los campos que quieras anadir a cada linea se declaran en un fichero opcional en la raiz de tu proyecto, que la actualizacion del framework nunca sobreescribe. Casi ningun proyecto lo necesita. Esquema completo, precedencias y casos limite: [`docs/extension-config-schema.md`](docs/extension-config-schema.md), que se instala junto al framework, asi que tambien lo tienes en tu proyecto.
 

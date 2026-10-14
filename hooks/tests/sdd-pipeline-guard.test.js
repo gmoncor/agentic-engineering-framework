@@ -9,6 +9,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { runHook, tempDir, writeFile } = require('./helpers');
+const { denialReason } = require('../sdd-plan-state');
 
 const HOOK = 'sdd-pipeline-guard.js';
 
@@ -103,6 +104,16 @@ test('spec aprobada + archivo NO declarado en ninguna task: deny', () => {
   assert.strictEqual(r.decision.decision, 'deny');
   assert.strictEqual(r.code, 2);
   assert.match(r.decision.reason, /no esta declarado en ninguna task/);
+});
+
+test('el motivo de denegación separa el remedio de quien implementa del de quien planifica', () => {
+  const root = proyecto({ 'spec_autenticacion.md': SPEC_APROBADA }, { '001_login.md': TASK_CON_ARCHIVOS });
+  const motivo = denialReason(path.join(root, 'ai_docs', 'tasks'), path.join(root, 'src', 'pagos', 'checkout.js'));
+
+  // Quien implementa no amplía su propio alcance: se detiene y reporta la ruta como desviación.
+  assert.match(motivo, /Si estás implementando una task: no amplíes su alcance; detente y reporta esta ruta como desviación/);
+  // Declarar la ruta en la tabla de la task es el remedio de quien planifica, no del implementador.
+  assert.match(motivo, /Si estás planificando: declara la ruta en la tabla "Archivos afectados"/);
 });
 
 test('el placeholder de la plantilla no cuenta como archivo declarado: deny', () => {

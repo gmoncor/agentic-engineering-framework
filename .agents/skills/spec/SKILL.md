@@ -1,6 +1,6 @@
 ---
 name: spec
-description: "Se activa cuando el usuario pide crear o reescribir UNA especificacion aislada, sin derivar tasks ni auditar. Redacta la spec a partir de la solicitud."
+description: "Cuando el usuario pide crear o reescribir UNA especificación aislada, sin derivar tasks ni auditar: redacta la spec a partir de la solicitud. El ciclo completo: planificar."
 ---
 
 Lee y sigue el proceso completo de `ai_docs/dev_templates/spec.md`.

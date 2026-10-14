@@ -1,5 +1,6 @@
 ---
 description: "Crea una especificacion a partir de una solicitud"
+argument-hint: "[descripción de la funcionalidad]"
 ---
 
 Lee y sigue el proceso completo de `ai_docs/dev_templates/spec.md`.

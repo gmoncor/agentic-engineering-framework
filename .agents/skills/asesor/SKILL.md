@@ -1,6 +1,6 @@
 ---
 name: asesor
-description: "Se activa cuando el usuario duda entre opciones, pide una recomendacion o un analisis de trade-offs antes de decidir. Analiza el problema y recomienda una solucion."
+description: "Cuando el usuario duda entre opciones o necesita valorar trade-offs antes de decidir: analiza el problema y recomienda una solución sin escribir código. Planificar lo elegido: planificar."
 ---
 
 Lee y sigue el proceso completo de `ai_docs/dev_templates/resolver_problema.md`.

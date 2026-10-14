@@ -290,11 +290,20 @@ function veredictoPorExitCode(exitCode, fuente) {
  * los archivos que la task modifico. Funcion pura: el spawn del comando ocurre en
  * el workflow, que pasa aqui el codigo tal cual lo devolvio el proceso.
  * Estados: PASA | FALLIDA | ADVISORY; solo PASA desbloquea.
+ *
+ * Con comando, el veredicto lleva también el comando ejecutado y su código de
+ * salida (`null` si no lo hubo): el revisor los recibe como evidencia de la
+ * suite y no necesita volver a correrla.
  */
 function evaluarGateTests(entrada) {
   const { comando, exitCode, archivos } = entrada || {};
 
-  if (comando) return veredictoPorExitCode(exitCode, comando.fuente);
+  if (comando) {
+    return Object.assign(veredictoPorExitCode(exitCode, comando.fuente), {
+      comando: [comando.cmd].concat(comando.args || []).filter(Boolean).join(' '),
+      exitCode: Number.isInteger(exitCode) ? exitCode : null,
+    });
+  }
 
   // Sin comando: bloquea solo si la task toca codigo (no hay como probarlo);
   // docs/config quedan exentas y continuan con aviso, no se bloquea sin evidencia.
@@ -342,15 +351,30 @@ function interpretarSalidaGit(argv, resultado) {
 
 // `--parallel` pide ejecutar A LA VEZ las tasks de un mismo nivel de
 // dependencias. El defecto es una task tras otra: el flag es opt-in y no altera
-// el comportamiento de quien no lo escribe.
-const FLAG_PARALELO = /(^|\s)--parallel(\s|$)/;
+// el comportamiento de quien no lo escribe. `--parallel=N` fija además el tope
+// de tasks en vuelo a la vez (MAX_CONCURRENCIA, abajo).
+const FLAG_PARALELO = /(^|\s)--parallel(?:=(\S*))?(?=\s|$)/;
 
 const USO = 'Se requiere el path de la spec como argumento '
-  + '(ej: ai_docs/tasks/spec_autenticacion.md, opcionalmente con --parallel)';
+  + '(ej: ai_docs/tasks/spec_autenticacion.md, opcionalmente con --parallel o --parallel=N)';
+
+const USO_TOPE = 'El tope de --parallel=N tiene que ser un entero mayor que 0 (ej: --parallel=2)';
+
+/**
+ * Tope por defecto de tasks de un mismo nivel en vuelo a la vez en modo
+ * concurrente. Cada task en vuelo es un agente implementador y, después, un
+ * revisor: sin tope, un nivel ancho lanza tantos agentes como tasks y choca con
+ * el máximo de subagentes simultáneos del runtime. Más tasks en vuelo tampoco
+ * acortan la parte serializada (gate de tests y git del índice, `crearMutex`):
+ * solo alargan su cola. `--parallel=N` lo sobrescribe.
+ */
+const MAX_CONCURRENCIA = 4;
 
 /**
  * Separa el modo de ejecucion de la ruta de la spec: los dos llegan en el mismo
- * argumento. Devuelve `{ modoParalelo, specPath, error }`.
+ * argumento. Devuelve `{ modoParalelo, concurrencia, specPath, error }`;
+ * `concurrencia` es el N de `--parallel=N`, o `null` sin él (el recorrido
+ * aplica entonces MAX_CONCURRENCIA).
  *
  * El flag se RETIRA del texto antes de quedarse con la ruta. Pegado a ella, la
  * ruta no existiria en disco y la spec se denunciaria como spec sin tasks. El
@@ -358,10 +382,17 @@ const USO = 'Se requiere el path de la spec como argumento '
  */
 function parsearArgs(crudos) {
   const texto = (typeof crudos === 'string' ? crudos : '').trim();
-  const modoParalelo = FLAG_PARALELO.test(texto);
+  const flag = FLAG_PARALELO.exec(texto);
+  const modoParalelo = !!flag;
+  let concurrencia = null;
+  let errorTope = null;
+  if (flag && flag[2] !== undefined) {
+    concurrencia = /^[1-9]\d*$/.test(flag[2]) ? Number(flag[2]) : null;
+    if (concurrencia === null) errorTope = USO_TOPE;
+  }
   const specPath = texto.replace(FLAG_PARALELO, ' ').trim();
-  const error = (!specPath || specPath.length < 5) ? USO : null;
-  return { modoParalelo, specPath, error };
+  const error = (!specPath || specPath.length < 5) ? USO : errorTope;
+  return { modoParalelo, concurrencia, specPath, error };
 }
 
 // ── Git: lectura verificada por codigo de salida ─────────────────────────────
@@ -401,17 +432,60 @@ function falloDeGit(resultado, mensaje, log) {
   return resultado;
 }
 
+// ── Exclusión mutua del gate y del índice ────────────────────────────────────
+
+/**
+ * Mutex en proceso: devuelve `exclusivo(fn)`, que ejecuta `fn` cuando termina
+ * la anterior y devuelve su promesa. Un fallo de `fn` llega a quien la llamó y
+ * no bloquea la cola.
+ *
+ * En modo concurrente las tasks de un nivel comparten árbol e índice. Con él se
+ * serializan el gate de tests (preparación, listado y suite, como una unidad) y
+ * las operaciones de git que mutan el índice: la preparación del diff, el
+ * commit y el apartado. La implementación y la revisión siguen en paralelo. No
+ * es reentrante: quien lo usa no anida una sección exclusiva dentro de otra.
+ */
+function crearMutex() {
+  let cola = Promise.resolve();
+  return function exclusivo(fn) {
+    const turno = cola.then(function () { return fn(); });
+    cola = turno.then(function () {}, function () {});
+    return turno;
+  };
+}
+
+/** `deps.exclusivo`, o la ejecución directa si no se inyecta (recorrido secuencial, tests). */
+function exclusivoDe(deps) {
+  return (deps && deps.exclusivo) || function (fn) { return fn(); };
+}
+
 // ── Árbol limpio y apartado recuperable ──────────────────────────────────────
 
 /**
- * Directorio de los documentos de plan. Queda fuera de la comprobación de árbol
- * limpio y del apartado: specs y tasks pueden estar a medio editar sin ser
- * trabajo de ninguna task, y el guard de escrituras también los exime.
+ * Rutas que ninguna task posee, relativas a la raíz del proyecto. Es la frontera
+ * única de las operaciones de git del recorrido secuencial: la comprobación de
+ * árbol limpio, el gate, `add`, `diff --cached`, `commit` y el apartado.
+ *
+ * - `ai_docs/tasks`: specs y tasks, que pueden estar a medio editar sin ser
+ *   trabajo de ninguna task; el guard de escrituras también los exime.
+ * - `ai_docs/audits`: el registro de sesiones (`provenance.jsonl`), que el hook
+ *   de inicio de sesión reescribe en cada arranque. Un proyecto con `.gitignore`
+ *   propio no recibe las reglas de la plantilla, así que sin esta exclusión el
+ *   registro ensuciaría el árbol siempre y la implementación no arrancaría nunca.
+ *
+ * `ai_docs/core` queda dentro: es contexto del proyecto, y si está sucio el
+ * commit de la primera task lo absorbería.
  */
-const DIR_PLAN = 'ai_docs';
-const PATHSPEC_SIN_PLAN = ['.', ':(exclude)' + DIR_PLAN];
+const RUTAS_FUERA = ['ai_docs/tasks', 'ai_docs/audits'];
+const PATHSPEC_SIN_PLAN = ['.'].concat(RUTAS_FUERA.map(function (r) { return ':(exclude)' + r; }));
 
-/** `git status` que lista, fichero a fichero, lo que no está commiteado fuera de ai_docs/. */
+/** Las rutas fuera, legibles en un mensaje. */
+const DESCRIPCION_FUERA = RUTAS_FUERA.map(function (r) { return r + '/'; }).join(' y ');
+
+/** Contexto del proyecto que leen los agentes: no se aparta, se commitea. */
+const DIR_CORE = 'ai_docs/core';
+
+/** `git status` que lista, fichero a fichero, lo que no está commiteado fuera de RUTAS_FUERA. */
 const ARGV_ESTADO = ['status', '--porcelain', '--untracked-files=all', '--'].concat(PATHSPEC_SIN_PLAN);
 
 /** Ruta de una línea de `git status --porcelain`: el destino si es un renombrado, sin comillas. */
@@ -426,14 +500,14 @@ function rutaDePorcelain(linea) {
 }
 
 function esDelPlan(ruta) {
-  return ruta === DIR_PLAN || ruta.startsWith(DIR_PLAN + '/');
+  return RUTAS_FUERA.some(function (d) { return ruta === d || ruta.startsWith(d + '/'); });
 }
 
 /**
  * Lee la salida de `git status --porcelain` y dice si el árbol está limpio
- * fuera de ai_docs/. Devuelve `{ limpio, rutas }`.
+ * fuera de RUTAS_FUERA. Devuelve `{ limpio, rutas }`.
  *
- * El pathspec ya excluye ai_docs/; el filtro se repite aquí para que la
+ * El pathspec ya excluye RUTAS_FUERA; el filtro se repite aquí para que la
  * decisión no dependa de que el git instalado entienda la exclusión.
  */
 function evaluarArbolLimpio(salida) {
@@ -464,24 +538,53 @@ function resumenRutas(rutas) {
 }
 
 /**
+ * True si la ruta está bajo ai_docs/core. `git status --porcelain` da las rutas
+ * desde la raíz del repositorio, así que en un monorepo llevan delante el
+ * subdirectorio del proyecto.
+ */
+function esDeCore(ruta) {
+  const r = String(ruta || '');
+  return r === DIR_CORE || r.startsWith(DIR_CORE + '/') || r.endsWith('/' + DIR_CORE)
+    || r.includes('/' + DIR_CORE + '/');
+}
+
+/**
  * Motivo por el que el workflow no arranca la implementación con el árbol sucio,
- * con las tres salidas que tiene quien lo lanzó.
+ * con las salidas que tiene quien lo lanzó.
+ *
+ * Lo que está bajo ai_docs/core solo tiene una salida: commitearlo antes de
+ * lanzar. Apartarlo en un stash o lanzar en otro worktree dejaría sin ese
+ * contexto a los agentes que lo leen. Para el resto, las tres salidas.
  */
 function mensajeArbolSucio(estado) {
-  const causa = estado.error
-    ? 'no se pudo comprobar que el árbol esté limpio (' + estado.error + ')'
-    : 'hay cambios sin commitear fuera de ' + DIR_PLAN + '/: ' + resumenRutas(estado.rutas);
-  return 'No se implementa: ' + causa + '. El commit de la primera task los absorbería, y el '
-    + 'apartado de una task fallida se los llevaría con su trabajo. Antes de relanzar: '
-    + 'commitéalos, apártalos con `git stash push --include-untracked`, o lanza la spec en '
-    + 'un worktree de git limpio.';
+  if (estado.error) {
+    return 'No se implementa: no se pudo comprobar que el árbol esté limpio (' + estado.error
+      + '). Comprueba el repositorio con `git status` y relanza.';
+  }
+  const rutas = estado.rutas || [];
+  const deCore = rutas.filter(esDeCore);
+  const resto = rutas.filter(function (r) { return !esDeCore(r); });
+  const partes = [];
+  if (deCore.length > 0) {
+    partes.push('Hay cambios sin commitear en ' + DIR_CORE + '/: ' + resumenRutas(deCore)
+      + '. Commitéalos antes de lanzar: los agentes leen ' + DIR_CORE + '/ como contexto del '
+      + 'proyecto, y apartarlos en un stash o lanzar en otro worktree los dejaría sin él');
+  }
+  if (resto.length > 0) {
+    partes.push('Hay cambios sin commitear fuera de ' + DESCRIPCION_FUERA + ': ' + resumenRutas(resto)
+      + '. Antes de relanzar: commitéalos, apártalos con `git stash push --include-untracked`, '
+      + 'o lanza la spec en un worktree de git limpio');
+  }
+  return 'No se implementa: el commit de la primera task absorbería los cambios sin commitear, y '
+    + 'el apartado de una task fallida se los llevaría con su trabajo. ' + partes.join('. ')
+    + '.';
 }
 
 /**
  * Argumentos del `git stash` que aparta el trabajo de una task que no se
  * commitea. Devuelve `null` cuando no hay nada que se pueda atribuir a la task.
  *
- * - Secuencial: todo el árbol salvo ai_docs/. El árbol estaba limpio al empezar
+ * - Secuencial: todo el árbol salvo RUTAS_FUERA. El árbol estaba limpio al empezar
  *   la task, así que lo que queda es suyo, también lo que escribió fuera de su
  *   tabla; acotarlo al ámbito dejaría ese resto para el commit de la siguiente.
  * - Concurrente: solo `ambito`, las rutas de la task con cambios. El árbol es
@@ -506,26 +609,10 @@ function argvApartado(task, ambito, modoParalelo) {
  * del `stash` no casaría con ellas hasta devolverlas al índice.
  */
 function rutasCambiadasEnAmbito(salidaZ, ambito, prefijo) {
-  const declaradas = (ambito || []).map(function (r) {
-    return rutaNativa(r).replace(/^\.\//, '').replace(/\/+$/, '');
-  }).filter(Boolean);
-  const dentro = function (ruta) {
-    return declaradas.some(function (a) { return ruta === a || ruta.startsWith(a + '/'); });
-  };
-
-  const entradas = String(salidaZ || '').split('\0');
+  const dentro = dentroDeAmbito(ambito);
   const rutas = [];
   const borradasEnIndice = [];
-  const relativa = function (cruda) {
-    return (prefijo && cruda.startsWith(prefijo)) ? cruda.slice(prefijo.length) : cruda;
-  };
-  for (let i = 0; i < entradas.length; i++) {
-    const e = entradas[i];
-    if (e.length <= 3) continue;
-    const xy = e.slice(0, 2);
-    const destino = relativa(e.slice(3));
-    // Un renombrado o copia trae el origen en la entrada siguiente.
-    const origen = (/[RC]/.test(xy) && i + 1 < entradas.length) ? relativa(entradas[++i]) : null;
+  for (const { xy, destino, origen } of entradasPorcelainZ(salidaZ, prefijo)) {
     for (const r of [destino, origen]) {
       if (r && dentro(r) && !rutas.includes(r)) rutas.push(r);
     }
@@ -533,6 +620,141 @@ function rutasCambiadasEnAmbito(salidaZ, ambito, prefijo) {
     if (xy[0] === 'R' && origen && dentro(origen)) borradasEnIndice.push(origen);
   }
   return { rutas, borradasEnIndice };
+}
+
+/** Predicado: la ruta (relativa al proyecto) es una declarada o cuelga de un directorio declarado. */
+function dentroDeAmbito(ambito) {
+  const declaradas = (ambito || []).map(function (r) {
+    return rutaNativa(r).replace(/^\.\//, '').replace(/\/+$/, '');
+  }).filter(Boolean);
+  return function (ruta) {
+    return declaradas.some(function (a) { return ruta === a || ruta.startsWith(a + '/'); });
+  };
+}
+
+/**
+ * Entradas de `git status --porcelain -z`: `{ xy, destino, origen }`, con las
+ * rutas relativas al proyecto (sin `prefijo`, el de `rev-parse --show-prefix`).
+ * `origen` solo existe en un renombrado o una copia.
+ */
+function entradasPorcelainZ(salidaZ, prefijo) {
+  const entradas = String(salidaZ || '').split('\0');
+  const relativa = function (cruda) {
+    return (prefijo && cruda.startsWith(prefijo)) ? cruda.slice(prefijo.length) : cruda;
+  };
+  const salida = [];
+  for (let i = 0; i < entradas.length; i++) {
+    const e = entradas[i];
+    if (e.length <= 3) continue;
+    const xy = e.slice(0, 2);
+    // Un renombrado o copia trae el origen en la entrada siguiente.
+    const origen = (/[RC]/.test(xy) && i + 1 < entradas.length) ? relativa(entradas[++i]) : null;
+    salida.push({ xy, destino: relativa(e.slice(3)), origen });
+  }
+  return salida;
+}
+
+/**
+ * Rutas con cambios que NO caen dentro de `ambito`. Función pura sobre la
+ * salida de `git status --porcelain -z`.
+ */
+function rutasFueraDeAmbito(salidaZ, ambito, prefijo) {
+  const dentro = dentroDeAmbito(ambito);
+  const rutas = [];
+  for (const { destino, origen } of entradasPorcelainZ(salidaZ, prefijo)) {
+    for (const r of [destino, origen]) {
+      if (r && !dentro(r) && !rutas.includes(r)) rutas.push(r);
+    }
+  }
+  return rutas;
+}
+
+/**
+ * Ficheros cambiados en el proyecto (salvo RUTAS_FUERA) que no declara ninguna
+ * de las tasks en vuelo: escrituras fuera de alcance. El revisor las recibe y
+ * decide si son un hallazgo; esta función no bloquea nada.
+ *
+ * `ambitos` es la unión de los ámbitos de las tasks en vuelo: en secuencial,
+ * solo el de la task. Devuelve `{ ok, rutas, error }`; `rutas` es `null` si no
+ * hay ámbito con el que comparar (ninguna task en vuelo con tabla legible): sin
+ * él no se puede decir qué queda fuera.
+ */
+async function leerFueraDeAlcance(spawn, ambitos) {
+  if (!Array.isArray(ambitos) || ambitos.length === 0) return { ok: true, rutas: null };
+  const estado = await gitVerificado(
+    ['status', '--porcelain', '-z', '--untracked-files=all', '--'].concat(PATHSPEC_SIN_PLAN), spawn);
+  if (!estado.ok) return { ok: false, error: estado.error };
+  const prefijo = await gitVerificado(['rev-parse', '--show-prefix'], spawn);
+  if (!prefijo.ok) return { ok: false, error: prefijo.error };
+  return { ok: true, rutas: rutasFueraDeAmbito(estado.out, ambitos, prefijo.out.trim()) };
+}
+
+/**
+ * Lee de git las rutas del ámbito que cambiaron (`rutasCambiadasEnAmbito`).
+ * Devuelve `{ ok, rutas, borradasEnIndice, error }`; las dos lecturas se
+ * verifican por código de salida.
+ */
+async function leerCambiadas(spawn, ambito) {
+  const estado = await gitVerificado(
+    ['status', '--porcelain', '-z', '--untracked-files=all', '--'].concat((ambito || []).map(function (r) {
+      return rutaNativa(r);
+    })), spawn);
+  if (!estado.ok) return { ok: false, error: estado.error };
+  // `status --porcelain` da las rutas desde la raíz del repositorio; el ámbito
+  // es relativo al proyecto, que puede ser un subdirectorio del repositorio.
+  const prefijo = await gitVerificado(['rev-parse', '--show-prefix'], spawn);
+  if (!prefijo.ok) return { ok: false, error: prefijo.error };
+  const cambiadas = rutasCambiadasEnAmbito(estado.out, ambito, prefijo.out.trim());
+  return { ok: true, rutas: cambiadas.rutas, borradasEnIndice: cambiadas.borradasEnIndice };
+}
+
+/**
+ * Pathspec único de la preparación, la revisión y el commit de una task.
+ * Función pura: `cambiadas` (`{ rutas, borradasEnIndice }`) se lee antes con
+ * `leerCambiadas`. Devuelve `{ add, diffYCommit }`; cada uno es la lista de
+ * argumentos tras `--`, o `null` si la operación no debe ejecutarse.
+ *
+ * - Sin ámbito (secuencial) o con el ámbito vacío (task sin tabla legible): el
+ *   proyecto salvo RUTAS_FUERA, lo mismo que cubre la comprobación de árbol
+ *   limpio. Las dos listas son iguales.
+ * - Con ámbito (concurrente): solo las rutas del ámbito que cambiaron, no la
+ *   tabla entera. `add` con un fichero declarado que la task no creó sale con
+ *   128, y `commit` con 1. `add` deja fuera los borrados ya preparados (no casan
+ *   con nada en el árbol ni en el índice); `diff --cached` y `commit` los
+ *   llevan, o el borrado no se commitearía. Sin rutas, `add` no se ejecuta:
+ *   sin pathspec prepararía el árbol entero, con el trabajo de las hermanas.
+ */
+function pathspecDeTask(ambito, cambiadas) {
+  if (!Array.isArray(ambito) || ambito.length === 0) {
+    const proyecto = ['--'].concat(PATHSPEC_SIN_PLAN);
+    return { add: proyecto, diffYCommit: proyecto };
+  }
+  const rutas = (cambiadas && cambiadas.rutas) || [];
+  const borradas = (cambiadas && cambiadas.borradasEnIndice) || [];
+  const aPreparar = rutas.filter(function (r) { return !borradas.includes(r); });
+  return {
+    add: aPreparar.length > 0 ? ['--'].concat(aPreparar) : null,
+    diffYCommit: rutas.length > 0 ? ['--'].concat(rutas) : null,
+  };
+}
+
+/**
+ * Prepara en el índice el trabajo de la task con `pathspecDeTask`. La usan el
+ * gate de tests y la revisión. Devuelve `{ ok, pathspec, error }`: `pathspec`
+ * es el de `diff --cached` y `commit`, o `null` si en su ámbito no cambió nada.
+ */
+async function prepararTask(spawn, ambito) {
+  let cambiadas;
+  if (Array.isArray(ambito) && ambito.length > 0) {
+    cambiadas = await leerCambiadas(spawn, ambito);
+    if (!cambiadas.ok) return { ok: false, error: cambiadas.error };
+  }
+  const pathspec = pathspecDeTask(ambito, cambiadas);
+  if (pathspec.add) {
+    const preparado = await gitVerificado(['add', '-A'].concat(pathspec.add), spawn);
+    if (!preparado.ok) return { ok: false, error: preparado.error };
+  }
+  return { ok: true, pathspec: pathspec.diffYCommit };
 }
 
 /**
@@ -563,22 +785,11 @@ async function apartarTrabajo(task, deps) {
           + 'llevarse el de las hermanas',
       };
     }
-    const estado = await gitVerificado(
-      ['status', '--porcelain', '-z', '--untracked-files=all', '--'].concat(ambito.map(function (r) {
-        return rutaNativa(r);
-      })), d.spawnGit);
-    if (!estado.ok) {
-      log('Task ' + titulo + ': no se pudo apartar su trabajo — ' + estado.error);
-      return { ok: false, detener: false, nota: 'trabajo conservado sin commitear: ' + estado.error };
+    const cambiadas = await leerCambiadas(d.spawnGit, ambito);
+    if (!cambiadas.ok) {
+      log('Task ' + titulo + ': no se pudo apartar su trabajo — ' + cambiadas.error);
+      return { ok: false, detener: false, nota: 'trabajo conservado sin commitear: ' + cambiadas.error };
     }
-    // `status --porcelain` da las rutas desde la raíz del repositorio; el ámbito
-    // es relativo al proyecto, que puede ser un subdirectorio del repositorio.
-    const prefijo = await gitVerificado(['rev-parse', '--show-prefix'], d.spawnGit);
-    if (!prefijo.ok) {
-      log('Task ' + titulo + ': no se pudo apartar su trabajo — ' + prefijo.error);
-      return { ok: false, detener: false, nota: 'trabajo conservado sin commitear: ' + prefijo.error };
-    }
-    const cambiadas = rutasCambiadasEnAmbito(estado.out, ambito, prefijo.out.trim());
     ambito = cambiadas.rutas;
     if (ambito.length === 0) return { ok: true, detener: false, nota: 'nada que apartar en su ámbito' };
 
@@ -640,7 +851,7 @@ async function cimaDeStash(spawn) {
  * `descartar` que no devuelve nada cuenta como apartado sin incidencias.
  */
 async function apartarYRegistrar(task, resultado, deps) {
-  const salida = (await deps.descartar(task)) || {};
+  const salida = (await exclusivoDe(deps)(function () { return deps.descartar(task); })) || {};
   if (salida.nota) {
     resultado.notas = (resultado.notas ? resultado.notas + ' ' : '') + '(' + salida.nota + ')';
   }
@@ -656,34 +867,31 @@ async function apartarYRegistrar(task, resultado, deps) {
  * working tree limpio, y confundirlas registraba la constancia de revision de un
  * diff vacio.
  *
- * `ambito`, si llega con al menos un elemento, se pasa como pathspec a `add` y a
- * `diff --cached`: en modo concurrente todas las tasks del nivel comparten arbol
- * e indice, y sin acotar, `add -A` prepara tambien el trabajo sin commitear de
- * una hermana en curso (F1) — el commit de una absorbe el de otra, en el camino
- * feliz, sin que nadie falle. Sin `ambito` (modo secuencial, donde no hay
- * hermanas que contaminen el índice) se acota al proyecto (`-- .`, relativo a
- * su raíz): en un monorepo, `add -A` sin pathspec prepararía también lo de
- * fuera del subdirectorio, que la comprobación de árbol limpio no mira.
+ * El pathspec es el de `pathspecDeTask`. En modo concurrente todas las tasks
+ * del nivel comparten árbol e índice, y sin acotar, `add -A` prepara también el
+ * trabajo sin commitear de una hermana en curso (F1): el commit de una absorbe
+ * el de otra, en el camino feliz, sin que nadie falle. En secuencial se acota
+ * al proyecto salvo RUTAS_FUERA: en un monorepo, `add -A` sin pathspec
+ * prepararía también lo de fuera del subdirectorio, que la comprobación de
+ * árbol limpio no mira.
+ *
+ * Devuelve `{ ok, diff, pathspec, error }`. `pathspec` es el que usa el commit:
+ * lo que se revisa y lo que se commitea cubren así las mismas rutas. Sin rutas
+ * cambiadas en el ámbito no hay nada que leer y el diff es vacío.
  */
 async function diffPreparado(spawn, ambito) {
-  const pathspec = pathspecDelCommit(ambito);
-
-  const preparado = await gitVerificado(['add', '-A'].concat(pathspec), spawn);
+  const preparado = await prepararTask(spawn, ambito);
   if (!preparado.ok) return { ok: false, error: preparado.error };
+  if (!preparado.pathspec) return { ok: true, diff: '', pathspec: null };
 
-  const lectura = await gitVerificado(['diff', '--cached'].concat(pathspec), spawn);
+  // Sin `diff.external` ni `textconv`: el hash de la señal se calcula sobre el diff
+  // de git, no sobre la salida de una herramienta configurada en el repositorio.
+  // El hook sdd-review-gate.js lee el diff con los mismos argumentos, o el hash no
+  // ataría.
+  const lectura = await gitVerificado(['diff', '--cached', '--no-ext-diff', '--no-textconv'].concat(preparado.pathspec), spawn);
   if (!lectura.ok) return { ok: false, error: lectura.error };
 
-  return { ok: true, diff: lectura.out };
-}
-
-/**
- * Pathspec común de `add`, `diff --cached` y `commit`: el ámbito si lo hay; si
- * no, el proyecto entero (`.`), lo mismo que cubre la comprobación de árbol
- * limpio. Lo que se revisa y lo que se commitea cubren así las mismas rutas.
- */
-function pathspecDelCommit(ambito) {
-  return ['--'].concat((Array.isArray(ambito) && ambito.length > 0) ? ambito : ['.']);
+  return { ok: true, diff: lectura.out, pathspec: preparado.pathspec };
 }
 
 /** Emite la constancia atada al diff revisado y commitea. El commit tambien se lee por exit code. */
@@ -691,20 +899,36 @@ async function comitearAprobada(task, resultado, contexto, deps) {
   const log = registrar(deps);
   const marca = await deps.emitirSenal(contexto.diff);
   const subject = String(resultado.commit_message || ('feat: ' + task.titulo)).substring(0, 72);
-  const cuerpo = resultado.commit_cuerpo || resultado.notas
+  let cuerpo = resultado.commit_cuerpo || resultado.notas
     || 'Implementa la task segun su especificacion.';
 
-  // Mismo `ambito` que acoto add/diff (F1): sin el, `git commit` sobre un indice
-  // compartido en modo concurrente se lleva TODO lo preparado, incluido lo que
-  // ya stageo una hermana en curso — exactamente lo que diffPreparado evita en
-  // add/diff pero que aqui, sin pathspec, volveria a colar. `git commit -- <ruta>`
-  // commitea solo esas rutas del indice y deja el resto preparado para su dueña.
-  // Sin ámbito, el commit se acota al proyecto, igual que add/diff.
-  const pathspec = pathspecDelCommit(deps.ambito);
+  // Los menores no abren ronda: viajan en el commit y en el resultado, para que
+  // quien lea cualquiera de los dos sepa qué quedó señalado sin bloquear.
+  const menores = (contexto.revision && Array.isArray(contexto.revision.problemas_menores))
+    ? contexto.revision.problemas_menores.filter(Boolean)
+      // Una línea por menor: un salto de línea dentro de uno abriría en el cuerpo
+      // un párrafo nuevo, o un trailer como `Signed-off-by:`.
+      .map(function (m) { return String(m).replace(/\s*\n\s*/g, ' ').trim(); }).filter(Boolean)
+    : [];
+  if (menores.length > 0) {
+    cuerpo += '\n\nHallazgos menores de la revisión (no bloquean):\n- ' + menores.join('\n- ');
+    resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
+      + '(menores de la revisión, no bloquean: ' + menores.join('; ') + ')';
+  }
+
+  // Mismo pathspec que acotó el diff revisado (F1): sin él, `git commit` sobre un
+  // índice compartido en modo concurrente se lleva TODO lo preparado, incluido lo
+  // que ya preparó una hermana en curso. `git commit -- <ruta>` commitea solo esas
+  // rutas del índice y deja el resto preparado para su dueña. En secuencial, el
+  // proyecto salvo RUTAS_FUERA: el doc de la task y el registro de sesiones no
+  // entran en el commit aunque estén preparados.
+  const pathspec = contexto.pathspec;
 
   // Un commit denegado (por un gate, por un indice bloqueado) dejaria el trabajo
   // sin commitear y el informe diria lo contrario.
-  const commit = await gitVerificado(['commit', '-m', subject, '-m', cuerpo].concat(pathspec), deps.spawnGit);
+  const commit = await exclusivoDe(deps)(function () {
+    return gitVerificado(['commit', '-m', subject, '-m', cuerpo].concat(pathspec), deps.spawnGit);
+  });
   if (!commit.ok) return falloDeGit(resultado, commit.error, log);
 
   log('Task ' + task.titulo + ': APROBADA y commiteada' + (marca ? ' (senal ' + marca + ')' : ''));
@@ -714,15 +938,202 @@ async function comitearAprobada(task, resultado, contexto, deps) {
 }
 
 /**
- * Revisa el diff de la task y, si la revision aprueba, emite la constancia atada
- * a ESE diff y commitea. Devuelve el resultado del implementador con el veredicto
+ * Lleva a una forma única la revisión que devuelve el agente revisor. Función
+ * pura.
+ *
+ * - Sin revisión, o sin veredicto: `ERROR`. Cuenta como adversa, nunca como
+ *   aprobada.
+ * - `APROBADA` con `problemas_criticos` no vacío es un veredicto contradictorio:
+ *   pasa a `NECESITA_CORRECCIONES`, con la causa y el veredicto original. Lo
+ *   material bloquea aunque el veredicto diga lo contrario.
+ * - El resto se devuelve tal cual.
+ */
+function normalizarRevision(revision) {
+  if (!revision || typeof revision !== 'object' || !revision.veredicto) {
+    return {
+      veredicto: 'ERROR',
+      problemas_criticos: [],
+      problemas_menores: [],
+      resumen: 'la revisión no devolvió un veredicto utilizable',
+    };
+  }
+  const criticos = Array.isArray(revision.problemas_criticos) ? revision.problemas_criticos : [];
+  if (revision.veredicto === 'APROBADA' && criticos.length > 0) {
+    return Object.assign({}, revision, {
+      veredicto: 'NECESITA_CORRECCIONES',
+      veredicto_original: 'APROBADA',
+      causa: 'veredicto contradictorio: APROBADA con ' + criticos.length + ' problema(s) crítico(s)',
+    });
+  }
+  return revision;
+}
+
+// ── Rondas de corrección ─────────────────────────────────────────────────────
+
+/**
+ * Tope de rondas de corrección por task. Cada ronda es corregir, volver a pasar
+ * el gate de tests y volver a revisar, así que el peor caso cuesta cuatro
+ * revisiones y tres gates por task. Tres rondas dan margen a una corrección que
+ * resuelve un hallazgo y destapa otro; si tras la tercera sigue habiendo un
+ * crítico, otra vuelta del mismo corrector difícilmente lo cierra, y la decisión
+ * pasa al usuario con los hallazgos abiertos.
+ */
+const MAX_RONDAS_CORRECCION = 3;
+
+/**
+ * Críticos de una revisión: los de `problemas_criticos` más los hallazgos
+ * previos que la propia revisión declara persistentes y no repitió ahí. Un
+ * hallazgo que sigue abierto bloquea aunque el revisor olvide copiarlo.
+ */
+function criticosDe(revision) {
+  const r = revision || {};
+  const criticos = (Array.isArray(r.problemas_criticos) ? r.problemas_criticos : []).filter(Boolean);
+  const persistentes = (Array.isArray(r.hallazgos_previos) ? r.hallazgos_previos : [])
+    .filter(function (h) { return h && h.estado === 'persistente' && h.hallazgo; })
+    .map(function (h) { return h.hallazgo; });
+  return criticos.concat(persistentes.filter(function (h) { return !criticos.includes(h); }));
+}
+
+/** Desviaciones que declara un implementador o un corrector, si las trae. */
+function desviacionesDe(resultado) {
+  const r = resultado || {};
+  return (Array.isArray(r.desviaciones) ? r.desviaciones : [])
+    .filter(function (x) { return typeof x === 'string' && x.trim(); });
+}
+
+/** Correcciones propuestas por la revisión, si las trae. */
+function correccionesDe(revision) {
+  const r = revision || {};
+  return (Array.isArray(r.correcciones_propuestas) ? r.correcciones_propuestas : []).filter(Boolean);
+}
+
+/**
+ * Regla de apertura de una ronda de corrección, sobre una revisión ya
+ * normalizada. La abren un crítico, un veredicto `RECHAZADA` o la falta de
+ * veredicto (`ERROR`): una revisión ausente nunca equivale a aprobar. Un
+ * `NECESITA_CORRECCIONES` sin críticos no la abre: sus menores no bloquean y se
+ * commitea con ellos en el cuerpo del commit.
+ */
+function abreRonda(revision) {
+  return revision.veredicto === 'ERROR' || revision.veredicto === 'RECHAZADA'
+    || criticosDe(revision).length > 0;
+}
+
+/** Parte un diff de git en secciones por fichero, con la cabecera `diff --git` como clave. */
+function seccionesDeDiff(diff) {
+  const secciones = new Map();
+  let clave = '';
+  let lineas = [];
+  const cerrar = function () {
+    while (lineas.length > 0 && lineas[lineas.length - 1] === '') lineas.pop();
+    if (lineas.length > 0) secciones.set(clave, lineas.join('\n'));
+  };
+  for (const linea of String(diff == null ? '' : diff).split('\n')) {
+    if (linea.startsWith('diff --git ')) {
+      cerrar();
+      clave = linea;
+      lineas = [linea];
+    } else {
+      lineas.push(linea);
+    }
+  }
+  cerrar();
+  return secciones;
+}
+
+/**
+ * Delta entre dos diffs revisados de la misma task, fichero a fichero. Función
+ * pura sobre los dos textos que ya se revisaron: los dos salen de `diff --cached`
+ * con el pathspec de la task, así que el delta no ve nada fuera de él. En modo
+ * concurrente el índice es compartido, y un árbol de todo el índice
+ * (`git write-tree`) capturaría lo que una hermana preparó entre las dos rondas.
+ *
+ * Devuelve las secciones del diff actual que cambiaron o aparecieron y, por
+ * cada fichero cuyo cambio se retiró, su cabecera con una línea que lo dice.
+ */
+function deltaEntreDiffs(anterior, actual) {
+  const antes = seccionesDeDiff(anterior);
+  const ahora = seccionesDeDiff(actual);
+  const partes = [];
+  for (const [clave, texto] of ahora) {
+    if (antes.get(clave) !== texto) partes.push(texto);
+  }
+  for (const clave of antes.keys()) {
+    if (!ahora.has(clave)) partes.push(clave + '\n# cambio retirado: esta ruta ya no tiene diff');
+  }
+  return partes.length > 0 ? partes.join('\n') + '\n' : '';
+}
+
+/**
+ * Diff vacío tras preparar: git corrió y no hay nada preparado. Dos situaciones
+ * opuestas llegan aquí: la task que de verdad no tenía nada que hacer (sin
+ * ficheros declarados: el vacío es legítimo), y aquella cuyo trabajo YA NO ESTÁ
+ * -absorbido por una hermana o apartado en stash por otra- pese a declarar
+ * ficheros modificados. Solo la primera se reporta como éxito: la segunda
+ * pasaría a las tasks posteriores como si su contrato existiera.
+ */
+function resultadoDiffVacio(task, resultado, log) {
+  if ((resultado.archivos_modificados || []).length > 0) {
+    log('Task ' + task.titulo + ': FALLIDA (trabajo declarado pero diff vacio) — probablemente '
+      + 'absorbido o apartado por una hermana concurrente, no se commitea');
+    resultado.resultado = 'FALLIDA';
+    resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
+      + '(trabajo declarado pero no queda nada que commitear: probablemente absorbido por el '
+      + 'commit de una hermana o apartado en stash)';
+    return resultado;
+  }
+  resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
+    + '(sin cambios en el working tree: no se commitea)';
+  return resultado;
+}
+
+/**
+ * Diff de la task para su revisión (`diffPreparado`) y, si `deps.alcance(task)`
+ * existe, los ficheros cambiados fuera de los ámbitos que devuelve
+ * (`leerFueraDeAlcance`), todo en exclusión mutua: la preparación muta el
+ * índice compartido. Devuelve lo de `diffPreparado` más `fuera`: la lista de
+ * rutas, o `null` si no se calculó o no se pudo calcular.
+ */
+async function prepararRevision(task, d) {
+  return exclusivoDe(d)(async function () {
+    const preparado = await diffPreparado(d.spawnGit, d.ambito);
+    if (!preparado.ok || !d.alcance) return Object.assign(preparado, { fuera: null });
+    let fuera;
+    try {
+      fuera = await leerFueraDeAlcance(d.spawnGit, await d.alcance(task));
+    } catch (e) {
+      fuera = { ok: false, error: e.message };
+    }
+    if (!fuera.ok) registrar(d)('Fuera de alcance de ' + task.titulo + ': no calculable (' + fuera.error + ')');
+    return Object.assign(preparado, { fuera: fuera.ok ? fuera.rutas : null });
+  });
+}
+
+/**
+ * Revisa el diff de la task y, si la revision no abre ronda (`abreRonda`), emite
+ * la constancia atada a ESE diff y commitea. Si la abre: hasta
+ * MAX_RONDAS_CORRECCION rondas de corregir (solo los críticos), volver a pasar el
+ * gate y volver a revisar con los hallazgos previos y el delta. Agotado el tope, `BLOQUEADA_REVISION`
+ * (`escalarRevision`). Devuelve el resultado del implementador con el veredicto
  * reflejado.
+ *
+ * `revisar(task, diff, contexto)` recibe `contexto = { gate, desviaciones, previa,
+ * fuera_de_alcance }`: `gate`, el último veredicto del gate de tests
+ * (`resultado.gate_tests` o el de tras la corrección; `null` si no consta), que
+ * es la única suite completa de la task; `desviaciones`, las que declararon el
+ * implementador y los correctores, para contrastarlas con el diff; `previa`,
+ * solo en una re-revisión; `fuera_de_alcance`, los ficheros cambiados que no
+ * declara ninguna task en vuelo (`prepararRevision`), o `null` si no se calculó.
  *
  * `deps`: `spawnGit` (ejecuta git), `revisar`, `corregir`, `emitirSenal`,
  * `descartar(task)` (aparta, recuperable, el trabajo sin commitear; ver
- * apartarTrabajo), `log`, `ambito` (opcional:
- * ficheros declarados de la task; se calcula una vez por task, antes de esta
- * llamada, no por cada comando de git).
+ * apartarTrabajo), `gateTests(task)` (opcional: tras la corrección se vuelve a
+ * pasar, con el mismo criterio que antes de la primera revisión), `env`, `log`,
+ * `ambito` (opcional: ficheros declarados de la task; se calcula una vez por
+ * task, antes de esta llamada, no por cada comando de git), `alcance(task)`
+ * (opcional: unión de los ámbitos de las tasks en vuelo, para
+ * `fuera_de_alcance`) y `exclusivo` (opcional: el mutex de `crearMutex`, que
+ * serializa el gate, la preparación del diff, el commit y el apartado).
  */
 async function revisarYComitear(task, resultado, deps) {
   const d = deps || {};
@@ -731,75 +1142,140 @@ async function revisarYComitear(task, resultado, deps) {
 
   // Ambito presente pero vacio: la task no tiene tabla "Archivos afectados"
   // legible. Acotar a una lista vacia equivaldria a no commitear nunca, asi que
-  // se conserva el comportamiento sin acotar (F1) y solo se deja constancia del
-  // motivo: quien lea el resultado sabe que este commit, si lo hay, no se acoto.
+  // se acota como en secuencial (F1) y solo se deja constancia del motivo:
+  // quien lea el resultado sabe que este commit, si lo hay, no se acotó a la task.
   if (Array.isArray(ambito) && ambito.length === 0) {
     resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
       + '(ambito vacio: task sin tabla "Archivos afectados" legible; el commit solo se acota al proyecto)';
   }
 
-  const primera = await diffPreparado(d.spawnGit, ambito);
+  const primera = await prepararRevision(task, d);
   if (!primera.ok) return falloDeGit(resultado, primera.error, log);
-  let diff = primera.diff;
+  if (!primera.diff.trim()) return resultadoDiffVacio(task, resultado, log);
+  let preparado = primera;
 
-  // Task sin cambios en el working tree: git corrio y no hay nada preparado. Dos
-  // situaciones opuestas llegan aqui con el mismo diff vacio: la task que de
-  // verdad no tenia nada que hacer (sin ficheros declarados: el vacio es
-  // legitimo), y aquella cuyo trabajo YA NO ESTA -absorbido por una hermana o
-  // borrado por el descarte de otra- pese a declarar ficheros modificados. Solo
-  // la primera se reporta como exito: la segunda pasaria a las tasks
-  // posteriores como si su contrato existiera.
-  if (!diff.trim()) {
-    if ((resultado.archivos_modificados || []).length > 0) {
-      log('Task ' + task.titulo + ': FALLIDA (trabajo declarado pero diff vacio) — probablemente '
-        + 'absorbido o descartado por una hermana concurrente, no se commitea');
-      resultado.resultado = 'FALLIDA';
-      resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
-        + '(trabajo declarado pero no queda nada que commitear: probablemente absorbido por el '
-        + 'commit de una hermana o borrado por su descarte)';
-      return resultado;
+  // Evidencia que acompaña a cada revisión: el último gate y las desviaciones
+  // declaradas, que se acumulan con las de cada corrección.
+  let gate = resultado.gate_tests || null;
+  const desviaciones = desviacionesDe(resultado);
+  const contexto = function (previa) {
+    return {
+      gate: gate, desviaciones: desviaciones.slice(), previa: previa,
+      fuera_de_alcance: preparado.fuera,
+    };
+  };
+
+  let revision = normalizarRevision(await d.revisar(task, preparado.diff, contexto(undefined)));
+  if (revision.veredicto_original) resultado.veredicto_original = revision.veredicto_original;
+
+  // Hallazgos abiertos: los críticos de la última revisión utilizable. Una
+  // revisión sin veredicto no los resuelve ni los sustituye.
+  let abiertos = criticosDe(revision);
+  let propuestas = correccionesDe(revision);
+  // Diff de la última revisión utilizable: el delta se mide contra lo que de
+  // verdad se revisó, no contra lo que vio una revisión sin veredicto.
+  let diffRevisado = preparado.diff;
+
+  for (let ronda = 1; abreRonda(revision); ronda++) {
+    if (ronda > MAX_RONDAS_CORRECCION) {
+      return escalarRevision(task, resultado, { revision, abiertos, propuestas }, d);
     }
-    resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
-      + '(sin cambios en el working tree: no se commitea)';
-    return resultado;
+    log('Revision de ' + task.titulo + ': ' + revision.veredicto
+      + (revision.causa ? ' (' + revision.causa + ')' : '') + ' — ronda de correccion ' + ronda
+      + ' de ' + MAX_RONDAS_CORRECCION);
+
+    // Sin veredicto no hay hallazgos nuevos que corregir: la ronda se consume
+    // solo en volver a revisar el mismo código.
+    if (revision.veredicto !== 'ERROR') {
+      // El corrector recibe solo lo que bloquea: los menores no abren ronda y,
+      // mezclados con los críticos, ensancharían la corrección sin motivo.
+      const correccion = await d.corregir(task, {
+        veredicto: revision.veredicto,
+        problemas_criticos: abiertos,
+        correcciones_propuestas: propuestas,
+        resumen: revision.resumen,
+      });
+      for (const dv of desviacionesDe(correccion)) {
+        if (!desviaciones.includes(dv)) desviaciones.push(dv);
+      }
+
+      // La corrección cambia el código que el gate ya había dado por bueno: se
+      // vuelve a pasar antes de revisar, o se commitearía sin evidencia de tests.
+      if (d.gateTests) {
+        gate = await exclusivoDe(d)(function () { return d.gateTests(task); });
+        resultado.gate_tests_tras_correccion = gate;
+        const corte = await decidirGate(task, resultado, gate, d);
+        if (corte) return corte;
+      }
+    }
+
+    const siguiente = await prepararRevision(task, d);
+    if (!siguiente.ok) return falloDeGit(resultado, siguiente.error, log);
+    if (!siguiente.diff.trim()) return resultadoDiffVacio(task, resultado, log);
+
+    // La re-revisión recibe lo que se pidió corregir y lo que cambió desde la
+    // revisión anterior, para pronunciarse sobre cada hallazgo en vez de empezar
+    // de cero y mover la portería.
+    const previa = {
+      ronda,
+      hallazgos_previos: abiertos.slice(),
+      correcciones_propuestas: propuestas.slice(),
+      delta: deltaEntreDiffs(diffRevisado, siguiente.diff),
+    };
+    preparado = siguiente;
+
+    revision = normalizarRevision(await d.revisar(task, preparado.diff, contexto(previa)));
+    if (revision.veredicto_original) resultado.veredicto_original = revision.veredicto_original;
+    if (revision.veredicto !== 'ERROR') {
+      diffRevisado = preparado.diff;
+      abiertos = criticosDe(revision);
+      propuestas = correccionesDe(revision);
+    }
   }
 
-  let revision = await d.revisar(task, diff);
-  let veredicto = revision ? revision.veredicto : 'ERROR';
+  return comitearAprobada(task, resultado,
+    { diff: preparado.diff, pathspec: preparado.pathspec, revision }, d);
+}
 
-  // Una sola pasada de correccion si la revision es adversa.
-  if (veredicto !== 'APROBADA') {
-    log('Revision de ' + task.titulo + ': ' + veredicto + ' — una pasada de correccion');
-    await d.corregir(task, revision || { problemas_criticos: [], problemas_menores: [] });
+/**
+ * Agotado el tope sin una revisión que deje de abrir ronda: la task queda
+ * `BLOQUEADA_REVISION` y la decisión pasa al usuario con los hallazgos abiertos
+ * y su corrección propuesta. Su trabajo se aparta con nombre, recuperable; nada
+ * se destruye. Como no es `COMPLETADA`, sus dependientes quedan bloqueadas.
+ */
+function escalarRevision(task, resultado, estado, deps) {
+  const log = registrar(deps);
+  const revision = estado.revision;
+  const abiertos = estado.abiertos.length > 0
+    ? estado.abiertos.slice()
+    : [revision.resumen || ('revisión ' + revision.veredicto + ' sin hallazgos detallados')];
 
-    const segunda = await diffPreparado(d.spawnGit, ambito);
-    if (!segunda.ok) return falloDeGit(resultado, segunda.error, log);
-    diff = segunda.diff;
-
-    revision = await d.revisar(task, diff);
-    veredicto = revision ? revision.veredicto : 'ERROR';
-  }
-
-  // Sigue adversa: no se commitea. Se aparta el trabajo, recuperable, para que
-  // no contamine el diff de la siguiente task.
-  if (veredicto !== 'APROBADA') {
-    log('Task ' + task.titulo + ': FALLIDA (revision ' + veredicto + '), no se commitea');
-    resultado.resultado = 'FALLIDA';
-    resultado.revision = revision;
-    resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
-      + '(revision adversarial: ' + veredicto + ')';
-    return apartarYRegistrar(task, resultado, d);
-  }
-
-  return comitearAprobada(task, resultado, { diff, revision }, d);
+  log('Task ' + task.titulo + ': BLOQUEADA_REVISION tras ' + MAX_RONDAS_CORRECCION
+    + ' rondas de correccion (revision ' + revision.veredicto + '), no se commitea; '
+    + abiertos.length + ' hallazgo(s) abierto(s) para el usuario');
+  resultado.resultado = 'BLOQUEADA_REVISION';
+  resultado.revision = revision;
+  resultado.rondas_correccion = MAX_RONDAS_CORRECCION;
+  resultado.hallazgos_abiertos = abiertos;
+  resultado.correcciones_propuestas = estado.propuestas.slice();
+  resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
+    + '(revision adversarial: ' + revision.veredicto
+    + (revision.causa ? ', ' + revision.causa : '')
+    + '; BLOQUEADA_REVISION tras ' + MAX_RONDAS_CORRECCION + ' rondas de corrección, decide el usuario: '
+    + abiertos.join('; ') + ')';
+  return apartarYRegistrar(task, resultado, deps);
 }
 
 // ── Ejecucion de una task ────────────────────────────────────────────────────
 
 /**
- * Dependencias de la task que quedaron FALLIDAS entre los resultados ya
- * acumulados. Una task cuyo pre-requisito no se completo no se implementa: se
- * reporta bloqueada.
+ * Dependencias de la task que no están satisfechas entre los resultados ya
+ * acumulados: las que tienen resultado y no es COMPLETADA (FALLIDA, PARCIAL o
+ * cualquier otro). Solo COMPLETADA satisface una dependencia. Una task cuyo
+ * pre-requisito no se completó no se implementa: se reporta bloqueada.
+ *
+ * Una dependencia sin resultado previo no bloquea: es externa a la spec, y
+ * `validarDependencias` ya comprobó que su documento existe.
  *
  * La comparacion se hace sobre la ruta traducida en los dos lados, igual que
  * depsInternas: una dependencia escrita con separadores de Windows denota la
@@ -811,7 +1287,7 @@ function depsFallidas(task, resultadosPrevios) {
   return (task.dependencias || []).filter(function (d) {
     const dep = rutaNativa(d);
     return previos.some(function (r) {
-      return r && rutaNativa(r.task_path) === dep && r.resultado === 'FALLIDA';
+      return r && rutaNativa(r.task_path) === dep && r.resultado !== 'COMPLETADA';
     });
   });
 }
@@ -827,6 +1303,103 @@ function resultadoVacio(task, notas) {
   };
 }
 
+// ── Estado de la task en su documento ────────────────────────────────────────
+
+/** Niveles que se asciende desde el directorio en curso buscando la raíz del proyecto. */
+const MAX_ASCENSO = 10;
+
+/** Estados finales que se escriben tal cual; cualquier otro resultado se escribe FALLIDA. */
+const ESTADOS_FINALES = new Set(['COMPLETADA', 'PARCIAL', 'FALLIDA', 'BLOQUEADA_REVISION']);
+
+/**
+ * Línea `Estado:` propia, con el mismo patrón que el lector de estado vigente de
+ * los hooks (`headerFieldValues` en hooks/sdd-plan-state.js). El flag `d` da la
+ * posición exacta del valor para reescribir solo ese tramo. No se importa del
+ * hook: los dos directorios se instalan por separado.
+ */
+const LINEA_ESTADO_RE = /^\s*\*{0,2}Estado:\*{0,2}\s*(.+?)\s*$/dgim;
+
+/**
+ * Sustituye el valor de la última línea propia `Estado:` del texto completo, la
+ * misma que lee el estado vigente. Conserva la negrita, los espacios y el fin de
+ * línea (`\r\n` incluido). Devuelve `null` si no hay ninguna.
+ */
+function reescribirEstado(texto, estado) {
+  const coincidencias = Array.from(texto.matchAll(LINEA_ESTADO_RE));
+  if (coincidencias.length === 0) return null;
+  const tramo = coincidencias[coincidencias.length - 1].indices[1];
+  return texto.slice(0, tramo[0]) + estado + texto.slice(tramo[1]);
+}
+
+/**
+ * Ruta de la task en disco. `task.path` es relativo a la raíz del proyecto, que no
+ * es el directorio en curso si la sesión arrancó en un subdirectorio o en un
+ * worktree enlazado: se asciende, acotado, hasta el primer directorio donde
+ * exista. Devuelve `null` si no existe en ningún nivel.
+ */
+function resolverDocDeTask(ruta, cwd, sfs) {
+  const rel = rutaNativa(ruta);
+  if (path.isAbsolute(rel)) return sfs.existsSync(rel) ? rel : null;
+  let dir = path.resolve(cwd);
+  for (let i = 0; i < MAX_ASCENSO; i++) {
+    const candidato = path.resolve(dir, rel);
+    if (sfs.existsSync(candidato)) return candidato;
+    const padre = path.dirname(dir);
+    if (padre === dir) break;
+    dir = padre;
+  }
+  return null;
+}
+
+/**
+ * El documento es una task: un `.md` directamente en `ai_docs/tasks/` que no es
+ * una spec. El `Estado` de una spec (APROBADA) lo lee el guard de escrituras para
+ * localizar la spec activa; reescribirlo la dejaría sin spec.
+ */
+function dentroDeTasks(real) {
+  const tasks = path.dirname(real);
+  return real.endsWith('.md')
+    && !path.basename(real).startsWith('spec_')
+    && path.basename(tasks) === 'tasks'
+    && path.basename(path.dirname(tasks)) === 'ai_docs';
+}
+
+/**
+ * Escribe `estado` en el campo `Estado` del documento de la task. Es metadato:
+ * cualquier fallo (fichero inexistente, sin línea `Estado`, fuera de
+ * `ai_docs/tasks/`, error de lectura o escritura) registra un aviso, no lanza, no
+ * crea ni inventa nada y devuelve `false`.
+ *
+ * `opciones`: `cwd` (por defecto `process.cwd()`), `fs` (por defecto el módulo) y
+ * `log`. La ruta aceptada siempre cae dentro de RUTAS_FUERA, así que la escritura
+ * no entra en el commit de ninguna task.
+ */
+function marcarEstado(ruta, estado, opciones) {
+  const o = opciones || {};
+  const sfs = o.fs || fs;
+  const log = registrar(o);
+  const aviso = function (motivo) {
+    log('Aviso: no se escribe el estado ' + estado + ' en ' + ruta + ' (' + motivo + ')');
+    return false;
+  };
+  try {
+    const resuelta = resolverDocDeTask(ruta, o.cwd || process.cwd(), sfs);
+    if (!resuelta) return aviso('el documento no existe');
+    const real = sfs.realpathSync(resuelta);
+    if (!dentroDeTasks(real)) return aviso('no es una task: fuera de ai_docs/tasks/, no es .md o es una spec');
+
+    const bytes = sfs.readFileSync(real);
+    const texto = bytes.toString('utf8');
+    if (!Buffer.from(texto, 'utf8').equals(bytes)) return aviso('no es UTF-8 válido');
+    const nuevo = reescribirEstado(texto, estado);
+    if (nuevo === null) return aviso('sin línea Estado');
+    if (nuevo !== texto) sfs.writeFileSync(real, nuevo, 'utf8');
+    return true;
+  } catch (e) {
+    return aviso(e.message);
+  }
+}
+
 /**
  * El escape de emergencia degrada el bloqueo del gate de tests a aviso. Se lee
  * del entorno; `env` se inyecta para poder ejercitar las dos ramas sin tocar el
@@ -837,18 +1410,18 @@ function escapeActivo(env) {
 }
 
 /**
- * Gate de tests y, si pasa, revision + commit. El rojo de la suite BLOQUEA el
- * commit y aparta el trabajo de la task: es el único veredicto admisible sobre
- * los tests, y no se cree ningun numero que el implementador reporte.
+ * Aplica el veredicto del gate de tests. Devuelve el resultado final si la task
+ * se corta aquí, o `null` si sigue a revisión. El mismo criterio vale antes de
+ * la primera revisión y tras la corrección.
+ *
+ * - git no llegó a correr: eso no dice nada sobre la task. No se commitea, pero
+ *   tampoco se aparta el trabajo, y no lo degrada el escape de emergencia: con
+ *   git averiado no hay commit posible.
+ * - Suite en rojo: bloquea el commit y aparta el trabajo de la task, salvo con
+ *   el escape de emergencia, que lo degrada a aviso.
  */
-async function trasGateTests(task, resultado, deps) {
+async function decidirGate(task, resultado, gate, deps) {
   const log = registrar(deps);
-  const gate = await deps.gateTests(task);
-  resultado.gate_tests = gate;
-
-  // git no llego a correr: eso no dice nada sobre la task. No se commitea, pero
-  // tampoco se descarta el trabajo, y no lo degrada el escape de emergencia —
-  // con git averiado no hay commit posible.
   if (gate.infraestructura) return falloDeGit(resultado, gate.nota, log);
 
   if (gate.estado === 'FALLIDA' && !escapeActivo(deps.env)) {
@@ -861,33 +1434,79 @@ async function trasGateTests(task, resultado, deps) {
   if (gate.estado !== 'PASA') {
     log('Gate de tests (' + task.titulo + '): ' + gate.nota);
   }
+  return null;
+}
+
+/**
+ * Gate de tests y, si pasa, revision + commit. El rojo de la suite BLOQUEA el
+ * commit y aparta el trabajo de la task: es el único veredicto admisible sobre
+ * los tests, y no se cree ningun numero que el implementador reporte.
+ */
+async function trasGateTests(task, resultado, deps) {
+  const gate = await exclusivoDe(deps)(function () { return deps.gateTests(task); });
+  resultado.gate_tests = gate;
+
+  const corte = await decidirGate(task, resultado, gate, deps);
+  if (corte) return corte;
 
   return deps.revisarYComitear(task, resultado);
 }
 
 /**
- * Ejecuta una task completa: gate de dependencias fallidas, implementacion, gate
- * de tests y, si pasa, revision + commit. La usan los dos modos de recorrido.
+ * Ejecuta una task completa: gate de dependencias no completadas,
+ * implementacion, gate de tests y, si pasa, revision + commit. La usan los dos
+ * modos de recorrido.
  *
  * Nunca propaga una excepcion: cualquier fallo, esperado o no, vuelve como
  * resultado FALLIDA. De eso depende que el fallo de una task no tumbe a las
  * hermanas de su mismo nivel cuando el nivel se lanza a la vez.
  *
  * `deps`: `implementar`, `gateTests`, `revisarYComitear`, `descartar(task)`,
- * `log`, `env` y, solo en el recorrido secuencial, `arbolLimpio()`: antes de
- * implementar se comprueba que no queda residuo fuera de ai_docs/ (devuelve
- * `{ limpio, rutas, error }`). Con residuo la task no se implementa y el
- * recorrido se detiene: su `add -A` lo commitearía como propio.
+ * `log`, `env`, `exclusivo` (opcional: el mutex de `crearMutex`; el gate de
+ * tests y el apartado corren dentro), `marcarEstado(ruta, estado)` (opcional;
+ * por defecto el escritor del módulo con el `log` de `deps`) y, solo en el recorrido secuencial,
+ * `arbolLimpio()`: antes de implementar se comprueba que no queda residuo fuera
+ * de RUTAS_FUERA (devuelve `{ limpio, rutas, error }`). Con residuo la task no se
+ * implementa y el recorrido se detiene: su `add -A` lo commitearía como propio.
+ *
+ * ESTADO DEL DOCUMENTO. Solo se escribe en una task que se intentó: `EN_PROGRESO`
+ * justo antes de implementar y, al retornar, el estado final, también tras una
+ * excepción. Una task bloqueada por dependencias o con residuo al empezar no se
+ * intentó: su documento sigue `PENDIENTE`, igual que el de las que no llegan a
+ * ejecutarse porque el recorrido se detuvo (`noEjecutada`).
  */
 async function ejecutarTask(task, resultadosPrevios, deps) {
   const d = deps || {};
   const log = registrar(d);
+  const intento = { iniciado: false };
+
+  const resultado = await intentarTask(task, resultadosPrevios, d, log, intento);
+  if (intento.iniciado) {
+    escribirEstado(task, ESTADOS_FINALES.has(resultado.resultado) ? resultado.resultado : 'FALLIDA', d, log);
+  }
+  return resultado;
+}
+
+/** Escribe el estado sin dejar que un fallo del escritor cambie el resultado de la task. */
+function escribirEstado(task, estado, d, log) {
+  try {
+    if (d.marcarEstado) d.marcarEstado(task.path, estado);
+    else marcarEstado(task.path, estado, { log });
+  } catch (e) {
+    log('Aviso: no se escribe el estado ' + estado + ' de ' + task.titulo + ' (' + e.message + ')');
+  }
+}
+
+/** Cuerpo de ejecutarTask; `intento.iniciado` queda en true al escribir EN_PROGRESO. */
+async function intentarTask(task, resultadosPrevios, d, log, intento) {
 
   const bloqueada = depsFallidas(task, resultadosPrevios);
   if (bloqueada.length > 0) {
-    log('Task ' + task.titulo + ': BLOQUEADA (dependencias fallidas: ' + bloqueada.join(', ') + ')');
-    return resultadoVacio(task, 'No se implemento: sus dependencias no se completaron ('
+    log('Task ' + task.titulo + ': BLOQUEADA (dependencias no completadas: ' + bloqueada.join(', ') + ')');
+    const r = resultadoVacio(task, 'No se implemento: sus dependencias no se completaron ('
       + bloqueada.join(', ') + ')');
+    r.bloqueada = true;
+    return r;
   }
 
   try {
@@ -896,14 +1515,16 @@ async function ejecutarTask(task, resultadosPrevios, deps) {
       if (!estado || !estado.limpio) {
         const resto = (estado && estado.error) || resumenRutas(estado && estado.rutas);
         log('Task ' + task.titulo + ': no se implementa, el árbol tiene residuo fuera de '
-          + DIR_PLAN + '/ (' + resto + '); el recorrido se detiene');
+          + DESCRIPCION_FUERA + ' (' + resto + '); el recorrido se detiene');
         const r = resultadoVacio(task, 'No se implementó: residuo sin commitear fuera de '
-          + DIR_PLAN + '/ al empezar (' + resto + ')');
+          + DESCRIPCION_FUERA + ' al empezar (' + resto + ')');
         r.detener_recorrido = true;
         return r;
       }
     }
 
+    escribirEstado(task, 'EN_PROGRESO', d, log);
+    intento.iniciado = true;
     log('Implementando: ' + task.titulo);
     const resultado = await d.implementar(task);
 
@@ -913,6 +1534,15 @@ async function ejecutarTask(task, resultadosPrevios, deps) {
     if (!resultado || resultado.resultado === 'FALLIDA') {
       const fallida = resultado || resultadoVacio(task, 'El agente no retorno resultado');
       return d.descartar ? await apartarYRegistrar(task, fallida, d) : fallida;
+    }
+
+    // Un trabajo PARCIAL no cumple la task: no pasa al gate ni al commit. Se
+    // aparta, recuperable, y queda PARCIAL; sus dependientes quedan bloqueadas.
+    if (resultado.resultado === 'PARCIAL') {
+      log('Task ' + task.titulo + ': PARCIAL, no pasa a gate ni a commit; su trabajo se aparta');
+      resultado.notas = (resultado.notas ? resultado.notas + ' ' : '')
+        + '(implementación PARCIAL: no pasa a gate ni a commit)';
+      return d.descartar ? await apartarYRegistrar(task, resultado, d) : resultado;
     }
 
     return await trasGateTests(task, resultado, d);
@@ -925,9 +1555,79 @@ async function ejecutarTask(task, resultadosPrevios, deps) {
 // ── Recorrido de los niveles ─────────────────────────────────────────────────
 
 /**
+ * Clave con la que se cruzan los ámbitos de dos tasks: separadores normales, sin
+ * `./` inicial ni barra final y en minúsculas. Las minúsculas solo pueden
+ * detectar de más (en un sistema de ficheros que distingue mayúsculas, dos
+ * rutas distintas pasan por la misma), y detectar de más solo serializa.
+ */
+function claveDeRuta(ruta) {
+  return String(rutaNativa(String(ruta || ''))).replace(/\\/g, '/')
+    .replace(/^\.\//, '').replace(/\/+$/, '').toLowerCase();
+}
+
+function rutasSeSolapan(a, b) {
+  return a === b || a.startsWith(b + '/') || b.startsWith(a + '/');
+}
+
+/**
+ * Reparte un nivel por colisiones de ficheros. Función pura: `ambitos[i]` es la
+ * lista de ficheros que declara la task i (su tabla "Archivos afectados").
+ * Devuelve `{ disjuntas, enSerie }`, índices en el orden del nivel.
+ *
+ * Se recorre el nivel en orden: una task entra en el lote disjunto si ninguno
+ * de sus ficheros coincide con uno del lote, o cuelga de un directorio del
+ * lote, o al revés. Si choca, va en serie tras el lote. Una task de ámbito
+ * vacío (sin tabla legible) también va en serie: no se sabe qué toca, y
+ * suponerla disjunta sería el fallo inseguro.
+ */
+function particionarPorColisiones(ambitos) {
+  const disjuntas = [];
+  const enSerie = [];
+  const tomadas = [];
+  (ambitos || []).forEach(function (ambito, i) {
+    const claves = (Array.isArray(ambito) ? ambito : []).map(claveDeRuta).filter(Boolean);
+    const choca = claves.some(function (c) {
+      return tomadas.some(function (t) { return rutasSeSolapan(c, t); });
+    });
+    if (claves.length === 0 || choca) {
+      enSerie.push(i);
+    } else {
+      disjuntas.push(i);
+      for (const c of claves) tomadas.push(c);
+    }
+  });
+  return { disjuntas, enSerie };
+}
+
+/** Ámbito de cada task del nivel con `ambitoDe(task)`; uno que no se puede leer cuenta como vacío. */
+async function ambitosDelNivel(nivel, ambitoDe) {
+  const ambitos = [];
+  for (const task of nivel) {
+    let ambito = [];
+    if (typeof ambitoDe === 'function') {
+      try {
+        ambito = await ambitoDe(task);
+      } catch (e) {
+        ambito = [];
+      }
+    }
+    ambitos.push(Array.isArray(ambito) ? ambito : []);
+  }
+  return ambitos;
+}
+
+/**
  * Recorre los niveles EN ORDEN y, dentro de cada nivel, ejecuta las tasks una
- * tras otra (defecto) o todas a la vez (`modoParalelo`, que el flag `--parallel`
- * activa). Devuelve los resultados en el orden en que se acumularon.
+ * tras otra (defecto) o a la vez (`modoParalelo`, que el flag `--parallel`
+ * activa). Devuelve los resultados en el orden de los niveles y, dentro de
+ * cada uno, en el orden del nivel.
+ *
+ * `opciones`: `modoParalelo`; `concurrencia` (tope de tasks en vuelo a la vez;
+ * MAX_CONCURRENCIA si falta o no es un entero positivo); `ambito(task)`
+ * (ficheros que declara la task: sin él, todas las del nivel cuentan como de
+ * ámbito vacío y van en serie); `enVuelo` (un `Set` que el recorrido mantiene
+ * con las tasks en ejecución, en los dos modos: de ahí sale la unión de ámbitos
+ * con la que se calcula lo que queda fuera de alcance); `log`.
  *
  * Cada task recibe una FOTO de los resultados de niveles YA COMPLETADOS, nunca
  * los del nivel en curso. Por definicion de nivel topologico ninguna task
@@ -935,40 +1635,69 @@ async function ejecutarTask(task, resultadosPrevios, deps) {
  * gate de dependencias fallidas puede necesitar; pasarla, en vez del acumulador
  * vivo, hace que los dos modos decidan sobre exactamente el mismo dato.
  *
- * FRONTERA DEL MODO CONCURRENTE. Lo que el framework hace: lanza las tasks de un
- * nivel a la vez y reporta el resultado de cada una (politica best-effort: el
- * fallo de una no cancela a las demas, y el resumen final distingue cual paso y
- * cual fallo, no solo la primera excepcion). El commit de cada task se acota a
- * sus propios ficheros declarados (F1: `diffPreparado` con `ambito`), asi que ya
- * no absorbe en silencio el trabajo sin commitear de una hermana en curso; y una
- * task cuyo trabajo desapareció del working tree -absorbido por otra- ya no se
- * reporta COMPLETADA (F2: `revisarYComitear` distingue el diff vacio legitimo
- * del inesperado por `archivos_modificados`). El trabajo de una task que no se
- * commitea se aparta en `git stash`, acotado a las rutas de su ámbito que
- * cambiaron (apartarTrabajo): no se lleva lo que las hermanas tienen en el
- * árbol y es recuperable; sin ámbito no se aparta nada. Lo que SIGUE sin hacer: no hay single-writer por
- * fichero, no detecta colisiones entre tasks que tocan el mismo archivo y no
- * particiona el trabajo por ellas ni aísla árboles de trabajo. Todas las tasks
- * de un mismo nivel comparten el mismo working tree e índice mientras se
- * implementan: si dos declaran el mismo fichero, el apartado de una se lleva
- * también lo que la otra escribió en él. Evitar que dos tasks se pisen sigue
- * siendo responsabilidad de quien pide el modo concurrente, no del framework.
- * Las puertas de calidad (gate de tests, revisión del diff) se aplican por task
- * en los dos modos.
+ * FRONTERA DEL MODO CONCURRENTE. Lo que el framework hace:
+ * - Antes de lanzar un nivel cruza los ámbitos declarados
+ *   (`particionarPorColisiones`): las tasks disjuntas van a la vez, nunca más
+ *   de `concurrencia`; las que chocan con el lote, y las de ámbito vacío, van
+ *   después, una tras otra. Dos tasks que declaran el mismo fichero no están
+ *   nunca en vuelo a la vez.
+ * - El gate de tests y las operaciones de git que mutan el índice van en
+ *   exclusión mutua (`crearMutex`, inyectado como `deps.exclusivo` en la
+ *   ejecución de cada task): dos suites no corren a la vez.
+ * - El commit de cada task se acota a sus ficheros declarados que cambiaron
+ *   (F1: `diffPreparado` con `ambito`), y una task cuyo trabajo desapareció del
+ *   working tree no se reporta COMPLETADA (F2: `resultadoDiffVacio`). El trabajo
+ *   que no se commitea se aparta en `git stash`, acotado a su ámbito.
+ * - Lo que una task cambia fuera de los ámbitos de las tasks en vuelo llega a
+ *   su revisor (`fuera_de_alcance`), que decide.
+ * - Política best-effort: el fallo de una task no cancela a las demás, y el
+ *   resumen distingue cuál pasó y cuál falló.
+ * Lo que SIGUE sin hacer: no aísla árboles de trabajo. Las tasks en vuelo
+ * comparten working tree mientras se implementan, así que el gate de una ve el
+ * trabajo a medias de sus hermanas, y un rojo espurio por esa contaminación
+ * sigue siendo posible; ese rojo aparta el trabajo, recuperable, no lo
+ * destruye. Eliminarlo exige un worktree por task. Tampoco hay single-writer
+ * real: la partición se fía de las tablas declaradas, y una escritura fuera de
+ * ellas solo la ve el revisor.
  *
  * PARADA. Un resultado con `detener_recorrido` (el apartado falló o dejó
  * residuo, o la task encontró el árbol sucio al empezar) detiene el recorrido:
- * en secuencial tras esa task, en concurrente al cerrar su nivel. Las tasks que
- * quedan se reportan FALLIDAS sin implementar, con el motivo.
+ * en secuencial tras esa task; en concurrente, las ya lanzadas terminan y no se
+ * lanza ninguna más. Las tasks que quedan se reportan FALLIDAS sin implementar,
+ * con el motivo.
  */
 async function recorrerNiveles(niveles, ejecutar, opciones) {
-  const modoParalelo = !!(opciones && opciones.modoParalelo);
+  const o = opciones || {};
+  const log = registrar(o);
+  const modoParalelo = !!o.modoParalelo;
+  const tope = (Number.isInteger(o.concurrencia) && o.concurrencia > 0) ? o.concurrencia : MAX_CONCURRENCIA;
+  const enVuelo = (o.enVuelo instanceof Set) ? o.enVuelo : new Set();
   const acumulados = [];
 
   let parada = null;
 
+  async function lanzar(task, completados) {
+    enVuelo.add(task);
+    try {
+      return await ejecutar(task, completados);
+    } finally {
+      enVuelo.delete(task);
+    }
+  }
+
+  // Ejecuta las tasks de `indices` de una en una; respeta la parada.
+  async function enOrden(nivel, indices, completados, resultados) {
+    for (const i of indices) {
+      if (parada) { resultados[i] = noEjecutada(nivel[i], parada); continue; }
+      const r = await lanzar(nivel[i], completados);
+      resultados[i] = r;
+      if (r && r.detener_recorrido) parada = r;
+    }
+  }
+
   for (const nivel of (niveles || [])) {
     const completados = acumulados.slice();
+    const resultados = new Array(nivel.length);
 
     if (parada) {
       for (const task of nivel) acumulados.push(noEjecutada(task, parada));
@@ -976,21 +1705,33 @@ async function recorrerNiveles(niveles, ejecutar, opciones) {
     }
 
     if (modoParalelo) {
-      const resultadosNivel = await Promise.all(nivel.map(function (task) {
-        return ejecutar(task, completados);
-      }));
-      for (const r of resultadosNivel) {
-        acumulados.push(r);
-        if (!parada && r && r.detener_recorrido) parada = r;
+      const reparto = particionarPorColisiones(await ambitosDelNivel(nivel, o.ambito));
+      if (reparto.enSerie.length > 0) {
+        log('En serie tras el lote disjunto (ficheros compartidos o sin ámbito declarado): '
+          + reparto.enSerie.map(function (i) { return nivel[i].titulo; }).join(', '));
       }
+
+      // Hasta `tope` trabajadores toman tasks del lote disjunto según quedan libres.
+      let siguiente = 0;
+      const trabajador = async function () {
+        while (siguiente < reparto.disjuntas.length) {
+          const i = reparto.disjuntas[siguiente++];
+          if (parada) { resultados[i] = noEjecutada(nivel[i], parada); continue; }
+          const r = await lanzar(nivel[i], completados);
+          resultados[i] = r;
+          if (!parada && r && r.detener_recorrido) parada = r;
+        }
+      };
+      const trabajadores = [];
+      for (let t = 0; t < Math.min(tope, reparto.disjuntas.length); t++) trabajadores.push(trabajador());
+      await Promise.all(trabajadores);
+
+      await enOrden(nivel, reparto.enSerie, completados, resultados);
     } else {
-      for (const task of nivel) {
-        if (parada) { acumulados.push(noEjecutada(task, parada)); continue; }
-        const r = await ejecutar(task, completados);
-        acumulados.push(r);
-        if (r && r.detener_recorrido) parada = r;
-      }
+      await enOrden(nivel, nivel.map(function (_, i) { return i; }), completados, resultados);
     }
+
+    for (const r of resultados) acumulados.push(r);
   }
 
   return acumulados;
@@ -1018,30 +1759,84 @@ function resumirResultados(resultados) {
 
 // ── Convergencia y resultado del flujo ───────────────────────────────────────
 
-/** Traduce la respuesta de la verificacion de convergencia al veredicto del flujo. */
-function veredictoConvergencia(respuesta, log) {
+function describirBrecha(b) {
+  return (b && b.criterio ? b.criterio : '(sin criterio)') + ' — ' + (b && b.hallazgo ? b.hallazgo : '(sin hallazgo)');
+}
+
+/**
+ * Traduce el informe de la verificación de convergencia al veredicto del flujo.
+ *
+ * La verificación solo reporta brechas; las tasks las crea `crearTasks`, inyectada,
+ * que recibe únicamente las BLOQUEANTES y devuelve las rutas creadas (o null).
+ * El veredicto lo fija la severidad de lo reportado: con alguna BLOQUEANTE la spec
+ * DIVERGE; con solo WARNING queda CONVERGIDA y los avisos van al usuario, que decide.
+ * Una severidad que no es WARNING cuenta como BLOQUEANTE: ante la duda, no se cierra.
+ * Las brechas viajan siempre en el resultado: si la creación falla, ninguna se pierde.
+ */
+async function veredictoConvergencia(respuesta, crearTasks, log) {
   if (!respuesta || !respuesta.veredicto) {
     log('Convergencia: la respuesta del agente no parseo contra el schema');
     return { veredicto: 'ERROR', razon: 'parse_failed' };
   }
+  if (respuesta.veredicto !== 'CONVERGIDA' && respuesta.veredicto !== 'DIVERGE') {
+    log('Convergencia: veredicto desconocido: ' + respuesta.veredicto);
+    return { veredicto: 'ERROR', razon: 'parse_failed' };
+  }
 
-  if (respuesta.veredicto === 'DIVERGE') {
-    const tasksGeneradas = respuesta.tasks_generadas || [];
-    log('DIVERGENCIA: spec no cerrada, ' + tasksGeneradas.length
-      + ' task(s) de convergencia generadas: ' + tasksGeneradas.join(', '));
+  const brechas = Array.isArray(respuesta.brechas) ? respuesta.brechas.filter(Boolean) : [];
+  const avisos = brechas.filter(b => b.severidad === 'WARNING');
+  const bloqueantes = brechas.filter(b => b.severidad !== 'WARNING');
+
+  if (bloqueantes.length === 0 && (respuesta.veredicto !== 'DIVERGE' || avisos.length > 0)) {
+    log('CONVERGENCIA: spec cerrada, ' + (respuesta.criterios_verificados || 0)
+      + ' criterios verificados'
+      + (avisos.length
+        ? '; ' + avisos.length + ' aviso(s) para que decida el usuario: ' + avisos.map(describirBrecha).join('; ')
+        : ''));
     return {
-      veredicto: 'DIVERGE',
+      veredicto: 'CONVERGIDA',
       criterios_verificados: respuesta.criterios_verificados,
-      tasks_generadas: tasksGeneradas,
+      avisos: avisos,
+      tasks_generadas: [],
     };
   }
 
-  log('CONVERGENCIA: spec cerrada, ' + (respuesta.criterios_verificados || 0)
-    + ' criterios verificados');
+  if (bloqueantes.length === 0) {
+    log('DIVERGENCIA: spec no cerrada, pero la verificación no reportó ninguna brecha; no hay tasks que crear');
+    return {
+      veredicto: 'DIVERGE',
+      criterios_verificados: respuesta.criterios_verificados,
+      brechas: [],
+      avisos: [],
+      tasks_generadas: [],
+    };
+  }
+
+  log('DIVERGENCIA: spec no cerrada, ' + bloqueantes.length + ' brecha(s) BLOQUEANTE reportada(s): '
+    + bloqueantes.map(describirBrecha).join('; '));
+
+  let creadas = null;
+  if (typeof crearTasks === 'function') {
+    try {
+      creadas = await crearTasks(bloqueantes);
+    } catch (err) {
+      log('Convergencia: el paso de creación falló: ' + (err && err.message ? err.message : String(err)));
+      creadas = null;
+    }
+  }
+  const rutas = Array.isArray(creadas) ? creadas.filter(r => typeof r === 'string' && r) : [];
+  if (rutas.length) {
+    log('Convergencia: ' + rutas.length + ' task(s) creada(s) por el paso de creación: ' + rutas.join(', '));
+  } else {
+    log('Convergencia: el paso de creación no devolvió rutas; las brechas quedan en el resultado');
+  }
+
   return {
-    veredicto: 'CONVERGIDA',
+    veredicto: 'DIVERGE',
     criterios_verificados: respuesta.criterios_verificados,
-    tasks_generadas: [],
+    brechas: bloqueantes,
+    avisos: avisos,
+    tasks_generadas: rutas,
   };
 }
 
@@ -1051,7 +1846,7 @@ function veredictoConvergencia(respuesta, log) {
  * completar, y entonces `verificar` no llega a invocarse: medir la convergencia
  * de lo que no se implemento no dice nada, y la invocacion cuesta.
  *
- * `deps`: `completadas`, `fallidas`, `total`, `verificar`, `log`.
+ * `deps`: `completadas`, `fallidas`, `total`, `verificar`, `crearTasks`, `log`.
  */
 async function resolverConvergencia(deps) {
   const d = deps || {};
@@ -1062,7 +1857,7 @@ async function resolverConvergencia(deps) {
     return { veredicto: 'OMITIDA', razon: 'tasks_fallidas' };
   }
 
-  return veredictoConvergencia(await d.verificar(), log);
+  return veredictoConvergencia(await d.verificar(), d.crearTasks, log);
 }
 
 /**
@@ -1094,6 +1889,8 @@ module.exports = {
   tocaCodigoEjecutable,
   evaluarGateTests,
   parsearArgs,
+  MAX_CONCURRENCIA,
+  crearMutex,
   gitVerificado,
   falloDeGit,
   evaluarArbolLimpio,
@@ -1101,9 +1898,20 @@ module.exports = {
   mensajeArbolSucio,
   argvApartado,
   apartarTrabajo,
+  RUTAS_FUERA,
+  pathspecDeTask,
+  rutasFueraDeAmbito,
+  prepararTask,
+  diffPreparado,
+  normalizarRevision,
+  MAX_RONDAS_CORRECCION,
+  abreRonda,
+  deltaEntreDiffs,
   revisarYComitear,
   depsFallidas,
+  marcarEstado,
   ejecutarTask,
+  particionarPorColisiones,
   recorrerNiveles,
   resumirResultados,
   resolverConvergencia,

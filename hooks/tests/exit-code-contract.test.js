@@ -143,13 +143,32 @@ test('cada hook con contrato de entrada responde 0 o 2 ante input invalido, nunc
   });
   assert.ok(entryPoints.length > 0, 'no se encontro ningun hook con contrato de entrada');
 
-  for (const file of entryPoints) {
-    const vacio = runHook(file, {});
-    const invalido = runHook(file, { tool_name: '__invalido__', tool_input: null, session_id: 's' });
-    for (const r of [vacio, invalido]) {
-      assert.notStrictEqual(r.code, 1, file + ' respondio exit 1 ante input invalido');
-      assert.ok(r.code === 0 || r.code === 2, file + ' exit code inesperado: ' + r.code);
+  // Los hooks que escriben (el registro de sesiones) lo hacen en un temporal propio, nunca
+  // en el proyecto que ejecuta la suite; y una config vacía impide que la del proyecto
+  // decida qué hooks actúan.
+  const dir = tempDir('sdd-exit-contract-entrada-');
+  try {
+    const registro = path.join(dir, 'provenance.jsonl');
+    const config = path.join(dir, 'config.json');
+    writeFile(config, '{}');
+    const env = { SDD_PROVENANCE_FILE: registro, SDD_CONFIG_PATH: config };
+
+    for (const file of entryPoints) {
+      const vacio = runHook(file, {}, env);
+      const invalido = runHook(file, { tool_name: '__invalido__', tool_input: null, session_id: 's' }, env);
+      for (const r of [vacio, invalido]) {
+        assert.notStrictEqual(r.code, 1, file + ' respondio exit 1 ante input invalido');
+        assert.ok(r.code === 0 || r.code === 2, file + ' exit code inesperado: ' + r.code);
+      }
     }
+
+    // La inyección llega: el registro se escribió en el destino inyectado, no solo
+    // dejó de escribirse en el proyecto.
+    assert.ok(fs.existsSync(registro), 'el registro de sesiones no se escribió en el destino inyectado');
+    const lineas = fs.readFileSync(registro, 'utf8').split('\n').filter((l) => l.trim());
+    assert.ok(lineas.length >= 1, 'el registro inyectado está vacío');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 

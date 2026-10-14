@@ -1,5 +1,6 @@
 ---
 description: "Implementa TODAS las tasks de una spec en orden de dependencias (o en paralelo con --parallel), revision adversarial por task antes de commitear"
+argument-hint: "[ruta de la spec aprobada] [--parallel[=N]]"
 ---
 
 Ejecuta el workflow de implementacion completa de una spec.
@@ -15,8 +16,8 @@ Si todo esta en orden, usa la herramienta Workflow con nombre "implementar-spec"
 
 El workflow:
 1. Descubre las tasks y sus dependencias, y las ordena de forma que cada task va despues de todas las tasks de las que depende
-2. Implementa cada task en ese orden. Para cada task: implementa, ejecuta tests, revision adversarial, y si aprobada, commitea antes de pasar a la siguiente
-3. Si una task no se aprueba tras corregirla, queda FALLIDA y las que dependan de ella se reportan como bloqueadas, sin implementar
+2. Implementa cada task en ese orden. Para cada task: implementa, ejecuta tests, revision adversarial, y si no quedan hallazgos críticos, commitea antes de pasar a la siguiente
+3. Solo un hallazgo crítico (o un veredicto RECHAZADA, o una revisión sin veredicto) abre una ronda de corrección; los menores no bloquean y van al cuerpo del commit. Cada ronda corrige solo los críticos, vuelve a pasar los tests y re-revisa con los hallazgos previos y el delta. Tras 3 rondas sin aprobar, la task queda BLOQUEADA_REVISION: su trabajo se aparta con nombre en `git stash` (nada se destruye) y se presentan al usuario los hallazgos abiertos con su corrección propuesta. Una task que no termina COMPLETADA deja bloqueadas, sin implementar, las que dependen de ella
 4. Al terminar, resume el resultado de todas las tasks
 
 Un ciclo de dependencias entre tasks detiene el workflow con error: hay que corregir el plan antes de implementar.
@@ -30,7 +31,7 @@ Al completarse, presenta al usuario:
 
 Si el veredicto de convergencia es **CONVERGIDA**: la spec queda cerrada, puede crear la PR con `/pr`.
 Si el veredicto es **DIVERGE**: detalla las brechas encontradas y las tasks `NNN_convergencia_*` generadas para cerrarlas; implementalas con el flujo normal (otra pasada de `/implementar-spec` o `/implementar` task a task) antes de abrir la PR.
-Si el veredicto es **OMITIDA**: alguna task quedo FALLIDA o BLOQUEADA y por eso no se verifico la convergencia; resuelve esas tasks primero.
+Si el veredicto es **OMITIDA**: alguna task quedo FALLIDA, BLOQUEADA o BLOQUEADA_REVISION y por eso no se verifico la convergencia; resuelve esas tasks primero.
 
 ## Aislamiento por worktree (opcional, avanzado)
 

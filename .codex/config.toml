@@ -1,6 +1,8 @@
 # Configuracion del proyecto para el CLI de Codex.
 # Ajusta el modelo a tu cuenta y presupuesto: no hay dependencia del framework con uno concreto.
-model = "o4-mini"
+# gpt-5.5 figura en el catálogo de codex-cli 0.162.1. El catálogo cambia con cada versión:
+# `codex debug models` lista los modelos que reconoce la tuya; elige uno de esa lista.
+model = "gpt-5.5"
 
 # on-request: el agente pide aprobacion cuando necesita salirse del sandbox.
 approval_policy = "on-request"

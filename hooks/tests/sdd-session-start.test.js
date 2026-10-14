@@ -46,8 +46,17 @@ function leerLineas(file) {
   return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
 }
 
+// Payload por defecto con las mismas claves que el `SessionStart` capturado en
+// `tests/fixtures/payloads_claude.json` (Claude Code 2.1.296, `claude -p`): sin `model`, sin
+// `project` y sin versión del CLI. Un caso que necesite el modelo lo pasa explícito.
 const payload = (overrides) => Object.assign(
-  { session_id: 'sesion-provenance-1', cwd: process.cwd(), model: 'claude-sonnet-5' },
+  {
+    session_id: 'sesion-provenance-1',
+    transcript_path: path.join(os.tmpdir(), 'transcript-sesion-provenance-1.jsonl'),
+    cwd: process.cwd(),
+    hook_event_name: 'SessionStart',
+    source: 'startup',
+  },
   overrides,
 );
 
@@ -63,11 +72,31 @@ test('escribe una linea NDJSON valida con los 20 campos canonicos, en orden', ()
   assert.deepStrictEqual(Object.keys(linea), CAMPOS_CANONICOS);
   assert.strictEqual(linea.v, 1);
   assert.strictEqual(linea.session_id, 'sesion-provenance-1');
-  assert.strictEqual(linea.session_model, 'claude-sonnet-5');
+  assert.strictEqual(linea.session_model, null, 'sin model en el payload, el registro no inventa uno');
   assert.match(linea.ts, /^\d{4}-\d{2}-\d{2}T/);
   assert.strictEqual(typeof linea.stamp_ms, 'number');
   assert.ok(linea.stamp_ms >= 0);
   assert.ok(Array.isArray(linea.gates_on));
+});
+
+test('session_model: el CLI que envía model en el arranque lo ve escrito tal cual', () => {
+  const e = entorno();
+  runHook(HOOK, payload({ model: 'x' }), e.env);
+
+  const [linea] = leerLineas(e.provenanceFile);
+  assert.strictEqual(linea.session_model, 'x');
+});
+
+// cc_version no lee el entorno heredado: una variable presente ahí mide la versión del proceso
+// que lanzó el CLI, no la del CLI que lanza el hook. Sin versión en el payload, el campo es null.
+test('cc_version: null aunque el entorno heredado traiga variables de versión', () => {
+  const e = entorno();
+  const env = Object.assign({}, e.env, { CLAUDE_CODE_VERSION: '2.1.42', CLI_VERSION: 'x' });
+  runHook(HOOK, payload(), env);
+
+  const [linea] = leerLineas(e.provenanceFile);
+  assert.strictEqual(linea.cc_version, null);
+  assert.deepStrictEqual(Object.keys(linea), CAMPOS_CANONICOS, 'el campo conserva nombre y posición');
 });
 
 test('fail-open: cwd sin repo git -> git_branch y repo_head quedan null, exit 0 igual', () => {
@@ -154,10 +183,11 @@ test('sin session_id en el payload, genera uno via randomUUID', () => {
   assert.match(linea.session_id, /^[0-9a-f-]{36}$/);
 });
 
-test('gates_on refleja los hooks con enabled:true en hooks/config.json, ordenados', () => {
+test('gates_on refleja los hooks encendidos en hooks/config.json, ordenados', () => {
   // Tres claves encendidas cuyo orden de insercion no es el alfabetico NI su inverso:
   // con solo dos, ordenar e invertir dan la misma lista y la asercion no distingue una
   // de la otra. La entrada aparcada bajo `_` no es una puerta y no puede contarse.
+  // sdd_read_before_edit no tiene sección y aun así cuenta: su valor por defecto es encendido.
   const e = entorno({
     sdd_session_start: { enabled: true },
     sdd_turn_budget: { enabled: true },
@@ -168,7 +198,87 @@ test('gates_on refleja los hooks con enabled:true en hooks/config.json, ordenado
   runHook(HOOK, payload(), e.env);
 
   const [linea] = leerLineas(e.provenanceFile);
-  assert.deepStrictEqual(linea.gates_on, ['sdd_commit_guard', 'sdd_session_start', 'sdd_turn_budget']);
+  assert.deepStrictEqual(
+    linea.gates_on,
+    ['sdd_commit_guard', 'sdd_read_before_edit', 'sdd_session_start', 'sdd_turn_budget'],
+  );
+});
+
+// Coherencia entre `gates_on` y lo que cada hook hace de verdad con la misma configuración. Cada
+// hook se ejecuta una vez con una entrada que, encendido, produce un efecto observable (una
+// decisión por stdout o la línea de provenance); apagado, sale en silencio.
+const HOOKS_CON_INTERRUPTOR = ['sdd_read_before_edit', 'sdd_review_gate', 'sdd_session_start', 'sdd_turn_budget'];
+
+function hooksQueActuan(config) {
+  const dir = tempDir('sdd-gates-coherencia-');
+  const configFile = writeFile(path.join(dir, 'config.json'), JSON.stringify(config));
+  const existente = writeFile(path.join(dir, 'existente.js'), 'contenido previo');
+  const provenanceFile = path.join(dir, 'audits', 'provenance.jsonl');
+  const env = {
+    SDD_CONFIG_PATH: configFile,
+    SDD_PROVENANCE_FILE: provenanceFile,
+    SDD_READS_DIR: dir,
+    SDD_TURNS_DIR: dir,
+    SDD_STAGED_DIFF: '',
+    SDD_GUARD_SKIP: '',
+  };
+  const sesion = 'sesion-coherencia';
+
+  const actuan = [];
+  const lectura = runHook('sdd-read-before-edit.js',
+    { tool_name: 'Write', tool_input: { file_path: existente }, session_id: sesion, cwd: dir }, env);
+  if (lectura.decision) actuan.push('sdd_read_before_edit');
+
+  const revision = runHook('sdd-review-gate.js',
+    { tool_name: 'Bash', tool_input: { command: 'git commit -m "feat: x"' }, session_id: sesion }, env);
+  if (revision.decision) actuan.push('sdd_review_gate');
+
+  runHook(HOOK, payload({ session_id: sesion }), env);
+  if (leerLineas(provenanceFile).length > 0) actuan.push('sdd_session_start');
+
+  const presupuesto = runHook('sdd-turn-budget.js',
+    { tool_name: 'Read', tool_input: { file_path: existente }, session_id: sesion }, env);
+  if (presupuesto.decision) actuan.push('sdd_turn_budget');
+
+  return { actuan, gates: leerLineas(provenanceFile).map((l) => l.gates_on)[0] };
+}
+
+// Umbrales que hacen visible el presupuesto en la primera acción; no tocan `enabled`.
+const UMBRALES = { warn_at: 1, block_at: 1000, hard_stop_at: 1000 };
+
+test('gates_on coincide con los hooks que actúan: secciones sin enabled', () => {
+  const { actuan, gates } = hooksQueActuan({
+    sdd_read_before_edit: { mode: 'advisory' },
+    sdd_review_gate: { ttl_hours: 4 },
+    sdd_session_start: {},
+    sdd_turn_budget: Object.assign({ mode: 'enforce' }, UMBRALES),
+  });
+
+  assert.deepStrictEqual(actuan, ['sdd_read_before_edit', 'sdd_session_start', 'sdd_turn_budget']);
+  assert.deepStrictEqual(gates.filter((g) => HOOKS_CON_INTERRUPTOR.includes(g)), actuan);
+});
+
+test('gates_on coincide con los hooks que actúan: enabled false apaga todos', () => {
+  const config = {
+    sdd_read_before_edit: { enabled: false, mode: 'advisory' },
+    sdd_review_gate: { enabled: false },
+    sdd_session_start: { enabled: false },
+    sdd_turn_budget: Object.assign({ enabled: false }, UMBRALES),
+  };
+  const { actuan } = hooksQueActuan(config);
+  // Con sdd_session_start apagado no hay línea que leer: gates_on se evalúa en proceso.
+  const { gatesOn } = require('../sdd-session-start');
+
+  assert.deepStrictEqual(actuan, []);
+  assert.deepStrictEqual(gatesOn(config), []);
+});
+
+test('gates_on coincide con los hooks que actúan: review-gate sin sección queda apagado', () => {
+  const { actuan, gates } = hooksQueActuan({ sdd_turn_budget: UMBRALES });
+
+  assert.ok(!actuan.includes('sdd_review_gate'), 'review-gate sin sección no debe actuar');
+  assert.deepStrictEqual(actuan, ['sdd_read_before_edit', 'sdd_session_start', 'sdd_turn_budget']);
+  assert.deepStrictEqual(gates, actuan);
 });
 
 // El interruptor tiene que apagar la escritura, no solo el campo que la describe: una linea
@@ -331,10 +441,14 @@ test('config_hash sigue el contenido de la configuracion, no su mera presencia',
 // El identificador de cohorte existe para una sola cosa: agrupar sesiones por
 // configuracion y modelo. Degradado a constante agrupa todo con todo, y quien lo
 // consume no distingue ese caso de una maquina que de verdad nunca cambia.
+//
+// Cuando el CLI no envía el modelo, la fórmula no cambia: el modelo ausente entra como ''
+// y la cohorte agrupa solo por configuración (config, settings y hooks). El consumidor
+// distingue ese caso porque session_model es null.
 test('cohort_id: la misma configuracion y el mismo modelo dan la misma cohorte', () => {
   const e = entorno({ sdd_turn_budget: { enabled: true } });
-  runHook(HOOK, payload({ session_id: 'cohorte-uno' }), e.env);
-  runHook(HOOK, payload({ session_id: 'cohorte-dos' }), e.env);
+  runHook(HOOK, payload({ session_id: 'cohorte-uno', model: 'modelo-a' }), e.env);
+  runHook(HOOK, payload({ session_id: 'cohorte-dos', model: 'modelo-a' }), e.env);
 
   const [uno, dos] = leerLineas(e.provenanceFile);
   assert.match(uno.cohort_id, HEX64);
@@ -345,14 +459,30 @@ test('cohort_id: la misma configuracion y el mismo modelo dan la misma cohorte',
 
 test('cohort_id: cambiar el modelo o la configuracion abre otra cohorte', () => {
   const e = entorno({ sdd_turn_budget: { enabled: true } });
-  runHook(HOOK, payload({ session_id: 'base' }), e.env);
+  runHook(HOOK, payload({ session_id: 'base', model: 'modelo-a' }), e.env);
   runHook(HOOK, payload({ session_id: 'otro-modelo', model: 'otro-modelo-distinto' }), e.env);
   writeFile(path.join(e.dir, 'config.json'), JSON.stringify({ sdd_turn_budget: { enabled: false } }));
-  runHook(HOOK, payload({ session_id: 'otra-config' }), e.env);
+  runHook(HOOK, payload({ session_id: 'otra-config', model: 'modelo-a' }), e.env);
 
   const [base, otroModelo, otraConfig] = leerLineas(e.provenanceFile);
   assert.notStrictEqual(otroModelo.cohort_id, base.cohort_id, 'otro modelo es otra cohorte');
   assert.notStrictEqual(otraConfig.cohort_id, base.cohort_id, 'otra configuracion es otra cohorte');
+});
+
+test('cohort_id sin modelo: agrupa por configuración y la separa si la configuración cambia', () => {
+  const e = entorno({ sdd_turn_budget: { enabled: true } });
+  runHook(HOOK, payload({ session_id: 'sin-modelo-uno' }), e.env);
+  runHook(HOOK, payload({ session_id: 'sin-modelo-dos' }), e.env);
+  writeFile(path.join(e.dir, 'config.json'), JSON.stringify({ sdd_turn_budget: { enabled: false } }));
+  runHook(HOOK, payload({ session_id: 'sin-modelo-otra-config' }), e.env);
+
+  const [uno, dos, otraConfig] = leerLineas(e.provenanceFile);
+  assert.strictEqual(uno.session_model, null);
+  assert.match(uno.cohort_id, HEX64);
+  assert.strictEqual(dos.cohort_id, uno.cohort_id,
+    'sin modelo, la misma configuración debe caer en la misma cohorte');
+  assert.notStrictEqual(otraConfig.cohort_id, uno.cohort_id,
+    'sin modelo, otra configuración sigue siendo otra cohorte');
 });
 
 test('stamp_ms mide la latencia de esta invocacion: mayor que cero y por debajo del techo', () => {
