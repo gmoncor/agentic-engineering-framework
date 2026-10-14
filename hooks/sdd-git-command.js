@@ -35,8 +35,21 @@ const path = require('path');
  *     cierres de su script no cuadran.
  *   - `script`: identificador del script; `0` en el nivel superior, uno propio por cada `bash -c`,
  *     cuerpo de función o alias de git con `!`.
+ *   - `incompleta`: solo existe, con valor `true`, en la invocación que sustituye a un cuerpo de
+ *     función no analizado por el tope de anidamiento (ver abajo).
  * Un alias en línea (`git -c alias.x=commit x`) añade la invocación expandida y conserva la
- * original. El módulo no decide nada con estos campos: los consumen los hooks.
+ * original. La llamada a una función sigue tres reglas:
+ *   1. La invocación original se conserva: la llamada se analiza como invocación ordinaria y el
+ *      cuerpo se añade, igual que un alias. `git() { command git "$@"; }; git commit -n` sigue
+ *      siendo un `git commit` con `-n`.
+ *   2. Cada cuerpo se expande como mucho una vez por orden (por identidad del cuerpo, no por
+ *      nombre): una segunda llamada no aporta invocaciones nuevas, porque el cuerpo no depende de
+ *      los argumentos. Así terminan la recursión directa y la mutua, y el coste es lineal.
+ *   3. Con más de PROFUNDIDAD_MAXIMA_DE_FUNCIONES expansiones anidadas el cuerpo no se analiza: en
+ *      su lugar se añade una invocación `git commit` con `--no-verify` en `flags` e
+ *      `incompleta: true`, que hereda el contexto del punto de llamada (`script`, separadores y
+ *      `grupos`). Lo que no puede analizarse cuenta como un commit posible.
+ * El módulo no decide nada con estos campos: los consumen los hooks.
  */
 
 // Builtins de git (`git --list-cmds=builtins`, git 2.43.0, 140 nombres). git ignora un alias cuyo
@@ -65,6 +78,13 @@ const SUBCOMANDOS_BUILTIN_DE_GIT = new Set([
   'upload-archive--writer', 'upload-pack', 'var', 'verify-commit', 'verify-pack', 'verify-tag',
   'version', 'whatchanged', 'worktree', 'write-tree',
 ]);
+
+// Tope de expansiones de función anidadas (regla 3 de la cabecera). Una cadena de funciones
+// distintas no repite cuerpo, así que la regla 2 no la corta; sin tope agotaría la pila. Una orden
+// legítima no anida tantas funciones. En sdd-turn-budget.js la invocación por tope cuenta como un
+// commit y reinicia el contador del agente, pero eso no abre un camino nuevo: cualquier `git
+// commit` lo reinicia ya, aunque falle.
+const PROFUNDIDAD_MAXIMA_DE_FUNCIONES = 32;
 
 // Separadores de shell que no van entrecomillados: parten la lista de tokens en invocaciones.
 const SEPARADORES = new Set(['&&', '||', ';', '|', '&', '\n']);
@@ -463,8 +483,9 @@ function expandirAlias(original, seg, idxSubcomando, ctx) {
  * no en el patron mismo (que puede citar "git commit" como texto sin ser una invocacion). Se
  * localiza el primer `)` no entrecomillado del segmento y se re-analiza todo lo posterior.
  *
- * Si la cabeza de segmento es un nombre registrado en `funciones` (ver extraerFunciones), la
- * invocacion real es la de su cuerpo: se re-analiza el cuerpo guardado en vez del segmento.
+ * Si la cabeza de segmento es un nombre registrado en `funciones` (ver extraerFunciones), se
+ * añaden las invocaciones de su cuerpo (ver invocacionesDeFuncion) y el segmento sigue
+ * analizándose como invocación ordinaria.
  *
  * `ctx` lleva las funciones, el estado de identificadores, el script, los separadores y los
  * grupos que heredan las invocaciones de este segmento.
@@ -485,9 +506,9 @@ function parseSegmento(seg, ctx) {
     const cierre = seg.findIndex((t, i) => i > idx && !t.entrecomillado && t.valor === ')');
     return cierre === -1 ? [] : parseSegmento(seg.slice(cierre + 1), ctx);
   }
-  if (!cabeza.entrecomillado && funciones.has(cabeza.valor)) {
-    return invocacionesDeTokens(funciones.get(cabeza.valor), funciones, estado, nuevoScript(estado));
-  }
+  const delCuerpo = !cabeza.entrecomillado && funciones.has(cabeza.valor)
+    ? invocacionesDeFuncion(funciones.get(cabeza.valor), ctx)
+    : [];
 
   const programa = path.basename(cabeza.valor);
   idx += 1;
@@ -506,9 +527,9 @@ function parseSegmento(seg, ctx) {
       // commit"`) o mixto con blanco dentro (`bash -c git' commit --no-verify'`), que si no
       // quedaría como un `programa` con la cadena entera.
       if (resto.length === 1 && (resto[0].entrecomillado || /[ \t\r\n]/.test(resto[0].valor))) {
-        return [propia, ...invocacionesDeCadena(resto[0].valor, estado, nuevoScript(estado))];
+        return [propia, ...delCuerpo, ...invocacionesDeCadena(resto[0].valor, estado, nuevoScript(estado))];
       }
-      return [propia, ...invocacionesDeTokens(resto, funciones, estado, nuevoScript(estado))];
+      return [propia, ...delCuerpo, ...invocacionesDeTokens(resto, funciones, estado, nuevoScript(estado))];
     }
     if (!tok.entrecomillado && OPCIONES_GLOBALES_CON_VALOR.has(tok.valor)) {
       if (palabras.length === 0) globales.push([tok.valor, idx + 1 < seg.length ? seg[idx + 1].valor : null]);
@@ -524,8 +545,30 @@ function parseSegmento(seg, ctx) {
   }
 
   const propia = invocacion(programa, palabras, flags, entorno, globales, ctx);
-  if (programa !== 'git' || idxSubcomando === -1) return [propia];
-  return [propia, ...expandirAlias(propia, seg, idxSubcomando, ctx)];
+  if (programa !== 'git' || idxSubcomando === -1) return [propia, ...delCuerpo];
+  return [propia, ...delCuerpo, ...expandirAlias(propia, seg, idxSubcomando, ctx)];
+}
+
+/**
+ * Invocaciones del cuerpo de una función llamada desde el segmento de `ctx` (reglas 2 y 3 de la
+ * cabecera): vacío si el cuerpo ya se expandió en esta orden; la invocación `incompleta` si se
+ * supera el tope de anidamiento; si no, las del cuerpo como script propio.
+ */
+function invocacionesDeFuncion(cuerpo, ctx) {
+  const { funciones, estado } = ctx;
+  if (estado.expandidos.has(cuerpo)) return [];
+  if (estado.profundidad >= PROFUNDIDAD_MAXIMA_DE_FUNCIONES) {
+    const incompleta = invocacion('git', ['commit'], ['--no-verify'], [], [], ctx);
+    incompleta.incompleta = true;
+    return [incompleta];
+  }
+  estado.expandidos.add(cuerpo);
+  estado.profundidad += 1;
+  try {
+    return invocacionesDeTokens(cuerpo, funciones, estado, nuevoScript(estado));
+  } finally {
+    estado.profundidad -= 1;
+  }
 }
 
 /** Parte `tokens` en segmentos por los separadores de shell no entrecomillados. */
@@ -581,7 +624,11 @@ function invocacionesDeTokens(tokens, funciones, estado, script) {
     for (let k = fin; k < seg.length; k += 1) {
       if (seg[k].valor === '(' || seg[k].valor === ')') aplicar(seg[k], false);
     }
-    resultado.push(...parseSegmento(seg, { funciones, estado, script, antes, despues, grupos }));
+    // Un bucle y no `push(...)`: un segmento puede devolver un número no acotado de invocaciones
+    // (el cuerpo de una función), y pasarlas como argumentos agotaría la pila.
+    for (const inv of parseSegmento(seg, { funciones, estado, script, antes, despues, grupos })) {
+      resultado.push(inv);
+    }
   }
 
   if (!cuadra || pila.length > 0) {
@@ -598,14 +645,14 @@ function invocacionesDeCadena(cmd, estado, script) {
 
 /**
  * invocaciones(cmd) -> [{ programa, palabras, flags, entorno, globales, separadorAntes,
- *                         separadorDespues, grupos, script }]
+ *                         separadorDespues, grupos, script[, incompleta] }]
  *
  * Extrae las definiciones de funcion del comando (ver extraerFunciones) y analiza el resto del
  * stream con invocacionesDeTokens. Ver parseSegmento para el criterio por invocación y la
  * cabecera del modulo para el contrato de cada campo.
  */
 function invocaciones(cmd) {
-  return invocacionesDeCadena(cmd, { scripts: 0, grupos: 0 }, 0);
+  return invocacionesDeCadena(cmd, { scripts: 0, grupos: 0, expandidos: new Set(), profundidad: 0 }, 0);
 }
 
 /** Invocaciones de `cmd` cuyo programa y prefijo de palabras casan con los dados. */

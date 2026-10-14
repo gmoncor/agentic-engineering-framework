@@ -538,3 +538,99 @@ test('campos: git -C B -c k=v commit -> globales en orden', () => {
 test('campos: git commit -C HEAD -m x -> sin globales (-C tras el subcomando es de commit)', () => {
   assert.deepStrictEqual(porPrograma('git commit -C HEAD -m x', 'git').globales, []);
 });
+
+// ─── Funciones recursivas, cascadas y tope de anidamiento ────────────────────────────────────
+
+// f0(){ f1; }; …; f<n-1>(){ <ultima>; }; f0: n funciones distintas, n expansiones anidadas.
+function cadenaDeFunciones(n, ultima) {
+  let cmd = '';
+  for (let i = 0; i < n - 1; i += 1) cmd += `f${i}(){ f${i + 1}; }; `;
+  return `${cmd}f${n - 1}(){ ${ultima}; }; f0`;
+}
+
+// f0(){ f1; f1; }; …; f<n>(){ true; }; f0: sin la regla de una expansión por cuerpo, 2^n.
+function cascadaDeFunciones(n) {
+  let cmd = '';
+  for (let i = 0; i < n; i += 1) cmd += `f${i}(){ f${i + 1}; f${i + 1}; }; `;
+  return `${cmd}f${n}(){ true; }; f0`;
+}
+
+const WRAPPER_DE_GIT = 'git() { command git "$@"; }; ';
+
+test('función recursiva: un wrapper de git no oculta git commit --no-verify', () => {
+  const cmd = `${WRAPPER_DE_GIT}git commit --no-verify -m x`;
+  assert.doesNotThrow(() => invocaciones(cmd));
+  const delCommit = commits(cmd);
+  assert.ok(delCommit.length > 0);
+  assert.ok(delCommit.some(i => usaFlag(i, NO_VERIFY)));
+});
+
+test('función recursiva (−): el wrapper de git con git status no es commit ni lleva --no-verify', () => {
+  const cmd = `${WRAPPER_DE_GIT}git status`;
+  assert.strictEqual(esInvocacion(cmd, 'git', ['commit']), false);
+  assert.ok(!invocaciones(cmd).some(i => usaFlag(i, NO_VERIFY)));
+});
+
+test('función recursiva directa: f() { f; }; f no lanza y no es commit', () => {
+  assert.strictEqual(esInvocacion('f() { f; }; f', 'git', ['commit']), false);
+});
+
+test('funciones mutuamente recursivas: no lanza y no es commit', () => {
+  assert.strictEqual(esInvocacion('a() { b; }; b() { a; }; a', 'git', ['commit']), false);
+});
+
+test('función legítima anidada: g() { git commit -m x; }; f() { g; }; f es commit', () => {
+  assert.strictEqual(esInvocacion('g() { git commit -m x; }; f() { g; }; f', 'git', ['commit']), true);
+});
+
+test('cascada de 20 funciones que llaman dos veces a la siguiente: crecimiento lineal y no es commit', () => {
+  const cmd = cascadaDeFunciones(20);
+  assert.ok(invocaciones(cmd).length < 200);
+  assert.strictEqual(esInvocacion(cmd, 'git', ['commit']), false);
+});
+
+test('cascada de 12 funciones: cada cuerpo se expande una vez por orden, no una vez por rama', () => {
+  assert.ok(invocaciones(cascadaDeFunciones(12)).length < 200);
+});
+
+test('tope: una cadena de 40 funciones distintas cuenta como commit incompleto con --no-verify', () => {
+  const cmd = cadenaDeFunciones(40, 'true');
+  assert.strictEqual(esInvocacion(cmd, 'git', ['commit']), true);
+  assert.ok(invocaciones(cmd).some(i => i.incompleta === true && usaFlag(i, NO_VERIFY)));
+});
+
+test('tope (−): una cadena de 10 funciones con git status al final no es commit ni incompleta', () => {
+  const cmd = cadenaDeFunciones(10, 'git status');
+  assert.strictEqual(esInvocacion(cmd, 'git', ['commit']), false);
+  assert.ok(!invocaciones(cmd).some(i => 'incompleta' in i));
+});
+
+test('tope, frontera: 32 expansiones anidadas se analizan enteras; 33 dan la invocación incompleta', () => {
+  assert.ok(!invocaciones(cadenaDeFunciones(32, 'true')).some(i => 'incompleta' in i));
+  assert.strictEqual(invocaciones(cadenaDeFunciones(33, 'true')).filter(i => i.incompleta === true).length, 1);
+});
+
+test('tope: la invocación incompleta hereda el contexto del punto de llamada', () => {
+  const cmd = cadenaDeFunciones(33, 'true');
+  const todas = invocaciones(cmd);
+  const incompleta = todas.find(i => i.incompleta === true);
+  const llamada = todas.find(i => i.programa === 'f32');
+  assert.ok(llamada);
+  assert.strictEqual(incompleta.script, llamada.script);
+  assert.strictEqual(incompleta.separadorAntes, llamada.separadorAntes);
+  assert.strictEqual(incompleta.separadorDespues, llamada.separadorDespues);
+  assert.deepStrictEqual(incompleta.grupos, llamada.grupos);
+});
+
+test('tope: 40 funciones hermanas llamadas en secuencia no anidan ni dan la invocación incompleta', () => {
+  let cmd = '';
+  for (let i = 0; i < 40; i += 1) cmd += `f${i}(){ true; }; `;
+  for (let i = 0; i < 40; i += 1) cmd += `f${i}; `;
+  assert.ok(!invocaciones(cmd).some(i => 'incompleta' in i));
+});
+
+for (const llamada of ['bash -c true', 'bash -c "true"']) {
+  test(`una función llamada bash añade su cuerpo también con -c: bash(){ git commit -n; }; ${llamada} es commit`, () => {
+    assert.strictEqual(esInvocacion(`bash(){ git commit -n; }; ${llamada}`, 'git', ['commit']), true);
+  });
+}

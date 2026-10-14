@@ -11,7 +11,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { runHook, tempDir, writeFile, HOOKS_DIR, motorDeWorkflowsInstalado } = require('./helpers');
-const { commitWarnings, usesNoVerify, estaPendiente } = require('../sdd-commit-rules');
+const { commitWarnings, usesNoVerify, isGitCommit, estaPendiente } = require('../sdd-commit-rules');
 const { estadoVigente } = require('../sdd-plan-state');
 
 const HOOK = 'sdd-commit-guard.js';
@@ -393,3 +393,30 @@ test("git commit --file='msg.txt' (valor entrecomillado pegado) se lee como mens
 
   assert.ok(warnings.some(w => /COMMIT_SUBJECT_TOO_LONG/.test(w)), warnings.join('\n'));
 }));
+
+// Una función que se llama a sí misma no tumba el análisis: sin excepción no hay fallo abierto,
+// y la invocación original de la llamada sigue a la vista del guard.
+
+const WRAPPER_NO_VERIFY = 'git() { command git "$@"; }; git commit --no-verify -m x';
+
+test('usesNoVerify: un wrapper recursivo de git no oculta --no-verify', () => {
+  assert.strictEqual(usesNoVerify(WRAPPER_NO_VERIFY), true);
+});
+
+test('isGitCommit: un wrapper recursivo de git sigue siendo un commit', () => {
+  assert.strictEqual(isGitCommit(WRAPPER_NO_VERIFY), true);
+});
+
+test('wrapper recursivo de git con --no-verify: deny, sin error interno', () => {
+  const r = runHook(HOOK, bash(WRAPPER_NO_VERIFY));
+
+  assert.strictEqual(r.decision.decision, 'deny');
+  assert.strictEqual(r.code, 2);
+  assert.match(r.decision.reason, /--no-verify/);
+  assert.doesNotMatch(r.stderr, /\[SDD_INTERNAL_ERROR\]/);
+});
+
+test('usesNoVerify: una función con 200 000 segmentos no agota la pila ni oculta --no-verify', () => {
+  const cmd = `f() { ${'true; '.repeat(200000)}}; f; git commit --no-verify -m x`;
+  assert.strictEqual(usesNoVerify(cmd), true);
+});
