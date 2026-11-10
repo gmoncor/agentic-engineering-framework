@@ -33,7 +33,8 @@ function documentosRaiz(manifest = cargarManifiesto()) {
 function medir(contenido) {
   const lineas = contenido.split('\n');
   if (lineas[lineas.length - 1] === '') lineas.pop();
-  return { lineas: lineas.length, bytes: Buffer.byteLength(contenido, 'utf8') };
+  const bytes = Buffer.byteLength(contenido, 'utf8');
+  return { lineas: lineas.length, bytes, tokensEstimados: Math.ceil(bytes / 4) };
 }
 
 /**
@@ -74,8 +75,8 @@ test('cada documento de instrucciones raiz cabe en el presupuesto', (t) => {
   for (const ruta of documentosRaiz()) {
     const resultado = evaluar(ruta);
     if (resultado.medida) {
-      const { lineas, bytes } = resultado.medida;
-      t.diagnostic(`${ruta}: ${lineas} lineas / ${bytes} bytes (maximo ${MAX_LINEAS} / ${MAX_BYTES})`);
+      const { lineas, bytes, tokensEstimados } = resultado.medida;
+      t.diagnostic(`${ruta}: ${lineas} lineas / ${bytes} bytes / ~${tokensEstimados} tokens (maximo ${MAX_LINEAS} / ${MAX_BYTES})`);
     }
     fallos.push(...resultado.fallos);
   }

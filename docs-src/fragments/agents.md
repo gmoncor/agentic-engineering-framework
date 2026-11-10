@@ -10,7 +10,7 @@
 1. Solicitud     — El usuario describe lo que quiere
 2. Planificacion — analisis previo + spec + tasks + revision de cada task + auditoria cruzada
 3. Aprobacion    — El usuario revisa el plan completo y aprueba o pide cambios
-4. Implementacion— Se implementan las tasks de la spec + revision adversarial del codigo
+4. Implementacion— Se implementa la tarea seleccionada + revision adversarial del codigo
 5. Entrega       — Commit y Pull Request
 ```
 
@@ -44,14 +44,28 @@ entre. Tambien puedes nombrarla explicitamente.
 | `commit` | — | Crea un commit limpio con mensaje descriptivo |
 | `pr` | — | Crea o revisa una Pull Request |
 
+## Matriz de intención y enrutado
+
+| Intención | Destino | Tipo | Modo |
+|-----------|---------|------|------|
+| Conversar, leer, orientar o mostrar estado | `asesor`, `estado` | skill | automático |
+| Planificar | `planificar`, `spec`, `tareas`, `auditar`, `revisar-tarea` | skill | automático |
+| Implementar | `implementar-spec`, `implementar`, `testing`, `cleanup`, `revision`, `revision-adversarial` | skill | automático |
+| Corregir un bug | `bugfix` | skill | automático |
+| Revisar cambios o preparar entrega | `diff`, `commit`, `pr` | skill | automático |
+| Iniciar un proyecto | `inicio` | skill | automático |
+| Auditar una sesión | `auditar-sesion` | skill | manual: se invoca para revisar una sesión cerrada |
+| Analizar, planificar, implementar o revisar | `asesor`, `planificador`, `implementador`, `revisor` | agente | automático |
+
+## Sesión independiente recomendada
+
+Tras aprobar un plan, recomienda iniciar otra sesión y pedir `implementa la tarea <ruta de la tarea>`. Si el usuario pidió planificar e implementar en la misma petición, el primer mensaje posterior empieza con esta recomendación antes de implementar y continúa sin pedir otra aprobación.
+
 <!-- nucleo: agentes -->
 
 Definidos en `.codex/agents/*.toml` (Codex) y en `.agents/plugins/sdd/agents/*.md` (Antigravity
 CLI). El asesor corre en modo solo lectura; los demas pueden escribir dentro del espacio de
 trabajo.
-
-Dentro de `implementar-spec`, el commit lo crea la sesión tras APROBADA; con `implementar` manual,
-lo decide el usuario.
 
 ## Delegación y esperas (solo Codex)
 
@@ -61,11 +75,7 @@ Solo para Codex; nombres de herramienta verificados en codex-cli 0.162.1.
   `name` de `.codex/agents/<rol>.toml` no está verificado.
 - Cada subagente lanzado se espera una vez con `wait_agent` (en v1, la estable, recibe `targets`; en
   `multi_agent_v2` solo acepta `timeout_ms`); no se sondea su estado.
-- Cada ronda de revisión usa un `revisor` nuevo: no se reutiliza el de la ronda anterior.
-- Para seguir hablando con un subagente vivo, la herramienta es `send_input`; `send_message` solo
-  existe con `multi_agent_v2` (`--enable multi_agent_v2`).
-- Un comando que termina solo se ejecuta en una llamada síncrona, sin bucles de espera ni sondeo; si
-  su salida es larga, se redirige a un fichero y se lee el resumen.
+- Cada ronda usa un `revisor` nuevo. Los comandos que terminan solos se ejecutan una vez, sin sondeo.
 
 <!-- nucleo: estructura -->
 
@@ -80,17 +90,13 @@ documenta como traer los cambios del framework a un proyecto ya instalado, sin t
 
 <!-- nucleo: plantillas -->
 
-## Reglas clave
+<!-- nucleo: reglas-clave -->
 
-1. Toda solicitud empieza con planificacion; la implementacion viene despues de la aprobacion.
-2. Las tasks se derivan solo de specs con estado APROBADA.
-3. Una task, un cambio acotado, un commit. Maximo 6 archivos por task; si supera, dividir.
-4. Solo se tocan archivos declarados en la task. Lo que aparezca fuera de alcance se anota, no se
-   corrige sobre la marcha.
-5. Auditoria cruzada obligatoria en la planificacion.
-6. Revision adversarial del codigo antes de entregar. El revisor busca problemas, no confirma que
-   todo esta bien.
-7. El roadmap global vive en `ai_docs/core/` y guia cada planificacion.
+<!-- nucleo: contrato-conversacional -->
+
+<!-- nucleo: retomar-task -->
+
+<!-- nucleo: despacho-evidencia -->
 
 ## Enforcement mecanico y su limite
 
@@ -129,21 +135,7 @@ situacion puntual, no para dejarlo fijo en el shell: con el activo el pipeline n
 
 ## Antigravity CLI (`agy`)
 
-Antigravity descubre sus personalizaciones en `.agents/`, la misma raiz que ya usa este framework,
-asi que reutiliza lo que hay sin duplicarlo:
-
-| Pieza | Donde vive | Formato |
-|-------|-----------|---------|
-| Contexto | Este `AGENTS.md` | Markdown, sin frontmatter, activo para todo el directorio y sus hijos |
-| Skills | `.agents/skills/<nombre>/SKILL.md` | Frontmatter YAML con `name` y `description` |
-| Subagentes | `.agents/plugins/sdd/agents/*.md` | Markdown con frontmatter YAML (`name`, `description`) |
-| Manifiesto del bundle | `.agents/plugins/sdd/plugin.json` | Solo declara el nombre; marca el directorio como plugin |
-| Hooks | `.agents/hooks.json` | Un objeto por hook; dentro, sus eventos |
-
-Los subagentes van dentro del plugin porque es la ubicacion que la CLI reconoce para ellos; las
-skills, en cambio, se cargan directamente desde la raiz de personalizaciones.
-
-Comprueba el bundle con `agy plugin validate .agents/plugins/sdd`.
+Antigravity carga contexto y skills desde `.agents/`, subagentes desde `.agents/plugins/sdd/agents/` y hooks desde `.agents/hooks.json`. Comprueba el bundle con `agy plugin validate .agents/plugins/sdd`.
 
 **Hooks.** `.agents/hooks.json` registra cuatro hooks `PreToolUse`, con las mismas reglas y el mismo
 codigo que los demas backends (`hooks/sdd-pipeline-guard.js`, `hooks/sdd-commit-guard.js`,
@@ -191,8 +183,7 @@ presupuesto.
 
 <!-- nucleo: estilo -->
 
-- Nada de adular ni de rellenar.
-- Sin coautoria de IA en el mensaje.
+- Nada de adular ni de rellenar; sin coautoria de IA en el mensaje.
 
 <!-- nucleo: limites -->
 

@@ -1,6 +1,6 @@
 # SDD (Spec-Driven Development) — Framework de Desarrollo
 
-> Flujo basado en especificaciones. Planificacion exhaustiva antes de implementar. El orden de dependencias manda.
+> Flujo basado en especificaciones. Planifica antes de implementar.
 
 ## Flujo SDD
 
@@ -8,17 +8,29 @@
 1. Solicitud          — El usuario describe lo que quiere
 2. /planificar        — WORKFLOW: spec + tasks + revision paralela + auditoria cruzada
 3. Aprobacion         — El usuario revisa el plan completo y aprueba o pide cambios
-4. /implementar-spec  — WORKFLOW: implementa TODAS las tasks de la spec + revision adversarial
+4. /implementar       — Implementa una task aprobada + revisión adversarial
 5. /pr                — Crea la PR con los cambios
 ```
 
-**Planificacion exhaustiva; el orden de dependencias manda.** El workflow `/planificar` lanza revisores en paralelo y audita cruzadamente. `/implementar-spec` implementa cada task en orden de dependencias: revisa la task y la commitea antes de pasar a la siguiente. Una task, un commit. Para lanzar a la vez las tasks que no dependen entre si, usa `--parallel`.
+**Planificación exhaustiva.** `/planificar` revisa y audita el plan. `/implementar` implementa una task por sesión; la investigación y la revisión interna pueden usar subagentes cuando el alcance lo justifica.
+
+## Sesión independiente recomendada
+
+Tras el plan, recomienda otra sesión con `/implementar <ruta de la tarea>`.
+
+Un aviso intermedio de subagente que indica que sigue esperando no es una entrega.
 
 <!-- nucleo: comandos -->
 
 <!-- nucleo: agentes -->
 
 <!-- nucleo: reglas-clave -->
+
+<!-- nucleo: contrato-conversacional -->
+
+<!-- nucleo: retomar-task -->
+
+<!-- nucleo: despacho-evidencia -->
 
 <!-- nucleo: estructura -->
 
@@ -68,7 +80,7 @@ Contrato de la senal de revision (emisor `/implementar-spec`, consumidor `sdd-re
 <!-- /hueco -->
 
 <!-- hueco: fila-implementar-spec -->
-| `/implementar-spec` | 4 | **Workflow completo**: implementa cada task en orden de dependencias + revision por task |
+| `/implementar-spec` | 4 | Selecciona una task con dependencias satisfechas + revision antes del commit |
 <!-- /hueco -->
 
 <!-- hueco: arbol-backend -->

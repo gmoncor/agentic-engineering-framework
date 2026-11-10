@@ -30,6 +30,7 @@ Abre un issue con la plantilla **Feature request** antes de escribir codigo. Des
 
 1. Haz fork del repositorio y crea una rama descriptiva (`fix/pipeline-guard-windows`, `feat/comando-auditar`)
 2. Haz cambios acotados: una PR = un cambio con un proposito. Las PRs que mezclan refactor, feature y formato son dificiles de revisar y se rechazan
+   Una sesión de producto trabaja una task; su alcance se revisa por riesgo, datos y contratos, no por un máximo fijo de ficheros.
 3. Actualiza la documentacion afectada (`README.md`, `CLAUDE.md`, `GEMINI.md`) en la misma PR
 4. Anade una entrada en `CHANGELOG.md` bajo `## [Unreleased]`
 5. Abre la PR rellenando la plantilla y enlaza el issue relacionado
@@ -48,7 +49,7 @@ El hook `sdd-commit-guard.js` avisa si un commit incumple estas reglas, y **bloq
 
 `sdd-pipeline-guard.js` bloquea escribir archivos que ninguna task de la spec activa declara. Si te bloquea, la respuesta por defecto es **arreglar el plan**: declara el archivo en la tabla "Archivos afectados" de la task.
 
-`sdd-review-gate.js` (opt-in, solo Claude Code) **bloquea** un commit cuyo diff no consta revisado. La revision adversarial ocurre POR TASK, antes del commit, y emite una senal con el hash del diff revisado; el hook recalcula el hash de `git diff --cached` y lo contrasta. Sin senal, o con un hash que no ata lo staged, deniega. Cuando no hay diff cacheado computable degrada a aviso, para no bloquear a ciegas. La via para satisfacerlo es pasar la revision adversarial (`/revision` o la revision por task de `/implementar-spec`). Solo se cablea en Claude Code, el unico backend cuyo flujo emite la senal.
+`sdd-review-gate.js` (opt-in, solo Claude Code) **bloquea** un commit cuyo diff no consta revisado. La revisión adversarial ocurre por task, antes del commit, y emite una señal con el hash del diff revisado; el hook recalcula el hash de `git diff --cached` y lo contrasta. Sin señal, o con un hash que no ata lo staged, deniega. Cuando no hay diff cacheado computable degrada a aviso, para no bloquear a ciegas. La vía para satisfacerlo es pasar `/revision` sobre la task implementada. Solo se cablea en Claude Code, el único backend cuyo flujo emite la señal.
 
 `sdd-commit-guard.js` es advisory para el resto de reglas (subject, tipo, Co-Authored-By), pero **bloquea** especificamente `git commit --no-verify`/`-n` y `git push --no-verify`: no hay forma legitima de saltarse el resto de guards por esa via.
 
@@ -110,7 +111,7 @@ Una skill no es el comando con otro nombre, y el transform lo tiene en cuenta:
 | Texto propio del formato de skill (alcance, veredictos, postura) | Cuerpo del mismo fragmento; se anade despues del cuerpo del comando |
 | Texto que solo vale en Claude Code (p. ej. el aviso de un hook que solo ese backend cablea) | Bloque `<!-- solo-claude -->` … `<!-- /solo-claude -->` dentro del comando. No llega a ningun otro backend |
 | El bloque final `$ARGUMENTS` y las referencias `/<comando>` | Automatico: una skill no recibe argumentos, y las referencias pasan a nombrar la skill homonima |
-| El procedimiento entero, cuando el comando delega en el motor de workflows que solo tiene Claude Code | `source-body: omit` en el fragmento, que entonces aporta el cuerpo completo. Solo lo usan `planificar` e `implementar-spec`, la misma excepcion que ya tenian esos dos comandos para Gemini |
+| El procedimiento entero, cuando el comando delega en el motor de workflows que solo tiene Claude Code | `source-body: omit` en el fragmento, que entonces aporta el cuerpo completo. Se reserva para comandos cuyo backend necesita un cuerpo propio. |
 
 El modelo de un artefacto generado nunca sale del fichero fuente: lo fija `scripts/model-policy.json`.
 
