@@ -124,7 +124,7 @@ D<n>: [Nombre del problema]
 - Recomendacion: [Opcion X] porque [razon concreta]
 ```
 
-Cada decisión aprobada se registra como fila `VIGENTE` en «Registro de decisiones» del documento final, con su porqué y las alternativas descartadas.
+Cada decisión aprobada se registra en `ai_docs/core/decisiones/` con la plantilla `05_decisiones.md`. El registro del documento final solo la indexa.
 
 **Temas tipicos que requieren decision:**
 - Modelo de permisos (roles en tabla de usuarios vs tabla separada de roles)
@@ -248,7 +248,7 @@ C) La planificacion esta completa
 
 ## Generar documento final
 
-Si `ai_docs/core/planificacion_tecnica.md` ya existe, leerlo primero. Usarlo como base a actualizar: preservar decisiones y secciones que sigan vigentes, anadir lo nuevo, senalar conflictos entre lo existente y lo nuevo en vez de mezclarlos en silencio. Una decisión nueva que contradice una `VIGENTE` no la borra ni la reescribe: la fila antigua pasa a `SUSTITUIDA por D<n>` y la nueva entra como fila propia. Si no existe, generar desde cero.
+Si `ai_docs/core/planificacion_tecnica.md` ya existe, leerlo primero. Usarlo como base a actualizar: preservar decisiones y secciones que sigan vigentes, anadir lo nuevo, senalar conflictos entre lo existente y lo nuevo en vez de mezclarlos en silencio. Una decisión nueva que contradice una `VIGENTE` no la borra ni la reescribe: crea una decisión que la sustituye. Si no existe, generar desde cero.
 
 Solo despues de la aprobacion, generar con este formato. El documento final DEBE incluir al final una seccion `## Registro de revision` con el bloque de autocritica generado (los puntos identificados, incluso si el usuario no los refino) y la eleccion textual del usuario en cada ronda (ej. `Usuario eligio: C — la planificacion esta completa`). Si hubo varias rondas de refinamiento, listarlas todas en orden, no solo la ultima.
 
@@ -285,7 +285,7 @@ Solo despues de la aprobacion, generar con este formato. El documento final DEBE
 ## Modelo de Datos
 
 ### Decisiones Clave
-- D<n>: [resumen de la decisión de datos; estado, porqué y alternativas en su fila de la tabla de decisiones]
+- [Nombre de la decisión](decisiones/AAAAMMDD_slug.md): [resumen de la decisión de datos]
 
 ### Tablas
 - **[nombre_tabla]**: [proposito] — Campos clave: [lista]
@@ -308,7 +308,7 @@ Solo despues de la aprobacion, generar con este formato. El documento final DEBE
 [Diagrama Mermaid o texto]
 
 ### Seguridad
-- D<n>: [resumen de la decisión de seguridad; estado, porqué y alternativas en su fila de «Registro de decisiones»]
+- [Nombre de la decisión](decisiones/AAAAMMDD_slug.md): [resumen de la decisión de seguridad]
 
 ### Deployment
 - [Estrategia de despliegue]
@@ -323,11 +323,11 @@ Solo despues de la aprobacion, generar con este formato. El documento final DEBE
 
 ## Registro de decisiones
 
-Una fila por decisión tomada en cualquier fase (datos, arquitectura, seguridad, deployment). El estado es `VIGENTE`, `SUSTITUIDA por D<n>` o `DESCARTADA`. Las filas no se borran: una decisión nueva que contradice una vigente entra como fila nueva y la antigua pasa a `SUSTITUIDA por` esa fila.
+Cada decisión tomada en datos, arquitectura, seguridad o despliegue tiene un fichero en `ai_docs/core/decisiones/`. La tabla es un índice; el fichero conserva el contexto, la regla, el estado y sus consecuencias.
 
-| ID | Decisión | Estado | Porqué | Alternativas descartadas |
-|----|----------|--------|--------|--------------------------|
-| D1 | [opción elegida] | VIGENTE | [razón concreta] | [opción B: por qué no] |
+| Fichero | Regla | Estado |
+|---------|-------|--------|
+| [AAAAMMDD_slug.md](decisiones/AAAAMMDD_slug.md) | [opción elegida] | VIGENTE |
 
 ---
 

@@ -31,6 +31,33 @@ function escribirArchivo(base, ruta, contenido = '') {
   fs.writeFileSync(destino, contenido);
 }
 
+function archivosRelativos(directorio, base = directorio) {
+  return fs.readdirSync(directorio, { withFileTypes: true })
+    .flatMap((entrada) => {
+      const ruta = path.join(directorio, entrada.name);
+      if (entrada.isDirectory()) return archivosRelativos(ruta, base);
+      return [path.relative(base, ruta).split(path.sep).join('/')];
+    })
+    .sort();
+}
+
+function diferenciasDeInstalacion(origen, destino) {
+  const esperados = new Set(archivosRelativos(origen));
+  const instalados = new Set(archivosRelativos(destino));
+  return {
+    ausentes: [...esperados].filter((ruta) => !instalados.has(ruta)),
+    extras: [...instalados].filter((ruta) => !esperados.has(ruta)),
+  };
+}
+
+function estadoDeDecisionEsValido(contenido) {
+  return /^\*\*Estado:\*\* (VIGENTE|SUSTITUIDA por [0-9]{8}_[a-z0-9_]+\.md|DESCARTADA)$/m.test(contenido);
+}
+
+function recomiendaVersionarTasks(contenido) {
+  return /tasks[^\n.]{0,120}(versiona|versionar|versionado)|(?:versiona|versionar|versionado)[^\n.]{0,120}tasks/i.test(contenido);
+}
+
 test('el manifiesto real tiene al menos 30 artefactos', () => {
   const manifest = cargarManifiesto();
   assert.ok(
@@ -59,6 +86,51 @@ test('el manifiesto real declara transforms_registry con al menos un transform u
 test('MANIFEST_PATH apunta al fichero real del repo', () => {
   assert.strictEqual(MANIFEST_PATH, path.join(RAIZ, 'scripts', 'artifact-manifest.json'));
   assert.ok(fs.existsSync(MANIFEST_PATH));
+});
+
+test('el instalador copia exactamente las plantillas documentales declaradas por el manifiesto', (t) => {
+  const backendManifest = JSON.parse(fs.readFileSync(path.join(RAIZ, 'scripts', 'backend-manifest.json'), 'utf8'));
+  const rutasDocumentales = ['ai_docs/core_templates', 'ai_docs/doc_templates'];
+  const proyecto = dirTemporal();
+  t.after(() => fs.rmSync(proyecto, { recursive: true, force: true }));
+
+  for (const ruta of rutasDocumentales) assert.ok(backendManifest.common.includes(ruta));
+
+  const instalacion = spawnSync(process.execPath, [path.join(RAIZ, 'bin', 'cli.js'), 'install', '--backend', 'claude'], {
+    cwd: proyecto,
+    env: { ...process.env, SDD_FRAMEWORK_ROOT: RAIZ },
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+  assert.strictEqual(instalacion.status, 0, instalacion.stdout + instalacion.stderr);
+
+  for (const ruta of rutasDocumentales) {
+    const origen = path.join(RAIZ, ruta);
+    const destino = path.join(proyecto, ruta);
+    assert.deepStrictEqual(diferenciasDeInstalacion(origen, destino), { ausentes: [], extras: [] });
+  }
+
+  const destinoPlantillas = path.join(proyecto, 'ai_docs', 'doc_templates');
+  fs.rmSync(path.join(destinoPlantillas, 'vision.md'));
+  assert.deepStrictEqual(diferenciasDeInstalacion(path.join(RAIZ, 'ai_docs', 'doc_templates'), destinoPlantillas).ausentes, ['vision.md']);
+  fs.writeFileSync(path.join(destinoPlantillas, 'extra.md'), 'extra');
+  assert.deepStrictEqual(diferenciasDeInstalacion(path.join(RAIZ, 'ai_docs', 'doc_templates'), destinoPlantillas).extras, ['extra.md']);
+});
+
+test('la plantilla de decisiones exige un estado válido y rechaza una entrada sin estado', () => {
+  const plantilla = fs.readFileSync(path.join(RAIZ, 'ai_docs', 'core_templates', '05_decisiones.md'), 'utf8');
+
+  assert.match(plantilla, /^\*\*Estado:\*\* VIGENTE$/m);
+  assert.ok(estadoDeDecisionEsValido('**Estado:** VIGENTE'));
+  assert.ok(!estadoDeDecisionEsValido('**Regla:** usar una base de datos relacional'));
+});
+
+test('la documentación declara core como versionado y rechaza recomendar versionar las tasks locales', () => {
+  const documentacion = fs.readFileSync(path.join(RAIZ, 'ai_docs', 'README.md'), 'utf8');
+
+  assert.match(documentacion, /`core\/` se comparte y se versiona/i);
+  assert.ok(!recomiendaVersionarTasks(documentacion));
+  assert.ok(recomiendaVersionarTasks('Las tasks se deben versionar con cada cambio.'));
 });
 
 // main() nunca se invocaba como subproceso: los tests de arriba prueban validarManifiesto()

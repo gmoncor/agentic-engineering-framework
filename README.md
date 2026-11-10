@@ -223,7 +223,8 @@ Sin hooks, nada bloquea una escritura no planificada ni un commit sin revisión:
 | Workflows | `.claude/workflows/` (2) | — (el orquestador implementa en orden) | — (idem) | — (idem) |
 | Contexto | `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` | `AGENTS.md` |
 | Templates | `ai_docs/dev_templates/` (13) | `ai_docs/dev_templates/` (13) | `ai_docs/dev_templates/` (13) | `ai_docs/dev_templates/` (13) |
-| Core templates | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) | `ai_docs/core_templates/` (4) |
+| Core templates | `ai_docs/core_templates/` (5) | `ai_docs/core_templates/` (5) | `ai_docs/core_templates/` (5) | `ai_docs/core_templates/` (5) |
+| Project docs | `ai_docs/doc_templates/` | `ai_docs/doc_templates/` | `ai_docs/doc_templates/` | `ai_docs/doc_templates/` |
 
 Las rutas coinciden con `scripts/backend-manifest.json`, que ademas marca `scripts/`, `CHANGELOG.md` y
 `docs/extension-config-schema.md` como comunes a todos los backends: son infraestructura del CLI,
@@ -516,7 +517,8 @@ agentic-engineering-framework/
 ├── tests/                       # Canary de paridad entre backends
 │
 ├── ai_docs/
-│   ├── core_templates/          # Plantillas de planificacion inicial (01-04, usar en orden)
+│   ├── core_templates/          # Plantillas iniciales y decisiones (01-05)
+│   ├── doc_templates/           # Plantillas de documentación de proyecto
 │   ├── dev_templates/           # Plantillas operativas SDD (copy-paste, LLM-agnostic)
 │   ├── core/                    # Docs de TU proyecto (incluye ejemplos)
 │   ├── tasks/                   # Tasks de TU proyecto (empieza vacia)
@@ -535,6 +537,7 @@ Se usan en orden. Cada una genera un documento en `ai_docs/core/` que alimenta a
 | **02 — Planificacion Tecnica** | Definir estructura: paginas, datos y arquitectura |
 | **03 — Roadmap de Desarrollo** | Definir EN QUE ORDEN se construye todo |
 | **04 — Setup de Testing** | Configurar el entorno de tests (una sola vez) |
+| **05 — Decisiones del Proyecto** | Registrar una decisión versionada por fichero |
 
 ### `dev_templates/` — Plantillas operativas SDD
 

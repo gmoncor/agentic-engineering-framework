@@ -64,8 +64,9 @@ proyecto/
 ├── hooks/              # 6 hooks (pipeline-guard + review-gate + commit-guard + read-before-edit + turn-budget + session-start)
 ├── scripts/            # next-task-number.sh (numeracion de tasks sin colisiones)
 ├── ai_docs/
-│   ├── core/           # vision, planificacion, roadmap
-│   ├── core_templates/ # 4 plantillas de planificacion inicial (01-04)
+│   ├── core/           # vision, planificacion, roadmap y decisiones
+│   ├── core_templates/ # 5 plantillas de planificacion inicial y decisiones (01-05)
+│   ├── doc_templates/  # plantillas de documentacion de proyecto
 │   ├── dev_templates/  # 13 plantillas SSOT
 │   ├── tasks/          # specs + tasks (NNN_descriptor.md)
 │   └── refs/           # documentacion externa

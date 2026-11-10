@@ -8,7 +8,7 @@
 
 ## Cuando usar estas plantillas
 
-**Si arrancas un proyecto nuevo:** Usa las 4 plantillas en orden (01 → 02 → 03 → 04). El resultado es un proyecto con idea clara, estructura definida, plan de ejecucion y entorno de tests listo.
+**Si arrancas un proyecto nuevo:** Usa las 4 plantillas iniciales en orden (01 → 02 → 03 → 04). El resultado es un proyecto con idea clara, estructura definida, plan de ejecucion y entorno de tests listo. Usa 05 cuando una decisión deba quedar trazable.
 
 **Si te incorporas a un proyecto existente:** No necesitas hacer las 4. Evalua cuales te faltan:
 
@@ -18,6 +18,7 @@
 | No esta claro como esta organizado tecnicamente (datos, paginas, arquitectura) | 02_planificacion_tecnica — analiza el proyecto existente y genera la documentacion tecnica |
 | Hay features pendientes pero no hay un plan de en que orden hacerlos | 03_roadmap_de_desarrollo — genera un roadmap basado en dependencias y prioridades |
 | No hay framework de testing configurado | 04_setup_testing — configura tests, coverage y scripts en una sola sesion |
+| Hay decisiones vigentes que deben quedar trazables | 05_decisiones — registra una decisión versionada por fichero |
 | El proyecto ya tiene todo esto documentado y configurado | No necesitas estas plantillas. Ve directamente al pipeline SDD (spec.md, tareas.md, etc.) |
 
 ---
@@ -129,6 +130,18 @@
 4. El asistente instala, configura y verifica que todo funciona
 
 **Importante:** Esta plantilla es idempotente — si algo ya esta configurado, no lo toca. Nunca migra de un framework a otro (si ya tienes Jest, no instalara Vitest).
+
+---
+
+### 05 — Decisiones del Proyecto
+
+**Archivo:** `05_decisiones.md`
+
+**Qué hace:** Registra una decisión por fichero en `core/decisiones/`, con estado, contexto, consecuencia y comprobación.
+
+**Cuándo usarla:** Al confirmar una regla técnica o de producto que condiciona trabajo futuro.
+
+**Qué genera:** Un fichero `AAAAMMDD_slug.md` y una entrada en el índice de decisiones de la planificación técnica.
 
 ---
 

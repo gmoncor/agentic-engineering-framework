@@ -21,7 +21,8 @@
 - **README.md:** Punto de entrada — explica que es, como usar, estructura, quick start
 - **LICENSE:** CC-BY 4.0
 - **ai_docs/dev_templates/:** 13 plantillas operativas + README
-- **ai_docs/core_templates/:** 4 plantillas de planificacion inicial + README
+- **ai_docs/core_templates/:** 5 plantillas de planificacion inicial y decisiones + README
+- **ai_docs/doc_templates/:** Plantillas de documentación de proyecto + README
 
 > Estos conteos los verifica el canary de paridad (`node --test tests/backend-parity.test.js`): si una plantilla se anade o se elimina sin actualizar el documento, el test falla.
 
@@ -33,7 +34,7 @@
 ### Navegacion
 - El README raiz es el punto de entrada unico
 - Cada subcarpeta tiene su propio README con instrucciones detalladas
-- Las plantillas de planificacion inicial se usan en orden secuencial (01 → 02 → 03 → 04)
+- Las plantillas iniciales se usan en orden secuencial (01 → 02 → 03 → 04); 05 registra decisiones cuando se toman
 - Las plantillas operativas se usan segun necesidad (flujo diario)
 
 ---

@@ -67,8 +67,9 @@ proyecto/
 │   └── skills/          # 8 skills (auto-activacion)
 ├── hooks/              # 5 hooks (pipeline-guard + commit-guard + read-before-edit + turn-budget + session-start)
 ├── ai_docs/
-│   ├── core/           # vision, planificacion, roadmap
-│   ├── core_templates/ # 4 plantillas de planificacion inicial (01-04)
+│   ├── core/           # vision, planificacion, roadmap y decisiones
+│   ├── core_templates/ # 5 plantillas de planificacion inicial y decisiones (01-05)
+│   ├── doc_templates/  # plantillas de documentacion de proyecto
 │   ├── dev_templates/  # 13 plantillas SSOT
 │   ├── tasks/          # specs + tasks (NNN_descriptor.md)
 │   └── refs/           # documentacion externa

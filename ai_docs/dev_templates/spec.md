@@ -73,6 +73,7 @@ Usa este formato exacto:
 **Tamano estimado:** <N archivos>, <min>-<max> lineas en total
 **Fecha:** [YYYY-MM-DD]
 **Estado:** BORRADOR
+**Aprobada por:** [Cita literal de quien aprueba, cuando el estado sea APROBADA]
 
 ## Objetivo
 
@@ -154,7 +155,7 @@ usando la plantilla `tareas.md`.
 - DETENTE aqui y espera la respuesta del usuario
 - Si el usuario pide cambios, actualiza la spec y vuelve a presentarla
 - Solo marca el estado como APROBADA cuando el usuario de aprobacion explicita
-- Una vez aprobada, cambia `**Estado:** BORRADOR` a `**Estado:** APROBADA`
+- Una vez aprobada, cambia `**Estado:** BORRADOR` a `**Estado:** APROBADA` y registra la cita literal de quien aprueba en `**Aprobada por:**`
 - Guarda la spec como `ai_docs/tasks/spec_<descriptor>.md` (snake_case, sin acentos). El prefijo `spec_` es obligatorio para que el pipeline SDD la detecte
 
 ---
