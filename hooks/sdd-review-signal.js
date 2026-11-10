@@ -28,7 +28,7 @@
 // secreto en hashDiff no cierra el gap de forma mecanica: para que el gate lo
 // verifique sin compartir estado con el emisor, el secreto tendria que persistir
 // en un sitio (disco, env) igual de accesible para quien intenta falsificar la
-// senal, lo que anula la proteccion. Ver README.md, seccion Hooks, para el
+// senal, lo que anula la proteccion. Ver hooks/CONVENTIONS.md, seccion Limites
 // contrato completo y la alternativa (proteccion de rama + CI).
 
 const crypto = require('crypto');
