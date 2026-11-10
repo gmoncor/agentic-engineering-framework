@@ -8,17 +8,31 @@
 1. Solicitud          — El usuario describe lo que quiere
 2. /planificar        — Spec + tasks + revision de cada task + auditoria cruzada
 3. Aprobacion         — El usuario revisa el plan completo y aprueba o pide cambios
-4. /implementar-spec  — Implementa TODAS las tasks de la spec + revision adversarial
+4. /implementar       — Implementa una task aprobada + revisión adversarial
 5. /pr                — Crea la PR con los cambios
 ```
 
-**Planificacion exhaustiva; el orden de dependencias manda.** El comando `/planificar` ejecuta el ciclo completo de planificacion. `/implementar-spec` implementa las tasks en orden de dependencias, con revision adversarial por task antes del commit.
+**Planificación exhaustiva.** `/planificar` ejecuta el ciclo completo. `/implementar` implementa una task por sesión, con revisión adversarial antes del commit.
+
+## Sesión independiente recomendada
+
+Tras aprobar un plan, recomienda iniciar otra sesión y escribir `implementa la tarea <ruta de la tarea>`. Si el usuario pidió planificar e implementar en la misma petición, el primer mensaje posterior empieza con esta recomendación antes de implementar y continúa sin pedir otra aprobación.
+
+## Ejecución sin subagentes
+
+Este backend no acredita subagentes ni fan-out. Ejecuta en serie las unidades que otro backend haría en paralelo, lo declara en la respuesta y no anuncia subagentes.
 
 <!-- nucleo: comandos -->
 
 <!-- nucleo: agentes -->
 
 <!-- nucleo: reglas-clave -->
+
+<!-- nucleo: contrato-conversacional -->
+
+<!-- nucleo: retomar-task -->
+
+<!-- nucleo: despacho-evidencia -->
 
 ## Ejecucion en este backend
 
@@ -67,7 +81,7 @@ Configurados en `hooks/hooks.json`. La columna Evento usa los nombres reales de 
 <!-- /hueco -->
 
 <!-- hueco: fila-implementar-spec -->
-| `/implementar-spec` | 4 | Implementa tasks en orden de dependencias + revision por task |
+| `/implementar-spec` | 4 | Selecciona una sola task con dependencias satisfechas; permite paralelismo interno + revision por task antes del commit |
 <!-- /hueco -->
 
 <!-- hueco: arbol-backend -->

@@ -6,7 +6,7 @@
 
 ## Que es esto?
 
-Un sistema de plantillas que estructura como trabaja tu asistente de IA. En lugar de pedirle "haz esto" y esperar lo mejor, el framework impone un flujo: **planificacion exhaustiva** (spec + tasks + revision paralela + auditoria cruzada) antes de tocar codigo, seguida de **implementacion en orden de dependencias** (revision adversarial por task antes del commit).
+Un sistema de plantillas que estructura como trabaja tu asistente de IA. En lugar de pedirle "haz esto" y esperar lo mejor, el framework impone un flujo: **planificacion exhaustiva** (spec + tasks + revision paralela + auditoria cruzada) antes de tocar codigo, seguida de **implementacion de una sola tarea seleccionada por sesion con dependencias satisfechas** (revision adversarial antes del commit; se permite paralelismo interno, pero no ejecutar multiples tasks).
 
 Compatible con cualquier LLM via copy-paste. Integracion nativa con cuatro CLIs: Claude Code (workflows + comandos + agentes + skills), Gemini CLI (extension instalable), Codex y Antigravity (agentes + skills + hooks). Los cuatro exponen el mismo flujo; un test de paridad lo verifica (`npm test`).
 
@@ -28,7 +28,7 @@ Las plantillas guian al asistente de IA, pero la calidad del resultado depende d
 
 ## El flujo SDD
 
-El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tasks, revision, auditoria cruzada y, solo entonces, implementacion: en orden de dependencias (ver "Modos de ejecucion").
+El flujo SDD lleva cada solicitud por 5 pasos: especificación, derivación de tasks, revisión, auditoría cruzada y, solo entonces, implementación de la tarea de producto que selecciones.
 
 ```
   [1] Solicitud
@@ -40,11 +40,9 @@ El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tas
   [3] Aprobacion ─────────── El usuario revisa el plan completo
       |
       v
-  [4] /implementar-spec ──── Workflow: cada task en orden de dependencias + revision por task
-      |                         (Claude Code: workflow que implementa, revisa y commitea
-      |                          cada task antes de pasar a la siguiente)
-      |                         (Gemini/Codex/Antigravity: el orquestador implementa las
-      |                          tasks en orden; sin motor de workflows propio)
+  [4] /implementar <task> ── Implementa una tarea seleccionada + revisión adversarial
+      |                         (La investigación y la revisión internas pueden usar
+      |                          subagentes en paralelo cuando el alcance lo justifica.)
       v
     Codigo revisado ──────── /pr para crear la Pull Request
 ```
@@ -54,23 +52,25 @@ El flujo SDD lleva cada solicitud por 5 pasos: especificacion, derivacion de tas
 | Solicitud | El usuario describe lo que quiere | Usuario |
 | Planificar | Spec + tasks + revision paralela + auditoria cruzada | LLM (workflow) |
 | Aprobacion | El usuario revisa veredicto y decide | Usuario |
-| Implementar | Cada task en orden de dependencias, revision adversarial por task antes del commit | LLM (workflow) |
+| Implementar | Una tarea seleccionada, con revisión adversarial antes del commit | LLM |
 
 Principios del flujo:
 
-- **Planificacion exhaustiva.** Cada task revisada y auditada ANTES de tocar codigo
-- **Tasks atomicas.** Una task = un cambio acotado = un commit
-- **Revision adversarial obligatoria.** Cada task se revisa antes de commitearla
+- **Conversar no planifica.** Consultar, leer, pedir orientación o estado recibe respuesta sin crear proceso. Solo una petición de planificación inicia el flujo.
+- **Una task por sesión.** El alcance se decide por riesgo, datos y contratos; no hay un máximo fijo de ficheros. Tras planificar, se recomienda implementar en una sesión independiente.
+- **Planificación exhaustiva.** Cada task se revisa y audita antes de tocar código.
+- **Tasks atómicas.** Una task es un cambio acotado y puede cerrar en un commit.
+- **Revisión adversarial obligatoria.** La task seleccionada se revisa antes de cerrarla.
 - **Roadmap global.** El plan de trabajo vive en `ai_docs/core/` y guia cada `/planificar`
-- **Orden por dependencias.** `/implementar-spec` ordena las tasks por sus dependencias y respeta ese orden en cualquier modo: ninguna task empieza antes que las tasks de las que depende
+- **Dependencias verificadas.** Antes de implementar una task, confirma que sus dependencias están resueltas o declara el bloqueo.
 
-### Garantia de convergencia
+### Revisión de convergencia de una tarea
 
-Al terminar la ultima task de una spec, `/implementar-spec` verifica automaticamente que el resultado final converge con la spec original: cada criterio de aceptacion tiene al menos una task completada que lo cubre, y ninguna exclusion declarada ("No incluye") termino implementada igualmente.
+Al cerrar una task seleccionada, `/revision` verifica que el cambio cubre sus criterios asignados y respeta las exclusiones declaradas.
 
-- **Cuando corre:** solo, sin intervencion manual, tras completar todas las tasks de la spec. Si alguna task quedo fallida o bloqueada, se omite (no tiene sentido verificar convergencia sobre un resultado incompleto).
-- **Que produce:** un veredicto `CONVERGIDA` (con el conteo de criterios verificados) o, si detecta huecos, una o mas tasks `NNN_convergencia_<spec>.md` en `ai_docs/tasks/` describiendo cada hueco y como cerrarlo.
-- **Como re-ejecutarla manualmente:** invoca `/revision` pidiendo que aplique solo el Paso 4bis de `revision_adversarial.md` en modo standalone, sin repetir la revision completa de codigo.
+- **Cuándo corre:** antes de cerrar la task seleccionada. Si la validación falla, conserva el trabajo y declara el bloqueo.
+- **Qué produce:** un veredicto de revisión con los criterios cubiertos y los huecos encontrados.
+- **Cómo repetirla:** invoca `/revision` sobre la task y su diff, sin repetir la implementación.
 
 ---
 
@@ -298,7 +298,7 @@ El LLM puede analizar tu codigo existente para generar estos documentos — no t
 ```
 4. Describe lo que necesitas  → /planificar (spec + tasks + revision + auditoria)
 5. Revisa el plan             → Aprueba o pide ajustes
-6. Implementa                 → /implementar-spec <spec> (todas las tasks + revision)
+6. Implementa                 → /implementar <task> (una task + revisión)
 7. Crea la PR                 → /pr
 ```
 
@@ -344,9 +344,9 @@ Un vistazo rapido a como se conectan los pasos, desde la solicitud inicial hasta
 
 **4. Auditoria cruzada:** "Cada criterio tiene task asignada, cobertura verificable. APROBADA."
 
-**5. Implementacion (`/implementar-spec`):** ejecuta las tasks en orden de dependencias, con revision adversarial antes de cada commit — dos commits resultan: `feat: add GET /api/health endpoint`, `test: add e2e test for /api/health`.
+**5. Implementación (`/implementar ai_docs/tasks/01_endpoint_health.md`):** implementa la tarea seleccionada y aplica una revisión adversarial antes del commit.
 
-**6. Cierre (`/pr`):** PR abierto con los 2 commits y una descripcion autogenerada a partir de la spec y las tasks implementadas.
+**6. Cierre (`/pr`):** PR abierto con una descripción autogenerada a partir de la spec y la task implementada.
 
 Todo el flujo — planificacion, implementacion y cierre — queda trazado en los commits y la spec, sin pasos manuales adicionales.
 
@@ -360,9 +360,7 @@ El dia a dia sigue el flujo SDD. Usa `/planificar` como punto de entrada princip
 
 **Aprobacion** — Revisa el plan completo. Si es APROBADO, procede. Si necesita ajustes, aplicalos y re-evalua.
 
-**`/implementar-spec`** — Workflow que implementa TODAS las tasks de la spec en orden de dependencias. Revision adversarial y commit por task. Recomendado para el flujo normal. Para ejecutar a la vez las tasks que no dependen entre si, ver "Modos de ejecucion".
-
-**`/implementar`** — Implementa UNA task individual. Para cuando necesitas control manual sobre el orden o quieres implementar una task especifica.
+**`/implementar`** — Implementa una task por sesión. Relee su alcance y estado, aplica la revisión adversarial y recomienda el siguiente paso.
 
 **Si encuentras un bug:** usa `/bugfix`.
 **Si tienes dudas o necesitas decidir:** usa `/asesor`.
@@ -373,111 +371,17 @@ El dia a dia sigue el flujo SDD. Usa `/planificar` como punto de entrada princip
 
 ## Modos de ejecucion
 
-El framework admite dos modos para `/implementar-spec`: uno implementa, revisa y commitea cada task antes de empezar la siguiente, sin necesitar ningun flag; el otro ejecuta a la vez las tasks que no dependen entre si, y se pide de forma explicita con el flag `--parallel` (o en lenguaje natural). La decision es tuya, en el momento de invocar.
+Cada sesión implementa una sola tarea de producto. El alcance se decide por riesgo, datos y contratos. No hay un máximo fijo de ficheros ni un flujo que ejecute varias tareas de producto a la vez.
 
-`/implementar-spec` agrupa las tasks de la spec en **niveles de dependencia**: el nivel 1 son las tasks sin dependencias, el nivel 2 las que dependen de alguna del nivel 1, y asi sucesivamente. Los niveles se recorren siempre en orden. Lo unico que cambia entre modos es que ocurre DENTRO de un nivel.
+La investigación y la revisión de esa tarea sí pueden usar subagentes en paralelo. El responsable conserva una sola conclusión, una sola decisión sobre el cambio y un único flujo de escritura.
 
-Spec de ejemplo para los dos casos — 3 tasks en 2 niveles:
+### Garantías de la tarea
 
-| Task | Archivos | Depende de |
-|---|---|---|
-| 01 Modelo de usuario | `src/models/user.ts` | -- |
-| 02 Cliente HTTP | `src/lib/http.ts` | -- |
-| 03 Endpoint de registro | `src/routes/register.ts` | 01, 02 |
-
-### Modo task por task
-
-```
-/implementar-spec ai_docs/tasks/spec_registro.md
-```
-
-El workflow anuncia el plan y despues implementa 01, luego 02, luego 03 — cada una completa antes de arrancar la siguiente:
-
-```
-3 tasks, 2 nivel(es) de dependencia, modo secuencial
-Nivel 1: Modelo de usuario, Cliente HTTP
-Nivel 2: Endpoint de registro
-Implementando: Modelo de usuario
-Gate de tests (Modelo de usuario): npm test [package.json]
-Task Modelo de usuario: APROBADA y commiteada
-Implementando: Cliente HTTP
-...
-```
-
-### Modo concurrente por nivel
-
-La misma spec con el flag `--parallel` en los argumentos:
-
-```
-/implementar-spec ai_docs/tasks/spec_registro.md --parallel
-```
-
-Las dos tasks del nivel 1 arrancan a la vez; el nivel 2 espera a que ambas terminen:
-
-```
-3 tasks, 2 nivel(es) de dependencia, modo concurrente (--parallel, hasta 4 tasks a la vez)
-Nivel 1: Modelo de usuario, Cliente HTTP
-Nivel 2: Endpoint de registro
-Implementando: Modelo de usuario
-Implementando: Cliente HTTP
-...
-```
-
-El flag se reconoce en cualquier posicion y se retira de los argumentos antes de resolver el path de la spec, asi que `--parallel ai_docs/tasks/spec_registro.md` es equivalente. Por defecto hay como mucho 4 tasks en vuelo a la vez; `--parallel=N` cambia ese tope (N, un entero mayor que 0). Tambien puedes pedirlo en lenguaje natural ("implementa la spec en paralelo") para que el asistente lo pase al workflow. El flag es exclusivo de Claude Code, el unico backend con un motor de workflows que lo parsea; en Codex, Antigravity y Gemini el modo concurrente se pide igual, en lenguaje natural, y lo ejecuta el orquestador siguiendo su fichero de instrucciones raiz.
-
-| Backend | Como se pide el modo concurrente | Quien lo ejecuta |
-|---|---|---|
-| Claude Code | flag `--parallel` en `/implementar-spec`, o peticion en lenguaje natural que el asistente traslada al workflow | el motor de workflows |
-| Codex | peticion en lenguaje natural («implementa la spec en paralelo») | el orquestador, siguiendo `AGENTS.md` |
-| Antigravity CLI | peticion en lenguaje natural | el orquestador, siguiendo `AGENTS.md` |
-| Gemini CLI | peticion en lenguaje natural | el orquestador, siguiendo `GEMINI.md` |
-
-El flag `--parallel` no existe fuera de Claude Code. En los otros tres backends el modo concurrente se pide siempre en lenguaje natural.
-
-### Puertas de calidad: las mismas en ambos modos
-
-Son puertas de calidad, no de paralelizacion. Se aplican **por task** en los dos modos, sin excepcion:
-
-- **Gate de tests** — la suite del proyecto se ejecuta de verdad antes de revisar, y cuenta su codigo de salida real, no un recuento auto-declarado. En rojo, la task no se commitea.
-- **Revision adversarial del diff** — un agente con contexto limpio revisa el diff de esa task. Solo un hallazgo crítico (o un veredicto `RECHAZADA`, o una revisión sin veredicto) abre una ronda de corrección; los menores no bloquean y viajan en el cuerpo del commit. Cada ronda corrige los críticos, vuelve a pasar el gate de tests y re-revisa con los hallazgos previos y el delta. Tras tres rondas sin aprobar, la task queda `BLOQUEADA_REVISION`: su trabajo se aparta con nombre en `git stash`, sin destruir nada, y los hallazgos abiertos con su corrección propuesta pasan al usuario.
-- **Convergencia con la spec** — al cerrar la ultima task (ver "Garantia de convergencia").
-
-Una task fallida no cancela a sus hermanas: cada una reporta su propio resultado, y las que dependan de una fallida quedan bloqueadas sin implementar.
-
-### Frontera de responsabilidad en modo concurrente
-
-Lo que el framework hace en modo concurrente:
-
-- **Tope de concurrencia.** Nunca hay más de 4 tasks en vuelo a la vez (`--parallel=N` lo cambia): cada una es un agente implementador y, después, un revisor.
-- **Colisiones serializadas.** Antes de lanzar un nivel cruza las tablas "Archivos afectados" de sus tasks. Las de ficheros disjuntos van a la vez; las que comparten un fichero (o un directorio y lo que cuelga de él) con otra del lote, y las que no tienen tabla legible, van después, una tras otra. Dos tasks que declaran el mismo fichero no se implementan nunca a la vez.
-- **Gate y git en exclusión mutua.** El gate de tests y las operaciones de git que tocan el índice (preparar el diff, commitear, apartar) van de una en una: dos suites no corren a la vez. La implementación y la revisión siguen en paralelo.
-- **Escrituras fuera de alcance, al revisor.** Los ficheros cambiados que no declara ninguna task en vuelo llegan al revisor de cada task, que decide si son un hallazgo. En secuencial, los que no declara la task.
-
-Lo que **no** hace:
-
-- **No hay un único escritor real por fichero.** La partición se fía de las tablas declaradas: una task que escribe fuera de su tabla puede pisar a una hermana, y eso solo lo ve el revisor.
-- **No aísla el árbol de trabajo.** Todas las tasks en vuelo comparten el mismo working tree mientras se implementan. **Residuo declarado:** la exclusión mutua evita que dos suites corran a la vez, pero el gate de una task sigue viendo en el árbol el trabajo a medias de sus hermanas, así que un rojo espurio por esa contaminación sigue siendo posible. Ese rojo aparta el trabajo de la task en `git stash`, recuperable; no lo destruye. Eliminarlo exige un worktree por task, que el framework no crea. Si una falla su gate de tests o su revisión, sus ficheros de la tabla "Archivos afectados" que cambiaron se apartan en `git stash` y salen del árbol: lo que las hermanas tienen en el árbol no se toca. La entrada del stash guarda, eso sí, todo lo que hubiera preparado en el índice en ese momento, también lo de una hermana: para recuperar solo lo de la task, usa `git restore --source=stash@{N} -- <rutas>` (ver más abajo). Si falla una task sin tabla legible, no se aparta nada: su trabajo se queda sin commitear en el árbol, y lo dice la nota de su resultado.
-
-Que las tablas "Archivos afectados" digan la verdad sigue siendo **responsabilidad del invocador**: de ellas depende la partición. Si necesitas aislamiento real, separa el trabajo en specs distintas y corre cada una en su propio worktree de git (ver "Aislamiento por worktree" en `/implementar-spec`).
-
-### Árbol limpio y trabajo apartado
-
-`/implementar-spec` no arranca si hay cambios sin commitear fuera de `ai_docs/`: el commit de la primera task se los llevaría. Commitéalos, apártalos con `git stash push --include-untracked`, o lanza la spec en un worktree limpio. En modo secuencial lo comprueba también antes de cada task, y se detiene si encuentra residuo.
-
-Ninguna ruta del workflow ejecuta `git reset --hard` ni `git clean`. El trabajo de una task que no se commitea (tests en rojo, revisión adversa o implementador fallido) se aparta en una entrada de `git stash` llamada `sdd-apartado: <título de la task>`: en secuencial, todo el árbol salvo `ai_docs/`; en `--parallel`, del árbol solo salen sus ficheros, aunque la entrada guarde también lo preparado en el índice por una hermana. Si el apartado falla, no se destruye nada y, en secuencial, el recorrido se detiene. Los ficheros ignorados por `.gitignore` no se tocan.
-
-Para recuperarlo:
-
-```bash
-git stash list                      # las entradas sdd-apartado: <task>
-git stash show -p --include-untracked stash@{N}
-git stash pop stash@{N}             # lo devuelve al árbol
-git restore --source=stash@{N} -- <rutas>   # solo esas rutas, si la entrada trae más
-git restore --source='stash@{N}^3' -- <rutas>   # ídem, para ficheros nuevos (sin seguimiento)
-git stash drop stash@{N}            # o lo retira si ya no lo quieres
-```
-
-Las entradas se acumulan mientras no las recuperes o retires.
+- **Autorización única.** Tras aprobar el plan, una petición que también incluya implementar continúa sin pedir una segunda autorización. Se recomienda abrir una sesión independiente, pero la recomendación no bloquea la petición conjunta.
+- **Límite de la recomendación.** El modelo puede omitirla incluso con las instrucciones precargadas. Se conserva como instrucción y no añade un bloqueo.
+- **Pruebas y revisión adversarial.** El banco del proyecto se ejecuta antes de revisar. Un revisor con contexto limpio examina el diff. Los hallazgos críticos se corrigen y se vuelve a validar antes de cerrar.
+- **Preservación.** Ninguna ruta ejecuta `git reset --hard` ni `git clean`. Si una validación no permite cerrar, el trabajo se conserva para que pueda revisarse o recuperarse.
+- **Siguiente paso.** Al cerrar, el responsable propone un único siguiente paso accionable.
 
 ---
 
@@ -500,7 +404,7 @@ agentic-engineering-framework/
 │   ├── agents/                  #   planificador, revisor, implementador, asesor
 │   ├── commands/                #   13 comandos SDD
 │   ├── skills/                  #   9 skills (auto-activacion; 1 exclusiva de Claude Code)
-│   └── workflows/               #   planificar.js + implementar-spec.js
+│   └── workflows/               #   planificar.js y soporte de implementación
 │
 ├── .gemini/                     # Configuracion Gemini CLI (namespace evita colision con carpetas del usuario)
 │   ├── agents/                  #   4 agentes Gemini CLI
@@ -603,9 +507,9 @@ Refuerzo adicional: `.codex/rules/sdd-enforcement.rules` prohíbe esos mismos co
 
 **Antigravity** carga cuatro hooks via `.agents/hooks.json`: `sdd-pipeline-guard.js` (guard de escrituras), `sdd-commit-guard.js` (guard de commits), `sdd-read-before-edit.js` (aviso de lectura previa) y `sdd-turn-budget.js` (contador de acciones sin commit). No carga el registro de sesiones (`sdd-session-start.js`), por la razon ya dada arriba: no consta que su CLI exponga un evento de arranque de sesion equivalente.
 
-**Hay dos bloqueos reales: escrituras y commits sin revision.** `sdd-pipeline-guard.js` impide escribir codigo que nadie planifico: puede comprobarlo mecanicamente, porque el archivo que se va a escribir esta declarado en una task o no lo esta. Cubre las herramientas de edición del agente (en Claude Code, `Write`, `Edit` y `NotebookEdit`); lo que se escribe por shell (`>`, `tee`, `sed -i`, `cp`) no pasa por él y solo lo detecta la revisión del diff. `sdd-review-gate.js` impide commitear un diff que no consta revisado: la revision adversarial ocurre POR TASK, antes del commit, y su senal guarda el hash del diff revisado; el hook recalcula el hash de `git diff --cached` y lo contrasta. Sin senal, o con un hash que no ata el diff staged, deniega. Cuando no hay diff cacheado computable no bloquea a ciegas: degrada a aviso. Que el codigo entregado se revise lo sostiene el flujo (`/implementar-spec` revisa cada task antes de commitearla) reforzado por el gate. Si necesitas una frontera aun mas dura sobre lo que llega a la rama, ponla en CI y en las protecciones de rama.
+**Hay dos bloqueos reales: escrituras y commits sin revision.** `sdd-pipeline-guard.js` impide escribir codigo que nadie planifico: puede comprobarlo mecanicamente, porque el archivo que se va a escribir esta declarado en una task o no lo esta. Cubre las herramientas de edición del agente (en Claude Code, `Write`, `Edit` y `NotebookEdit`); lo que se escribe por shell (`>`, `tee`, `sed -i`, `cp`) no pasa por él y solo lo detecta la revisión del diff. `sdd-review-gate.js` impide commitear un diff que no consta revisado: la revisión adversarial ocurre por task, antes del commit, y su señal guarda el hash del diff revisado; el hook recalcula el hash de `git diff --cached` y lo contrasta. Sin señal, o con un hash que no ata el diff staged, deniega. Cuando no hay diff cacheado computable degrada a aviso, para no bloquear a ciegas. El flujo de implementación aplica la revisión antes de cerrar la task y el gate la refuerza. Si necesitas una frontera aun más dura sobre lo que llega a la rama, ponla en CI y en las protecciones de rama.
 
-**Configuracion (`hooks/config.json`):** `sdd-review-gate.js` viene desactivado. Ponlo en `"enabled": true` para que bloquee cuando vayas a commitear codigo sin constancia de revision. El workflow `/implementar-spec` emite la senal que lo satisface; su contrato vive en `hooks/sdd-review-signal.js`. Solo se cablea en Claude Code: los demas backends no tienen motor de workflows y, por tanto, no tienen emisor de la senal — el gate ahi no podria satisfacerse por ninguna via legitima.
+**Configuración (`hooks/config.json`):** `sdd-review-gate.js` viene desactivado. Ponlo en `"enabled": true` para que bloquee cuando vayas a commitear código sin constancia de revisión. El flujo de implementación emite la señal que lo satisface; su contrato vive en `hooks/sdd-review-signal.js`. Solo se cablea en Claude Code: los demás backends no tienen motor de workflows y, por tanto, no tienen emisor de la señal; el gate ahí no podría satisfacerse por ninguna vía legítima.
 
 **Registro de sesiones y como apagarlo (`hooks/config.json`):** `sdd-session-start.js` viene **activo**. En cada arranque de sesion anade una linea al fichero `ai_docs/audits/provenance.jsonl`, dentro de tu repositorio, con el directorio de trabajo, la rama, el commit, el modelo de la sesión si el CLI lo envía en el arranque (si no, `null`) y hashes de los componentes instalados. No envia nada a ningun sitio: escribe un fichero local (el `.gitignore` que instala el framework lo excluye del control de versiones). Para que deje de escribir, pon `"sdd_session_start": { "enabled": false }`: con `false` el hook no escribe nada, ni la linea ni el fichero.
 

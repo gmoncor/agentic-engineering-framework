@@ -54,6 +54,8 @@ Para cada elemento de la columna "Se actualiza": sobrescribe con la version del 
 
 Para los archivos de contexto (`CLAUDE.md`, `GEMINI.md`, `AGENTS.md`):
 
+- Conserva las secciones personalizadas y actualiza el contrato conversacional del framework. Consultar, leer, orientar o mostrar estado no inicia una planificación; tras planificar se recomienda una sesión independiente para implementar.
+
 1. Identifica que secciones anadio o modifico el usuario respecto al archivo original del framework (ejemplo: convenciones propias del proyecto, notas de arquitectura).
 2. Sobrescribe solo las secciones que documentan el framework (flujo, comandos, agentes, hooks, plantillas de referencia).
 3. Conserva intactas las secciones personalizadas, en su mismo lugar.

@@ -8,11 +8,19 @@
 1. Solicitud          — El usuario describe lo que quiere
 2. /planificar        — Spec + tasks + revision de cada task + auditoria cruzada
 3. Aprobacion         — El usuario revisa el plan completo y aprueba o pide cambios
-4. /implementar-spec  — Implementa TODAS las tasks de la spec + revision adversarial
+4. /implementar       — Implementa una task aprobada + revisión adversarial
 5. /pr                — Crea la PR con los cambios
 ```
 
-**Planificacion exhaustiva; el orden de dependencias manda.** El comando `/planificar` ejecuta el ciclo completo de planificacion. `/implementar-spec` implementa las tasks en orden de dependencias, con revision adversarial por task antes del commit.
+**Planificación exhaustiva.** `/planificar` ejecuta el ciclo completo. `/implementar` implementa una task por sesión, con revisión adversarial antes del commit.
+
+## Sesión independiente recomendada
+
+Tras aprobar un plan, recomienda iniciar otra sesión y escribir `implementa la tarea <ruta de la tarea>`. Si el usuario pidió planificar e implementar en la misma petición, el primer mensaje posterior empieza con esta recomendación antes de implementar y continúa sin pedir otra aprobación.
+
+## Ejecución sin subagentes
+
+Este backend no acredita subagentes ni fan-out. Ejecuta en serie las unidades que otro backend haría en paralelo, lo declara en la respuesta y no anuncia subagentes.
 
 ## Comandos disponibles
 
@@ -23,7 +31,7 @@
 | `/spec` | — | Crea una spec individual (paso aislado) |
 | `/tareas` | — | Deriva tasks de una spec (paso aislado) |
 | `/auditar` | — | Audita coherencia spec + tasks (paso aislado) |
-| `/implementar-spec` | 4 | Implementa tasks en orden de dependencias + revision por task |
+| `/implementar-spec` | 4 | Selecciona una sola task con dependencias satisfechas; permite paralelismo interno + revision por task antes del commit |
 | `/implementar` | 4 | Implementa UNA task individual (control manual) |
 | `/revision` | 5 | Revision adversarial post-implementacion (paso aislado) |
 | `/estado` | — | Muestra estado del proyecto (specs, tasks, progreso) |
@@ -43,13 +51,39 @@
 
 ## Reglas clave
 
-1. **Toda solicitud empieza con planificacion** — /planificar antes de /implementar
-2. **Planificacion exhaustiva** — cada task revisada, spec auditada, huecos detectados ANTES de codigo
-3. **El orden de dependencias manda** — la independencia entre tasks informa el orden del plan; secuencial o concurrente lo decide quien ejecuta. Revision adversarial antes de cada commit. Una task, un commit
-4. **Revision adversarial obligatoria** — el paso 5 verifica la implementacion completa antes de mergear
-5. **Tasks atomicas** — una task, un cambio acotado, un commit
-6. **Roadmap global** — el plan de trabajo vive en `ai_docs/core/` y guia cada planificacion
-7. **El revisor es escéptico y bloquea solo lo material** — su trabajo es encontrar problemas, validar con evidencia
+1. **Planificación exhaustiva** — cada task revisada, spec auditada, huecos detectados ANTES de código.
+2. **El orden de dependencias manda** — en cada sesión, elige una sola task con dependencias satisfechas. Puede usar paralelismo interno, pero no ejecuta múltiples tasks. Revisión adversarial antes de cada commit.
+3. **Revisión adversarial obligatoria** — el paso 5 verifica la implementación completa antes de mergear.
+4. **Roadmap global** — el plan de trabajo vive en `ai_docs/core/` y guía cada planificación.
+5. **El revisor es escéptico y bloquea solo lo material** — su trabajo es encontrar problemas, validar con evidencia.
+
+## Contrato conversacional
+### Siguiente paso recomendado
+Tras una consulta, orientación, plan, implementación, entrega o revisión, cierra la respuesta con un único siguiente paso recomendado y accionable. La respuesta no crea planificación salvo que la intención sea planificar.
+### Sesión independiente recomendada
+Tras planificar, recomienda siempre implementar en una sesión nueva e independiente con la orden del backend. Es una recomendación, no un bloqueo. Si la petición ya incluía planificar e implementar, el primer mensaje después del plan aprobado empieza con la recomendación, antes de iniciar la implementación, y continúa sin otra aprobación.
+### Degradación sin subagentes
+Si el backend no acredita subagentes o fan-out, ejecuta en serie las unidades que otro backend haría en paralelo. Declara esa degradación en la respuesta y no anuncia subagentes.
+
+## Retomar una task
+| Estado | Continúa | Antes de seguir |
+|---|---|---|
+| `PENDIENTE` | implementador | Releer la task. |
+| `EN_PROGRESO` | implementador | Releer archivos afectados, `git status` y `git log -1`. |
+| `PARCIAL` | implementador | Releer desviaciones, archivos afectados, estado y último commit. |
+| `FALLIDA` | implementador con `correccion_de_bugs.md` | Leer la salida del fallo. |
+| `BLOQUEADA_REVISION` | usuario | Resolver hallazgos abiertos. |
+| `COMPLETADA` | nadie | Un cambio nuevo requiere una task nueva. |
+
+## Cuándo despachar
+- Investigación: despacha solo si la lectura excede el contexto o hay áreas disjuntas; lee directamente una a tres rutas conocidas.
+- Lentes `ciego`, `casos-limite` y `coste`: despacha solo ante una incertidumbre concreta, nunca «por si acaso».
+## Evidencia proporcional al riesgo
+- Prosa: inspección y referencias; código local: prueba dirigida y negativo; contrato o hook: positivos, negativos, composición y recuperación. Valida cada instrumento cuando debe disparar y cuando debe permanecer silencioso.
+## Recepción de resultados
+- Antes de usar un resultado de subagente, comprueba presencia, legibilidad, completitud y schema. Un resultado ausente, truncado o intermedio no es una entrega.
+## Releer antes de reintentar
+- Lee antes de editar. Tras un rechazo, relee el estado real antes de repetir; busca con `git grep` o la herramienta de búsqueda disponible.
 
 ## Ejecucion en este backend
 
@@ -159,7 +193,7 @@ Un test, un hook o un job de CI se decide por riesgo y por coste: en qué punto 
 - Planificacion completa (spec + tasks + revision + auditoria) antes de implementar
 - Las tasks se derivan solo de specs con estado APROBADA
 - Revision adversarial (paso 5) antes de mergear
-- Cada task toca maximo 6 archivos — si supera, dividir
+- El alcance de cada task se revisa por riesgo, datos y contratos; no hay un máximo fijo de ficheros
 - Evaluar alternativas antes de decidir la solucion
 
 <!-- sdd-framework: 4.0.0 -->
