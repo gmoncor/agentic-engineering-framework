@@ -1,6 +1,7 @@
 {
   "common": [
     "ai_docs/core_templates",
+    "ai_docs/doc_templates",
     "ai_docs/dev_templates",
     "hooks",
     "scripts",

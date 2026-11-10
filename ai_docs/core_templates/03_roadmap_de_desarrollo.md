@@ -105,7 +105,7 @@ Fase 2: [Nombre descriptivo]
 
 ## Paso 3: Generar roadmap
 
-Si `ai_docs/core/roadmap.md` ya existe, leerlo primero. Usarlo como base a actualizar: preservar decisiones y secciones que sigan vigentes, anadir lo nuevo, senalar conflictos entre lo existente y lo nuevo en vez de mezclarlos en silencio. Si no existe, generar desde cero.
+Si `ai_docs/core/roadmap.md` ya existe, leerlo primero. Usarlo como base a actualizar: preservar decisiones y secciones que sigan vigentes, anadir lo nuevo, senalar conflictos entre lo existente y lo nuevo en vez de mezclarlos en silencio. Si no existe, generar desde cero. `ai_docs/core/` se versiona con el proyecto y sirve de contexto compartido para el equipo.
 
 **Formato de las fases:**
 

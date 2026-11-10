@@ -39,6 +39,7 @@ Antes de revisar la task, verificar que es coherente con la spec aprobada:
 | Los archivos afectados son coherentes con el alcance de la spec | SI / NO |
 | Cada premisa de «Premisas verificadas» trae `archivo:línea` (o comando) que la acredita, o se marca «no verificada» con su motivo | SI / NO |
 | Cada criterio de ausencia de «Criterios de exito» trae su control positivo y su control negativo | SI / NO |
+| La task respeta las decisiones `VIGENTE` de `ai_docs/core/decisiones/`, o propone una que las sustituya con `05_decisiones.md` | SI / NO |
 
 Comprueba por tu cuenta al menos una premisa citada: abre el `archivo:línea` y confirma que dice lo que la task afirma. Una premisa desmentida por el código invalida el plan que se apoya en ella.
 

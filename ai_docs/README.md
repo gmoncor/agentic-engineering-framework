@@ -8,7 +8,7 @@
 
 ```
 ai_docs/
-├── core_templates/     # Plantillas de planificacion inicial (01-04)
+├── core_templates/     # Plantillas de planificacion inicial y decisiones (01-05)
 │                       # Se usan en orden para definir un proyecto nuevo.
 │                       # Cada una genera un documento en core/.
 │
@@ -16,8 +16,11 @@ ai_docs/
 │                       # Son las instrucciones que le das al LLM.
 │                       # Se copian tal cual — no se modifican.
 │
+├── doc_templates/      # Plantillas de documentación de negocio validable
+│                       # Se copian a docs/proyecto/.
+│
 ├── core/               # Documentacion de TU proyecto
-│                       # Vision, planificacion tecnica, roadmap.
+│                       # Vision, planificacion tecnica, roadmap y decisiones.
 │                       # Generados con core_templates/.
 │                       # Este repo incluye 3 ejemplos (dogfooding).
 │
@@ -25,6 +28,7 @@ ai_docs/
 │                       # Specs: spec_<descriptor>.md
 │                       # Tasks: NNN_descriptor.md
 │                       # Empieza vacio. Se llena con /planificar.
+│                       # Es local y no se versiona por defecto.
 │
 └── refs/               # Referencias externas
                         # APIs, guias de estilo, docs de terceros.
@@ -49,6 +53,7 @@ ai_docs/
 | 2 | `02_planificacion_tecnica.md` | `core/planificacion_tecnica.md` |
 | 3 | `03_roadmap_de_desarrollo.md` | `core/roadmap.md` |
 | 4 | `04_setup_testing.md` | Framework de tests configurado |
+| 5 | `05_decisiones.md` | `core/decisiones/AAAAMMDD_slug.md` |
 
 ### `dev_templates/` — Plantillas operativas SDD
 
@@ -68,6 +73,8 @@ Son el SSOT (Single Source of Truth) del framework. Los commands y skills solo l
 
 **Importante:** Estos documentos alimentan a TODO el flujo SDD. Sin ellos, las plantillas trabajan a ciegas. Al menos `vision_del_proyecto.md` deberia existir.
 
+**Versionado:** `core/` se comparte y se versiona con el proyecto. Las decisiones viven en `core/decisiones/` y cada fichero declara su estado, contexto, decisión y consecuencia.
+
 ### `tasks/` — Specs y tasks
 
 **Quien la mantiene:** El LLM via /planificar (crea specs y tasks).
@@ -81,7 +88,13 @@ Son el SSOT (Single Source of Truth) del framework. Los commands y skills solo l
 spec BORRADOR → spec APROBADA → tasks derivadas → tasks revisadas → implementacion → revision
 ```
 
-**Gitignored por defecto** (tus tasks son privadas). Descomenta en `.gitignore` si quieres versionarlas.
+**Gitignored por defecto** (tus tasks son locales). No las uses como fuente compartida de trazabilidad.
+
+### `doc_templates/` — Documentación de negocio validable
+
+**Qué genera:** Los documentos de `docs/proyecto/`: visión, alcance, aceptación, estado, novedades y glosario.
+
+**Frontera:** `core/` da contexto al equipo y a las plantillas. `docs/proyecto/` comunica información de negocio que una persona puede validar. Sus documentos llevan frontmatter con estado y fuentes.
 
 ### `refs/` — Referencias externas
 
@@ -100,6 +113,7 @@ spec BORRADOR → spec APROBADA → tasks derivadas → tasks revisadas → impl
   01_vision        ──genera──→    vision_del_proyecto.md
   02_planificacion  ──genera──→    planificacion_tecnica.md
   03_roadmap       ──genera──→    roadmap.md
+  05_decisiones    ──genera──→    decisiones/AAAAMMDD_slug.md
                                         │
                                         ▼
 [dev_templates/]                   [tasks/]
@@ -110,6 +124,8 @@ spec BORRADOR → spec APROBADA → tasks derivadas → tasks revisadas → impl
   implementar.md   ──consume─→    (implementa cada task)
   revision_adversarial.md ─revisa─→ (codigo implementado)
 ```
+
+`core/` se versiona. `tasks/` sigue siendo local.
 
 Las plantillas de `dev_templates/` leen `core/` para contexto y `tasks/` para saber que hacer. Sin estos documentos, trabajan sin informacion.
 
