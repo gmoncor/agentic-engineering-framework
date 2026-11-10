@@ -171,6 +171,14 @@ subiendo el numero.** Subir el limite es una decision que necesita su propia
 justificacion escrita: sin ella, el presupuesto solo documenta el crecimiento
 en lugar de contenerlo.
 
+## Límites del gate de revisión
+
+El gate ata el diff preparado a la señal de revisión. `SDD_GUARD_SKIP=1` degrada un bloqueo puntual a aviso. No pretende impedir una falsificación deliberada de la señal. La frontera dura es la integración continua con protección de rama.
+
+El gate no resuelve alias definidos en la configuración de Git, rutas posicionales sin `--`, patch interactivo, expansión dinámica del shell ni cambios de directorio fuera de un alcance demostrado. También conserva la raíz inicial ante heredoc, `printf`, cualquier token `CDPATH` o un wrapper cuya llamada original no permite resolver las opciones globales.
+
+Para `-a`, `-i`, `-o`, `--pathspec-from-file` y `--`, el gate compara árbol e índice antes de validar la señal. La comparación no ejecuta `diff.external` ni `textconv`. Conserva los filtros `clean` que Git aplicaría al preparar el commit. Si detecta bytes no preparados, bloquea y pide preparar los bytes y repetir la revisión.
+
 ## Criterio de aceptación de un cambio de hook
 
 Un test que construye el payload con los campos que el hook lee pasa aunque el

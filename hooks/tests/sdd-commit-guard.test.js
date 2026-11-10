@@ -409,6 +409,7 @@ test("git commit --file='msg.txt' (valor entrecomillado pegado) se lee como mens
 // y la invocación original de la llamada sigue a la vista del guard.
 
 const WRAPPER_NO_VERIFY = 'git() { command git "$@"; }; git commit --no-verify -m x';
+const { runHook: ejecutarCommitGuard } = require('../sdd-commit-guard');
 
 test('usesNoVerify: un wrapper recursivo de git no oculta --no-verify', () => {
   assert.strictEqual(usesNoVerify(WRAPPER_NO_VERIFY), true);
@@ -430,4 +431,14 @@ test('wrapper recursivo de git con --no-verify: deny, sin error interno', () => 
 test('usesNoVerify: una función con 200 000 segmentos no agota la pila ni oculta --no-verify', () => {
   const cmd = `f() { ${'true; '.repeat(200000)}}; f; git commit --no-verify -m x`;
   assert.strictEqual(usesNoVerify(cmd), true);
+});
+
+test('runHook directo: allow y deny devuelven resultado y el proceso de test continúa', () => {
+  const allow = ejecutarCommitGuard(bash('git commit -m "docs: corrección"'), { config: { sdd_commit_guard: { enabled: true } } });
+  assert.strictEqual(allow.exit, 0);
+  assert.strictEqual(allow.stdout, '');
+  const deny = ejecutarCommitGuard(bash('git commit --no-verify -m x'), { config: { sdd_commit_guard: { enabled: true } } });
+  assert.strictEqual(deny.exit, 2);
+  assert.strictEqual(deny.stdout.includes('deny'), true);
+  assert.strictEqual(1 + 1, 2, 'centinela: runHook no terminó el proceso');
 });

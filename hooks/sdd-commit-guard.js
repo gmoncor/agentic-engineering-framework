@@ -15,34 +15,47 @@
 //
 // Escape de emergencia: SDD_GUARD_SKIP=1 degrada el bloqueo de --no-verify a aviso.
 
-const { readPayload, readToolCall, skipRequested, warn, deny, runWithFailOpen } = require('./sdd-hook-utils');
+const {
+  readPayload, readToolCall, skipRequested, hookApagado, loadConfig, ALLOW,
+  warnResult, denyResult, emitResult, runWithFailOpen,
+} = require('./sdd-hook-utils');
+const path = require('path');
 const { isGitCommit, isGhPr, commitWarnings, usesNoVerify, NO_VERIFY_REASON } = require('./sdd-commit-rules');
 
 const SHELL_TOOLS = new Set(['Bash', 'PowerShell', 'run_shell_command', 'run_command']);
 
-async function main() {
-  const data = await readPayload();
-  if (!data) process.exit(0);
+function runHook(input, deps) {
+  const options = deps || {};
+  const env = options.env || process.env;
+  const config = options.config || loadConfig(path.join(__dirname, 'config.json'));
+  if (hookApagado('sdd-commit-guard', config)) return ALLOW;
 
-  const call = readToolCall(data);
-  if (!SHELL_TOOLS.has(call.name)) process.exit(0);
+  const call = readToolCall(input);
+  if (!SHELL_TOOLS.has(call.name)) return ALLOW;
 
   const cmd = (call.input.command || call.input.CommandLine || '').trim();
 
   if (usesNoVerify(cmd)) {
-    if (skipRequested()) warn(NO_VERIFY_REASON + ' [SDD_GUARD_SKIP=1: se permite el comando]', call);
-    deny(NO_VERIFY_REASON, call);
+    if (skipRequested(env)) return warnResult(NO_VERIFY_REASON + ' [SDD_GUARD_SKIP=1: se permite el comando]', call);
+    return denyResult(NO_VERIFY_REASON, call);
   }
 
-  if (!isGitCommit(cmd) && !isGhPr(cmd)) process.exit(0);
+  if (!isGitCommit(cmd) && !isGhPr(cmd)) return ALLOW;
 
-  const warnings = commitWarnings(cmd);
-  if (warnings.length === 0) process.exit(0);
+  const warnings = commitWarnings(cmd, input);
+  if (warnings.length === 0) return ALLOW;
 
-  warn('SDD Commit Guard:\n' + warnings.map(w => '  - ' + w).join('\n'), call);
+  return warnResult('SDD Commit Guard:\n' + warnings.map(w => '  - ' + w).join('\n'), call);
+}
+
+async function main() {
+  const data = await readPayload();
+  emitResult(data ? runHook(data) : ALLOW);
 }
 
 // El fallo interno sale por runWithFailOpen (exit 0 + aviso firmado), nunca como veredicto.
 if (require.main === module) {
   runWithFailOpen('sdd-commit-guard', main);
 }
+
+module.exports = { runHook };

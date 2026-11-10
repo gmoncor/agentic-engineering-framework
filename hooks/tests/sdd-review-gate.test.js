@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const { runHook, tempDir, writeFile, HOOKS_DIR, motorDeWorkflowsInstalado } = require('./helpers');
 const signal = require('../sdd-review-signal');
+const { runHook: ejecutarReviewGate, raizDelCommit, arbolDifiereDelIndice } = require('../sdd-review-gate');
 
 const SIN_MOTOR = motorDeWorkflowsInstalado()
   ? false
@@ -265,18 +266,18 @@ test('el emisor del flujo revisa por task y usa el mismo contrato de senal que e
   assert.doesNotMatch(workflow, /SDD-POST-IMPL/, 'el canal de la marca en el mensaje de commit se elimino');
 });
 
-test('la limitacion frente a falsificacion deliberada esta documentada en README y en el modulo de la senal', { skip: SIN_MOTOR }, () => {
+test('la limitacion frente a falsificacion deliberada esta documentada en CONVENTIONS y en el modulo de la senal', () => {
   // La ausencia del fichero es un fallo, no un motivo para omitir el caso: omitirlo
   // convertia un renombrado o un borrado en un contador de omitidos que nadie mira, y
   // la comparacion dejaba de ejecutarse en silencio. Los demas casos de este fichero
   // ya leen el arbol del repositorio sin condicion previa (el motor de workflows y el
   // wiring del backend), asi que este no gana nada por ser el unico que la tiene.
-  const readmePath = path.resolve(HOOKS_DIR, '..', 'README.md');
-  assert.ok(fs.existsSync(readmePath), 'README.md ausente: la limitacion no se puede verificar');
+  const readmePath = path.join(HOOKS_DIR, 'CONVENTIONS.md');
+  assert.ok(fs.existsSync(readmePath), 'CONVENTIONS.md ausente: la limitacion no se puede verificar');
   const readme = fs.readFileSync(readmePath, 'utf8');
   const signalSource = fs.readFileSync(path.join(HOOKS_DIR, 'sdd-review-signal.js'), 'utf8');
 
-  // README: la limitacion vive junto al escape hatch de SDD_GUARD_SKIP, no en
+  // CONVENTIONS: la limitacion vive junto al escape hatch de SDD_GUARD_SKIP, no en
   // una seccion aparte que nadie lea al configurar el gate.
   const skipIdx = readme.indexOf('SDD_GUARD_SKIP=1');
   const limiteIdx = readme.search(/falsificaci[oó]n deliberada/);
@@ -285,7 +286,7 @@ test('la limitacion frente a falsificacion deliberada esta documentada en README
   assert.ok(limiteIdx > skipIdx, 'la limitacion debe documentarse junto/despues del escape hatch, no antes');
 
   // El docstring del modulo que emite/lee la senal debe declarar el mismo limite,
-  // para quien lea el codigo sin pasar por el README.
+  // para quien lea el codigo sin pasar por CONVENTIONS.
   assert.match(signalSource, /falsificaci[oó]n deliberada/);
   assert.match(signalSource, /LIMITE HONESTO/);
 });
@@ -422,10 +423,11 @@ test('con diff.external y textconv globales, ni el hook ni el emisor los ejecuta
       + "process.stdout.write('texto convertido\\n');\n");
     const atributos = writeFile(path.join(home, 'atributos'), '* diff=conv\n');
     const barras = p => p.split(path.sep).join('/');
+    const quotedCommand = script => '\\"' + barras(process.execPath) + '\\" \\"' + barras(script) + '\\"';
     writeFile(path.join(home, '.gitconfig'),
       '[core]\n\tattributesFile = "' + barras(atributos) + '"\n'
-      + '[diff]\n\texternal = "' + barras(process.execPath) + '" "' + barras(externo) + '"\n'
-      + '[diff "conv"]\n\ttextconv = "' + barras(process.execPath) + '" "' + barras(conv) + '"\n');
+      + '[diff]\n\texternal = "' + quotedCommand(externo) + '"\n'
+      + '[diff "conv"]\n\ttextconv = "' + quotedCommand(conv) + '"\n');
     const gitEnv = Object.assign({}, process.env, { HOME: home, USERPROFILE: home });
     delete gitEnv.GIT_CONFIG_GLOBAL;
 
@@ -462,4 +464,139 @@ test('con diff.external y textconv globales, ni el hook ni el emisor los ejecuta
   }
 });
 
+test('la comparacion arbol-indice conserva filtros clean: usa sus bytes y deniega si el filtro falla', () => {
+  const home = tempDir('sdd-review-clean-home-');
+  const repo = path.join(home, 'repo');
+  const centinela = path.join(home, 'clean-ejecutado');
+  const filtro = path.join(home, 'clean.js');
+  const barras = p => p.split(path.sep).join('/');
+  const gitEnv = Object.assign({}, process.env, {
+    HOME: home,
+    USERPROFILE: home,
+    GIT_CONFIG_GLOBAL: path.join(home, '.gitconfig'),
+    GIT_CONFIG_NOSYSTEM: '1',
+  });
+  const ejecutar = (programa, args, opciones) => {
+    const resultado = spawnSync(programa, args, Object.assign({}, opciones, { env: gitEnv, encoding: 'utf8' }));
+    return { status: resultado.status, stdout: resultado.stdout || '', error: resultado.error };
+  };
+  try {
+    fs.mkdirSync(repo);
+    writeFile(path.join(home, 'atributos'), '* filter=canonico\n');
+    writeFile(filtro,
+      'const fs=require("fs");let texto="";process.stdin.setEncoding("utf8");process.stdin.on("data",dato=>texto+=dato);process.stdin.on("end",()=>{fs.writeFileSync(process.argv[2],"x");process.stdout.write(texto.replace(/RAW\\s*/,"CANONICAL\\n"));});\n');
+    const nodeSinEspacios = process.execPath.replace(/^C:\\Program Files/i, 'C:/PROGRA~1');
+    const ordenFiltro = barras(nodeSinEspacios) + ' "' + barras(filtro) + '" "' + barras(centinela) + '"';
+    writeFile(path.join(home, '.gitconfig'), '[core]\n\tattributesFile = "' + barras(path.join(home, 'atributos')) + '"\n[filter "canonico"]\n\tclean = ' + ordenFiltro + '\n');
+    execFileSync('git', ['init', '-q'], { cwd: repo, env: gitEnv });
+    writeFile(path.join(repo, 'f.txt'), 'RAW\n');
+    execFileSync('git', ['add', 'f.txt'], { cwd: repo, env: gitEnv });
+    assert.strictEqual(execFileSync('git', ['show', ':f.txt'], { cwd: repo, env: gitEnv, encoding: 'utf8' }), 'CANONICAL\n', 'Git guarda los bytes producidos por clean en el indice');
+    fs.rmSync(centinela);
+    fs.writeFileSync(path.join(repo, 'f.txt'), 'RAW \n');
+    assert.strictEqual(arbolDifiereDelIndice({ dir: repo, env: {} }, {}, ejecutar), false, 'los bytes clean iguales no se confunden con un arbol modificado');
+    assert.ok(fs.existsSync(centinela), 'git diff --quiet aplica clean al comparar arbol e indice');
+
+    fs.rmSync(centinela);
+    fs.writeFileSync(path.join(repo, 'f.txt'), 'DISTINTO\n');
+    assert.strictEqual(arbolDifiereDelIndice({ dir: repo, env: {} }, {}, ejecutar), true, 'los bytes clean distintos se detectan como un arbol modificado');
+    assert.ok(fs.existsSync(centinela), 'el filtro clean que termina correctamente participa en la comparacion distinta');
+
+    fs.rmSync(centinela);
+    writeFile(filtro, 'require("fs").writeFileSync(process.argv[2],"x");process.exit(1);\n');
+    assert.strictEqual(arbolDifiereDelIndice({ dir: repo, env: {} }, {}, ejecutar), true, 'el fallo de clean se trata como comparacion insegura y deniega');
+    assert.ok(fs.existsSync(centinela), 'el control negativo ejecuta el filtro clean que falla');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test.after(() => { if (reposCache) fs.rmSync(reposCache.home, { recursive: true, force: true }); });
+
+test('runHook directo: allow y deny conservan la continuidad del proceso', () => {
+  const input = bashPayload('git commit -am x');
+  const deps = {
+    config: CONFIG_ON,
+    env: { SDD_STAGED_DIFF: DIFF },
+    readSignal: () => ({ diff_hash: signal.hashDiff(DIFF) }),
+    spawnSync: () => ({ status: 0, stdout: '' }),
+  };
+  assert.strictEqual(ejecutarReviewGate(input, deps).exit, 0);
+  const deny = ejecutarReviewGate(input, Object.assign({}, deps, { spawnSync: () => ({ status: 1, stdout: '' }) }));
+  assert.strictEqual(deny.exit, 2);
+  assert.match(deny.stderr, /bytes del arbol no revisados/);
+  assert.strictEqual(1 + 1, 2, 'centinela: runHook no terminó el proceso');
+});
+
+test('raíz conservadora: heredoc, printf, CDPATH y wrapper irresoluble mantienen la raíz inicial', () => {
+  const { A, B } = dosRepos();
+  const data = { cwd: A.dir };
+  for (const cmd of [
+    'cd ' + B.dir + ' <<EOF; git commit -m x',
+    'cd ' + B.dir + '; printf x; git commit -m x',
+    'CDPATH=' + B.dir + ' cd ' + B.dir + '; git commit -m x',
+    'git() { command git -C ' + B.dir + ' "$@"; }; git commit -m x',
+  ]) assert.strictEqual(raizDelCommit(cmd, data).dir, A.dir, cmd);
+});
+
+test('raíz positiva: cd, pushd, -C, wrapper y alias en línea resuelven el repositorio del commit', () => {
+  const { A, B } = dosRepos();
+  const data = { cwd: A.dir };
+  const rutaB = B.dir.split(path.sep).join('/');
+  const casos = [
+    'cd "' + rutaB + '" && git commit -m x',
+    'pushd "' + rutaB + '"; git commit -m x',
+    'command git -C "' + rutaB + '" commit -m x',
+    "git -c alias.x='-C \"" + rutaB + "\" commit' x -m x",
+  ];
+  for (const cmd of casos) assert.strictEqual(raizDelCommit(cmd, data).dir, B.dir, cmd);
+});
+
+test('matriz árbol-índice: cada forma que lee el árbol permite bytes iguales y bloquea bytes distintos', () => {
+  const dir = tempDir('sdd-pathspec-');
+  const pathspec = writeFile(path.join(dir, 'paths.txt'), 'tracked.txt\n');
+  const deps = {
+    config: CONFIG_ON,
+    env: { SDD_STAGED_DIFF: DIFF },
+    readSignal: () => ({ diff_hash: signal.hashDiff(DIFF) }),
+  };
+  const formas = [
+    'git commit -am x', 'git commit --all -m x', 'git commit -i tracked.txt -m x',
+    'git commit --only tracked.txt -m x', 'git commit --pathspec-from-file=' + pathspec + ' -m x',
+    'git commit --pathspec-from-file ' + pathspec + ' -m x',
+    'git commit -m x --pathspec-from-file ' + pathspec,
+    'git commit -m x -- tracked.txt', 'git commit tracked.txt',
+    'git commit -m x tracked.txt',
+  ];
+  try {
+    for (const command of formas) {
+      let limpias = 0;
+      const allow = ejecutarReviewGate(Object.assign(bashPayload(command), { cwd: dir }), Object.assign({}, deps, {
+        spawnSync: () => { limpias += 1; return { status: 0, stdout: '' }; },
+      }));
+      assert.strictEqual(allow.exit, 0, command + ': árbol e índice iguales permiten el commit');
+      assert.strictEqual(limpias, 1, command + ': debe comparar árbol e índice una vez');
+      const deny = ejecutarReviewGate(Object.assign(bashPayload(command), { cwd: dir }), Object.assign({}, deps, {
+        spawnSync: () => ({ status: 1, stdout: '' }),
+      }));
+      assert.strictEqual(deny.exit, 2, command + ': bytes no preparados deben bloquear el commit');
+      assert.match(deny.stderr, /bytes del arbol no revisados/);
+    }
+    const error = ejecutarReviewGate(Object.assign(bashPayload('git commit -am x'), { cwd: dir }), Object.assign({}, deps, {
+      spawnSync: () => ({ status: 2, stdout: '' }),
+    }));
+    assert.strictEqual(error.exit, 2, 'un fallo de diff --quiet se deniega');
+    const ilegible = ejecutarReviewGate(Object.assign(bashPayload('git commit --pathspec-from-file=no-existe -m x'), { cwd: dir }), deps);
+    assert.strictEqual(ilegible.exit, 2, 'un pathspec-from-file ilegible se deniega');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('varios commits en una llamada se deniegan de forma conservadora', () => {
+  const result = ejecutarReviewGate(bashPayload('git commit -m x; git commit -m y'), {
+    config: CONFIG_ON,
+    env: { SDD_STAGED_DIFF: DIFF },
+  });
+  assert.strictEqual(result.exit, 2);
+});
