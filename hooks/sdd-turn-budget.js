@@ -67,13 +67,13 @@
 const fs = require('fs');
 const path = require('path');
 const {
-  readPayload, readToolCall, warn, deny, skipRequested, loadConfig, hookEnabled, purgeHookState, runWithFailOpen,
+  readPayload, readToolCall, warnResult: warn, denyResult: deny, skipRequested, loadConfig, hookEnabled, ALLOW, emitResult, purgeHookState, runWithFailOpen,
   sessionStatePath, hookStateDir,
 } = require('./sdd-hook-utils');
 const { esInvocacion } = require('./sdd-git-command');
 
 // Claude Code, Gemini CLI, Antigravity CLI, Codex.
-const SHELL_TOOLS = new Set(['Bash', 'run_shell_command', 'run_command', 'shell']);
+const SHELL_TOOLS = new Set(['Bash', 'PowerShell', 'run_shell_command', 'run_command', 'shell']);
 
 // Firmas estables (ver hooks/gate-signatures.json): distinguen el mensaje que deniega (hilo
 // principal en modo enforce) del que solo avisa (warn_at, modo advisory, o subagente).
@@ -83,8 +83,8 @@ const ADVISORY_FIRMA = '[SDD_TURN_ADVISORY] ';
 const DEFAULTS = { warn_at: 30, block_at: 60, hard_stop_at: 90 };
 const TTL_MS = 24 * 60 * 60 * 1000; // 24h: ficheros de sesiones sin actividad reciente se purgan
 
-function turnsDir() {
-  return hookStateDir(process.env.SDD_TURNS_DIR);
+function turnsDir(env) {
+  return hookStateDir((env || process.env).SDD_TURNS_DIR);
 }
 
 const AGENT_ID_MAX = 100;
@@ -108,16 +108,16 @@ function registryKey(data, sessionId) {
   return sessionId;
 }
 
-function turnsPath(key) {
-  return sessionStatePath(turnsDir(), 'sdd-turns-', key, '.log');
+function turnsPath(key, env) {
+  return sessionStatePath(turnsDir(env), 'sdd-turns-', key, '.log');
 }
 
 // Contador actual de la sesion: numero de lineas del registro. 0 si no hay
 // fichero (nada contado aun) o si el registro es ilegible: un registro que no
 // se puede leer no debe convertirse en un bloqueo espurio.
-function countActions(key) {
+function countActions(key, env) {
   try {
-    const raw = fs.readFileSync(turnsPath(key), 'utf8');
+    const raw = fs.readFileSync(turnsPath(key, env), 'utf8');
     return raw === '' ? 0 : raw.split('\n').filter(Boolean).length;
   } catch {
     return 0;
@@ -127,8 +127,8 @@ function countActions(key) {
 // Anexa una linea por accion: una escritura independiente por llamada, sin leer
 // el estado anterior. Sin leer-modificar-escribir no hay incremento que pisar
 // cuando varias llamadas concurren sobre la misma sesion.
-function appendAction(key) {
-  const file = turnsPath(key);
+function appendAction(key, env) {
+  const file = turnsPath(key, env);
   try {
     fs.appendFileSync(file, '1\n');
   } catch {
@@ -139,18 +139,18 @@ function appendAction(key) {
   }
   // Purga oportunista: retira registros de sesiones anteriores sin actividad
   // en el último TTL. Ver purgeHookState en sdd-hook-utils.js.
-  purgeHookState(turnsDir(), 'sdd-turns-', file, TTL_MS);
+  purgeHookState(turnsDir(env), 'sdd-turns-', file, TTL_MS);
 }
 
 // El commit es el checkpoint que el budget vigila: trunca el registro a vacio.
-function resetActions(key) {
-  const file = turnsPath(key);
+function resetActions(key, env) {
+  const file = turnsPath(key, env);
   try {
     fs.writeFileSync(file, '');
   } catch {
     return;
   }
-  purgeHookState(turnsDir(), 'sdd-turns-', file, TTL_MS);
+  purgeHookState(turnsDir(env), 'sdd-turns-', file, TTL_MS);
 }
 
 // Umbral configurado, o su default. <= 0 desactiva ese tier.
@@ -206,16 +206,14 @@ function decidir(count, enforce, subagent, mensajeAdvisory, mensajeEnforce, call
   return deny(BLOCK_FIRMA + mensajeEnforce(count), call, code);
 }
 
-async function main() {
-  const data = await readPayload();
-  if (!data) process.exit(0);
-
-  const cfg = loadConfig(path.join(__dirname, 'config.json')).sdd_turn_budget || {};
-  if (!hookEnabled('sdd_turn_budget', cfg)) process.exit(0);
-  if (skipRequested()) process.exit(0);
+function runHook(data, deps = {}) {
+  const env = deps.env || process.env;
+  const config = deps.config || loadConfig(path.join(__dirname, 'config.json'));
+  const cfg = config.sdd_turn_budget || {};
+  if (!data || !hookEnabled('sdd_turn_budget', cfg) || skipRequested(env)) return ALLOW;
 
   const sessionId = data.session_id || data.sessionId || '';
-  if (!sessionId) process.exit(0);
+  if (!sessionId) return ALLOW;
 
   const call = readToolCall(data);
   const subagent = isSubagentCall(data);
@@ -231,15 +229,15 @@ async function main() {
   // a una mencion textual) se decide con el criterio compartido.
   const cmd = String(call.input.command || call.input.CommandLine || '');
   if (SHELL_TOOLS.has(call.name) && esInvocacion(cmd, 'git', ['commit'])) {
-    resetActions(key);
+    resetActions(key, env);
     // El commit del hilo principal es el checkpoint de lo que hicieron los
     // subagentes sin `agent_id`: su registro común también vuelve a cero.
-    if (!subagent) resetActions(sessionId + '-sub');
-    process.exit(0);
+    if (!subagent) resetActions(sessionId + '-sub', env);
+    return ALLOW;
   }
 
-  appendAction(key);
-  const count = countActions(key);
+  appendAction(key, env);
+  const count = countActions(key, env);
 
   const exento = SHELL_TOOLS.has(call.name) && esInvocacion(cmd, 'git', ['add']);
   const enforce = cfg.mode === 'enforce' && !exento;
@@ -261,8 +259,15 @@ async function main() {
     return warn(ADVISORY_FIRMA + mensaje, call, 'TURN_BUDGET_WARN');
   }
 
-  process.exit(0);
+  return ALLOW;
 }
+
+async function main() {
+  const data = await readPayload();
+  emitResult(runHook(data));
+}
+
+module.exports = { runHook };
 
 // El fallo interno sale por runWithFailOpen (exit 0 + aviso firmado), nunca como veredicto.
 if (require.main === module) {

@@ -51,7 +51,7 @@ const { DEFAULT_TTL_MS, readSignal, hashDiff } = require('./sdd-review-signal');
 const { invocacionesDe, tokenizar, segmentar } = require('./sdd-git-command');
 const { toNativePath } = require('./sdd-plan-state');
 
-const SHELL_TOOLS = new Set(['Bash', 'run_command', 'shell']);
+const SHELL_TOOLS = new Set(['Bash', 'PowerShell', 'run_command', 'shell']);
 
 // El gate se aplica si el comando invoca de verdad `git commit` o `git merge` (opciones
 // globales incluidas), no si el texto contiene la frase. Criterio compartido: ver

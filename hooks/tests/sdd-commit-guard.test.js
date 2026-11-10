@@ -19,6 +19,7 @@ const HOOK = 'sdd-commit-guard.js';
 const COAUTORIA = 'git commit -m "feat: algo" -m "Co-Authored-By: Claude <noreply@anthropic.com>"';
 
 const bash = command => ({ tool_name: 'Bash', tool_input: { command } });
+const powerShell = command => ({ tool_name: 'PowerShell', tool_input: { command } });
 const agy = command => ({ toolCall: { name: 'run_command', args: { CommandLine: command } } });
 
 test('git commit --no-verify: deny', () => {
@@ -27,6 +28,16 @@ test('git commit --no-verify: deny', () => {
   assert.strictEqual(r.decision.decision, 'deny');
   assert.strictEqual(r.code, 2);
   assert.match(r.decision.reason, /--no-verify/);
+});
+
+test('PowerShell git commit --no-verify: deny y el escape lo degrada a aviso', () => {
+  const payload = powerShell('git commit --no-verify -m "fix: algo"');
+  const blocked = runHook(HOOK, payload);
+  assert.strictEqual(blocked.code, 2);
+  assert.strictEqual(blocked.decision.decision, 'deny');
+  const escaped = runHook(HOOK, payload, { SDD_GUARD_SKIP: '1' });
+  assert.strictEqual(escaped.code, 0);
+  assert.strictEqual(escaped.decision.decision, 'warn');
 });
 
 test('git commit -n (alias corto): deny', () => {

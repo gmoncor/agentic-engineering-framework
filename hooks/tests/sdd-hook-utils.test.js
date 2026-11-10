@@ -17,11 +17,39 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {
-  readPayload, warn, deny, loadConfig, purgeExpired, purgeLegacyOnce, purgeHookState, hookStateDir, stateDirSafe,
+  readPayload, warn, deny, warnResult, denyResult, ALLOW, loadConfig, purgeExpired, purgeLegacyOnce, purgeHookState, hookStateDir, stateDirSafe,
   sessionStatePath,
 } = require('../sdd-hook-utils');
 
 const originalStdin = process.stdin;
+
+test('constructores de resultado conservan los bytes de warn y deny sin terminar el proceso', () => {
+  const call = { backend: 'claude', stdoutOnly: false };
+  const warning = warnResult('motivo', call, 'CODE');
+  const denial = denyResult('motivo', call, 'CODE');
+  assert.strictEqual(warning.exit, 0);
+  assert.match(warning.stdout, /additionalContext/);
+  assert.strictEqual(denial.exit, 2);
+  assert.match(denial.stdout, /permissionDecision/);
+  assert.deepStrictEqual(ALLOW, { exit: 0, stdout: '', stderr: '' });
+});
+
+test('additionalContext solo se añade al payload Claude', () => {
+  for (const call of [
+    { backend: 'other', stdoutOnly: false },
+    { backend: 'antigravity', stdoutOnly: true },
+    { backend: 'codex', stdoutOnly: false },
+  ]) {
+    const payload = JSON.parse(warnResult('motivo', call).stdout);
+    assert.strictEqual(payload.hookSpecificOutput, undefined);
+  }
+});
+
+test('Claude no recibe decision warn inválida y conserva additionalContext', () => {
+  const payload = JSON.parse(warnResult('aviso', { backend: 'claude', stdoutOnly: false }).stdout);
+  assert.strictEqual(payload.decision, undefined);
+  assert.strictEqual(payload.hookSpecificOutput.additionalContext, 'aviso');
+});
 
 // warn()/deny() escriben a stdout con fs.writeSync y terminan con process.exit;
 // se interceptan ambos para capturar el payload emitido sin matar el proceso

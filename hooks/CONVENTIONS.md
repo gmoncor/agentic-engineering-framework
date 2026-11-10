@@ -27,10 +27,11 @@ de "el hook nunca corrio", y un `throw` sin capturar produce ese mismo
 excepcion sin envolverla en manejo de errores viola el contrato igual que si
 llamara a `process.exit(1)` directamente.
 
-Los avisos (`exit 0` con contexto) usan **`stderr`**, nunca `stdout`, para el
-mensaje legible: `stdout` queda reservado para el payload estructurado que
-algunos runtimes consumen como parte de su propio protocolo de decision, y no
-sustituye al mensaje humano.
+Los avisos (`exit 0` con contexto) usan **`stderr`** para el mensaje legible.
+En Claude Code, además, el payload estructurado lleva
+`hookSpecificOutput.additionalContext`: es el canal que llega al contexto del
+modelo con exit 0. En los demás backends `stdout` conserva su protocolo de
+decisión; no se les añade ese campo.
 
 ## Degradacion segura
 

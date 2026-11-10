@@ -60,18 +60,18 @@ const LECTURAS = {
   },
   'sdd-turn-budget.js': {
     campos: ['tool_name', 'session_id'],
-    porHerramienta: { Bash: ['tool_input.command'] },
+    porHerramienta: { Bash: ['tool_input.command'], PowerShell: ['tool_input.command'] },
     subagente: ['agent_id', 'agent_type'],
     // is_sidechain: marca de subagente alternativa; el CLI capturado no la envía.
     noLlegan: ['is_sidechain'],
   },
   'sdd-commit-guard.js': {
     campos: ['tool_name'],
-    porHerramienta: { Bash: ['tool_input.command'] },
+    porHerramienta: { Bash: ['tool_input.command'], PowerShell: ['tool_input.command'] },
   },
   'sdd-review-gate.js': {
     campos: ['tool_name', 'session_id', 'cwd'],
-    porHerramienta: { Bash: ['tool_input.command'] },
+    porHerramienta: { Bash: ['tool_input.command'], PowerShell: ['tool_input.command'] },
   },
 };
 

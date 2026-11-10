@@ -192,6 +192,7 @@ test('gates_on refleja los hooks encendidos en hooks/config.json, ordenados', ()
     sdd_session_start: { enabled: true },
     sdd_turn_budget: { enabled: true },
     sdd_commit_guard: { enabled: true },
+    sdd_pipeline_guard: { enabled: true },
     sdd_review_gate: { enabled: false },
     _nota: { enabled: true },
   });
@@ -200,19 +201,20 @@ test('gates_on refleja los hooks encendidos en hooks/config.json, ordenados', ()
   const [linea] = leerLineas(e.provenanceFile);
   assert.deepStrictEqual(
     linea.gates_on,
-    ['sdd_commit_guard', 'sdd_read_before_edit', 'sdd_session_start', 'sdd_turn_budget'],
+    ['sdd_commit_guard', 'sdd_pipeline_guard', 'sdd_read_before_edit', 'sdd_session_start', 'sdd_turn_budget'],
   );
 });
 
 // Coherencia entre `gates_on` y lo que cada hook hace de verdad con la misma configuración. Cada
 // hook se ejecuta una vez con una entrada que, encendido, produce un efecto observable (una
 // decisión por stdout o la línea de provenance); apagado, sale en silencio.
-const HOOKS_CON_INTERRUPTOR = ['sdd_read_before_edit', 'sdd_review_gate', 'sdd_session_start', 'sdd_turn_budget'];
+const HOOKS_CON_INTERRUPTOR = ['sdd_commit_guard', 'sdd_pipeline_guard', 'sdd_read_before_edit', 'sdd_review_gate', 'sdd_session_start', 'sdd_turn_budget'];
 
 function hooksQueActuan(config) {
   const dir = tempDir('sdd-gates-coherencia-');
   const configFile = writeFile(path.join(dir, 'config.json'), JSON.stringify(config));
   const existente = writeFile(path.join(dir, 'existente.js'), 'contenido previo');
+  fs.mkdirSync(path.join(dir, 'ai_docs', 'tasks'), { recursive: true });
   const provenanceFile = path.join(dir, 'audits', 'provenance.jsonl');
   const env = {
     SDD_CONFIG_PATH: configFile,
@@ -225,6 +227,12 @@ function hooksQueActuan(config) {
   const sesion = 'sesion-coherencia';
 
   const actuan = [];
+  const pipeline = runHook('sdd-pipeline-guard.js',
+    { tool_name: 'Write', tool_input: { file_path: existente }, cwd: dir }, env);
+  if (pipeline.decision) actuan.push('sdd_pipeline_guard');
+  const commit = runHook('sdd-commit-guard.js',
+    { tool_name: 'Bash', tool_input: { command: 'git commit --no-verify -m x' } }, env);
+  if (commit.decision) actuan.push('sdd_commit_guard');
   const lectura = runHook('sdd-read-before-edit.js',
     { tool_name: 'Write', tool_input: { file_path: existente }, session_id: sesion, cwd: dir }, env);
   if (lectura.decision) actuan.push('sdd_read_before_edit');
@@ -240,7 +248,7 @@ function hooksQueActuan(config) {
     { tool_name: 'Read', tool_input: { file_path: existente }, session_id: sesion }, env);
   if (presupuesto.decision) actuan.push('sdd_turn_budget');
 
-  return { actuan, gates: leerLineas(provenanceFile).map((l) => l.gates_on)[0] };
+  return { actuan: actuan.sort(), gates: leerLineas(provenanceFile).map((l) => l.gates_on)[0] };
 }
 
 // Umbrales que hacen visible el presupuesto en la primera acción; no tocan `enabled`.
@@ -254,13 +262,15 @@ test('gates_on coincide con los hooks que actúan: secciones sin enabled', () =>
     sdd_turn_budget: Object.assign({ mode: 'enforce' }, UMBRALES),
   });
 
-  assert.deepStrictEqual(actuan, ['sdd_read_before_edit', 'sdd_session_start', 'sdd_turn_budget']);
+  assert.deepStrictEqual(actuan, ['sdd_commit_guard', 'sdd_pipeline_guard', 'sdd_read_before_edit', 'sdd_session_start', 'sdd_turn_budget']);
   assert.deepStrictEqual(gates.filter((g) => HOOKS_CON_INTERRUPTOR.includes(g)), actuan);
 });
 
 test('gates_on coincide con los hooks que actúan: enabled false apaga todos', () => {
   const config = {
     sdd_read_before_edit: { enabled: false, mode: 'advisory' },
+    sdd_pipeline_guard: { enabled: false },
+    sdd_commit_guard: { enabled: false },
     sdd_review_gate: { enabled: false },
     sdd_session_start: { enabled: false },
     sdd_turn_budget: Object.assign({ enabled: false }, UMBRALES),
@@ -277,7 +287,7 @@ test('gates_on coincide con los hooks que actúan: review-gate sin sección qued
   const { actuan, gates } = hooksQueActuan({ sdd_turn_budget: UMBRALES });
 
   assert.ok(!actuan.includes('sdd_review_gate'), 'review-gate sin sección no debe actuar');
-  assert.deepStrictEqual(actuan, ['sdd_read_before_edit', 'sdd_session_start', 'sdd_turn_budget']);
+  assert.deepStrictEqual(actuan, ['sdd_commit_guard', 'sdd_pipeline_guard', 'sdd_read_before_edit', 'sdd_session_start', 'sdd_turn_budget']);
   assert.deepStrictEqual(gates, actuan);
 });
 

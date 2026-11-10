@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 
+const path = require('path');
+
 /**
  * SDD Pipeline Guard — hook previo a la ejecucion de una herramienta de escritura.
  *
@@ -24,7 +26,7 @@
  *   - Codex:           ver sdd-pipeline-guard-codex.js (el payload de apply_patch es distinto)
  */
 
-const { readPayload, readToolCall, skipRequested, warn, deny, runWithFailOpen } = require('./sdd-hook-utils');
+const { readPayload, readToolCall, skipRequested, loadConfig, hookApagado, ALLOW, warnResult: warn, denyResult: deny, emitResult, runWithFailOpen } = require('./sdd-hook-utils');
 const { isInsideAiDocs, findTasksDir, denialReason, resolveRepoPath } = require('./sdd-plan-state');
 
 const WRITE_TOOLS = new Set([
@@ -54,35 +56,43 @@ function fueraDeRepo(filePath) {
     + 'Declara la ruta desde la raiz del proyecto.';
 }
 
-async function main() {
-  const data = await readPayload();
-  if (!data) process.exit(0);
+function runHook(data, deps = {}) {
+  const env = deps.env || process.env;
+  const config = deps.config || loadConfig(path.join(__dirname, 'config.json'));
+  if (hookApagado('sdd-pipeline-guard', config) || !data) return ALLOW;
 
   const call = readToolCall(data);
-  if (!WRITE_TOOLS.has(call.name)) process.exit(0);
+  if (!WRITE_TOOLS.has(call.name)) return ALLOW;
 
   const filePath = call.input.file_path || call.input.path || call.input.TargetFile
     || call.input.notebook_path || '';
   // Una escritura sin ruta legible no se puede contrastar con el plan. Se declara el hueco en vez
   // de dejarla pasar en silencio, que es lo que convertiria el guardarrail en un adorno.
-  if (!filePath) warn(NO_PATH_REASON, call);
+  if (!filePath) return warn(NO_PATH_REASON, call);
 
   // La ruta se ancla a la raiz del proyecto, no al directorio desde el que corre este proceso:
   // ver resolveRepoPath en sdd-plan-state.js.
   const resolved = resolveRepoPath(filePath, data.cwd);
-  if (!resolved) warn(fueraDeRepo(filePath), call);
-  if (isInsideAiDocs(resolved)) process.exit(0);
+  if (!resolved) return warn(fueraDeRepo(filePath), call);
+  if (isInsideAiDocs(resolved)) return ALLOW;
 
   // Proyecto sin pipeline SDD: nada que enforcar.
   const tasksDir = findTasksDir(resolved);
-  if (!tasksDir) process.exit(0);
+  if (!tasksDir) return ALLOW;
 
   const reason = denialReason(tasksDir, resolved);
-  if (!reason) process.exit(0);
+  if (!reason) return ALLOW;
 
-  if (skipRequested()) warn(ADVISORY_FIRMA + reason + ' [SDD_GUARD_SKIP=1: se permite la escritura]', call);
-  deny(BLOCK_FIRMA + reason, call);
+  if (skipRequested(env)) return warn(ADVISORY_FIRMA + reason + ' [SDD_GUARD_SKIP=1: se permite la escritura]', call);
+  return deny(BLOCK_FIRMA + reason, call);
 }
+
+async function main() {
+  const data = await readPayload();
+  emitResult(runHook(data));
+}
+
+module.exports = { runHook };
 
 // El fallo interno sale por runWithFailOpen (exit 0 + aviso firmado), nunca como veredicto.
 if (require.main === module) {

@@ -18,6 +18,8 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { runHook, tempDir, writeFile, HOOKS_DIR } = require('./helpers');
+const { runHook: runHookInProcess } = require('../sdd-turn-budget');
+const CLAUDE_FIXTURES = require('../../tests/fixtures/payloads_claude.json');
 
 const HOOK = 'sdd-turn-budget.js';
 const SESSION = 'sesion-turnos-1';
@@ -69,6 +71,34 @@ function entorno(config) {
 
 const accion = (session) => ({ tool_name: 'Read', tool_input: { file_path: '/x' }, session_id: session });
 const commit = (session, extra) => ({ tool_name: 'Bash', tool_input: { command: 'git commit' + (extra || '') }, session_id: session });
+const powerShellCommit = (session) => ({ tool_name: 'PowerShell', tool_input: { command: 'git commit -m x' }, session_id: session });
+
+test('runHook respeta enabled false y PowerShell reinicia el contador inyectado', () => {
+  const dir = tempDir('sdd-turns-result-');
+  const env = { SDD_TURNS_DIR: dir };
+  const config = { sdd_turn_budget: { enabled: true, mode: 'advisory', warn_at: 1, block_at: 2, hard_stop_at: 3 } };
+  assert.strictEqual(runHookInProcess(accion(SESSION), { env, config }).exit, 0);
+  assert.strictEqual(runHookInProcess(powerShellCommit(SESSION), { env, config }).stdout, '');
+  assert.strictEqual(runHookInProcess(accion(SESSION), { env, config }).exit, 0);
+  const off = runHookInProcess(accion(SESSION), { env, config: { sdd_turn_budget: { enabled: false } } });
+  assert.strictEqual(off.stdout, '');
+});
+
+test('runHook y CLI emiten los mismos bytes; el payload real PowerShell reinicia', () => {
+  const fixture = CLAUDE_FIXTURES.payloads.find(({ id }) => id === 'PreToolUse-PowerShell').payload;
+  const makeEnv = () => {
+    const e = entorno({ sdd_turn_budget: { enabled: true, mode: 'advisory', warn_at: 1, block_at: 2, hard_stop_at: 3 } });
+    return { config: JSON.parse(fs.readFileSync(path.join(e.dir, 'config.json'), 'utf8')), env: e.env };
+  };
+  const a = makeEnv();
+  const payload = Object.assign({}, fixture, { session_id: 'turnos-diferencial' });
+  const inProcess = runHookInProcess(payload, a);
+  const b = makeEnv();
+  const cli = runHook(HOOK, payload, b.env);
+  assert.deepStrictEqual({ exit: cli.code, stdout: cli.stdout, stderr: cli.stderr }, inProcess);
+  runHookInProcess(accion('turnos-power'), a);
+  assert.strictEqual(runHookInProcess(payload, a).stdout, '');
+});
 const accionSubagente = (session) => ({
   tool_name: 'Read',
   tool_input: { file_path: '/x' },

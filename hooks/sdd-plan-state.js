@@ -182,18 +182,24 @@ function findTasksDir(filePath) {
  * Sin la comprobacion del archivo declarado el guard seria inutil: bastaria una spec aprobada para
  * dejar pasar cualquier escritura durante el resto de la vida del proyecto.
  */
-function denialReason(tasksDir, resolved) {
+function denialReason(tasksDir, resolved, platform) {
   if (findApprovedSpecs(tasksDir).length === 0) {
     return 'SDD: no hay ninguna spec con Estado: APROBADA en ai_docs/tasks/. '
       + 'Planifica y aprueba la spec antes de escribir codigo.';
   }
 
-  if (findActiveTaskFiles(tasksDir).length === 0) {
+  const active = findActiveTaskFiles(tasksDir);
+  if (active.length === 0) {
     return 'SDD: hay spec aprobada pero ninguna task derivada de ella en ai_docs/tasks/. '
       + 'Deriva las tasks (cada una debe citar su spec madre) antes de escribir codigo.';
   }
 
-  if (findDeclaredFiles(tasksDir).has(resolved)) return null;
+  const enProgreso = active.filter(p => /^EN_PROGRESO\b/i.test(estadoVigente(readText(p)) || ''));
+  if (enProgreso.length > 1) {
+    return 'SDD: hay varias tasks EN_PROGRESO (' + enProgreso.map(taskPath => path.basename(taskPath)).join(', ')
+      + '). Devuelve a PENDIENTE la que no sea de esta sesion o trabaja en otro worktree.';
+  }
+  if (findDeclaredFiles(tasksDir, platform, active).has(pathKey(resolved, platform))) return null;
 
   return 'SDD: el archivo ' + resolved + ' no esta declarado en ninguna task de la spec activa. '
     + 'Puede ser porque ninguna task lo declara en su tabla, o porque la task que lo declara no '
@@ -235,7 +241,7 @@ function findApprovedSpecs(tasksDir) {
   return listFiles(tasksDir)
     .filter(f => f.startsWith('spec_') && f.endsWith('.md'))
     .map(f => path.join(tasksDir, f))
-    .filter(p => estadoVigente(readText(p)) === 'APROBADA');
+    .filter(p => /^APROBADA\b/i.test(estadoVigente(readText(p)) || ''));
 }
 
 /** Tasks NNN_*.md. Retorna paths absolutos. */
@@ -286,10 +292,13 @@ function findActiveTaskFiles(tasksDir) {
 
   const patrones = identificadores.map(id => new RegExp('\\b' + escapeRegex(id) + '\\b'));
 
-  return findTaskFiles(tasksDir).filter(taskPath => {
+  const linked = findTaskFiles(tasksDir).filter(taskPath => {
     const citas = headerFieldValues(readText(taskPath), 'Spec\\s+madre').join('\n').toLowerCase();
     return citas !== '' && patrones.some(patron => patron.test(citas));
   });
+  const nonTerminal = linked.filter(taskPath => !/^(COMPLETADA|CANCELADA)\b/i.test(estadoVigente(readText(taskPath)) || ''));
+  const inProgress = nonTerminal.filter(taskPath => /^EN_PROGRESO\b/i.test(estadoVigente(readText(taskPath)) || ''));
+  return inProgress.length === 1 ? inProgress : nonTerminal;
 }
 
 /**
@@ -297,13 +306,18 @@ function findActiveTaskFiles(tasksDir) {
  * relativos a la raiz del proyecto (el padre de ai_docs/): se resuelven contra ella para que
  * "src/foo.js" y "./src/foo.js" comparen igual.
  */
-function findDeclaredFiles(tasksDir) {
+function pathKey(filePath, platform = process.platform) {
+  const resolved = path.resolve(toNativePath(filePath));
+  return platform === 'win32' || platform === 'darwin' ? resolved.toLowerCase() : resolved;
+}
+
+function findDeclaredFiles(tasksDir, platform, activeTasks) {
   const projectRoot = path.resolve(tasksDir, '..', '..');
   const declared = new Set();
 
-  for (const taskPath of findActiveTaskFiles(tasksDir)) {
+  for (const taskPath of activeTasks || findActiveTaskFiles(tasksDir)) {
     for (const rel of parseAffectedFiles(readText(taskPath))) {
-      declared.add(path.resolve(projectRoot, toNativePath(rel)));
+      declared.add(pathKey(path.resolve(projectRoot, toNativePath(rel)), platform));
     }
   }
   return declared;
@@ -403,5 +417,6 @@ module.exports = {
   findApprovedSpecs,
   findTaskFiles,
   findActiveTaskFiles,
+  pathKey,
   findDeclaredFiles,
 };

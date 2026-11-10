@@ -4,6 +4,14 @@
     "enabled": false,
     "ttl_hours": 4
   },
+  "_comment_pipeline_guard": "sdd-pipeline-guard bloquea escrituras fuera de la task activa. enabled controla también la variante de Codex; sin la sección, el valor por defecto es true.",
+  "sdd_pipeline_guard": {
+    "enabled": true
+  },
+  "_comment_commit_guard": "sdd-commit-guard bloquea --no-verify y avisa de commits mal formados. enabled controla también la variante de Codex; sin la sección, el valor por defecto es true.",
+  "sdd_commit_guard": {
+    "enabled": true
+  },
   "_comment_read_before_edit": "sdd-read-before-edit AVISA (nunca bloquea) al escribir un archivo existente sin haberlo leido antes en la sesion. enabled controla on/off (default true). mode admite solo 'advisory': cualquier otro valor lo silencia — el hook no bloquea por diseno.",
   "sdd_read_before_edit": {
     "enabled": true,

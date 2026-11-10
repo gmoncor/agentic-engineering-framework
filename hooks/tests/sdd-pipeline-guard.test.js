@@ -9,9 +9,52 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { runHook, tempDir, writeFile } = require('./helpers');
-const { denialReason } = require('../sdd-plan-state');
+const { denialReason, pathKey } = require('../sdd-plan-state');
+const { runHook: runHookInProcess } = require('../sdd-pipeline-guard');
+const CLAUDE_FIXTURES = require('../../tests/fixtures/payloads_claude.json');
 
 const HOOK = 'sdd-pipeline-guard.js';
+
+test('runHook devuelve deny y allow sin emitir ni terminar el proceso', () => {
+  const root = tempDir('sdd-pipeline-result-');
+  const denied = runHookInProcess({ tool_name: 'Write', tool_input: { file_path: path.join(root, 'src', 'x.js') } });
+  assert.strictEqual(denied.exit, 0, 'sin pipeline instalado se permite');
+  const disabled = runHookInProcess({ tool_name: 'Write', tool_input: { file_path: path.join(root, 'src', 'x.js') } }, {
+    config: { sdd_pipeline_guard: { enabled: false } },
+  });
+  assert.strictEqual(disabled.exit, 0);
+  assert.strictEqual(disabled.stdout, '');
+});
+
+test('runHook y CLI emiten exactamente los mismos bytes para deny Claude', () => {
+  const root = proyecto({ 'spec_demo.md': SPEC_APROBADA }, { '001_demo.md': TASK_CON_ARCHIVOS });
+  const captured = CLAUDE_FIXTURES.payloads.find(({ id }) => id === 'PreToolUse-Edit').payload;
+  const payload = JSON.parse(JSON.stringify(captured));
+  payload.cwd = root;
+  payload.tool_input.file_path = path.join(root, 'src', 'no-declarado.js');
+  const result = runHookInProcess(payload);
+  const cli = runHook(HOOK, payload);
+  assert.deepStrictEqual({ exit: cli.code, stdout: cli.stdout, stderr: cli.stderr }, result);
+  assert.strictEqual(result.exit, 2);
+});
+
+test('solo la task EN_PROGRESO autoriza y las rutas Windows comparan sin mayusculas', () => {
+  const root = tempDir('sdd-pipeline-active-');
+  const tasks = path.join(root, 'ai_docs', 'tasks');
+  writeFile(path.join(tasks, 'spec_demo.md'), '# Spec: Demo\n\n**Estado:** APROBADA (2026-10-01)\n');
+  const task = (state, file) => [
+    '# Task', '', '**Estado:** ' + state, 'Spec madre: spec_demo.md', '', '## Archivos afectados', '',
+    '| Archivo | Accion | Descripcion |', '|---|---|---|', '| `' + file + '` | MODIFICAR | x |',
+  ].join('\n');
+  writeFile(path.join(tasks, '001_activa.md'), task('EN_PROGRESO', 'Src/Foo.js'));
+  writeFile(path.join(tasks, '002_pendiente.md'), task('PENDIENTE', 'src/otra.js'));
+  assert.strictEqual(denialReason(tasks, path.join(root, 'src', 'foo.js'), 'win32'), null);
+  assert.notStrictEqual(denialReason(tasks, path.join(root, 'src', 'otra.js'), 'win32'), null);
+  writeFile(path.join(tasks, '003_activa.md'), task('EN_PROGRESO', 'src/tres.js'));
+  assert.match(denialReason(tasks, path.join(root, 'src', 'foo.js')), /varias tasks EN_PROGRESO/);
+  assert.strictEqual(pathKey(path.join(root, 'Src', 'Foo.js'), 'win32'), pathKey(path.join(root, 'src', 'foo.js'), 'win32'));
+  assert.notStrictEqual(pathKey(path.join(root, 'Src', 'Foo.js'), 'linux'), pathKey(path.join(root, 'src', 'foo.js'), 'linux'));
+});
 
 const SPEC_APROBADA = [
   '# Spec: Autenticacion',

@@ -22,7 +22,7 @@
       "antigravity": { "matcher": "write_to_file|replace_file_content|multi_replace_file_content|create_file", "hook_file": "sdd-pipeline-guard", "wired": true }
     },
     "commit-guard": {
-      "claude": { "matcher": "Bash", "hook_file": "sdd-commit-guard", "wired": true },
+      "claude": { "matcher": "Bash|PowerShell", "hook_file": "sdd-commit-guard", "wired": true },
       "gemini": { "matcher": "run_shell_command", "hook_file": "sdd-commit-guard", "wired": true },
       "codex": { "matcher": "Bash", "hook_file": "sdd-commit-guard-codex", "wired": true },
       "antigravity": { "matcher": "run_command", "hook_file": "sdd-commit-guard", "wired": true }
@@ -40,7 +40,7 @@
       "antigravity": { "matcher": "read_file|view_file|write_to_file|replace_file_content|multi_replace_file_content|create_file|run_command", "hook_file": "sdd-turn-budget", "wired": true }
     },
     "review-gate": {
-      "claude": { "matcher": "Bash", "hook_file": "sdd-review-gate", "wired": true },
+      "claude": { "matcher": "Bash|PowerShell", "hook_file": "sdd-review-gate", "wired": true },
       "gemini": { "matcher": null, "hook_file": "sdd-review-gate", "wired": false },
       "codex": { "matcher": null, "hook_file": "sdd-review-gate", "wired": false },
       "antigravity": { "matcher": null, "hook_file": "sdd-review-gate", "wired": false }
