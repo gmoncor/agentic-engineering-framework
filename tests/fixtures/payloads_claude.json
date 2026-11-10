@@ -102,6 +102,28 @@
       }
     },
     {
+      "id": "PreToolUse-PowerShell",
+      "subagente": false,
+      "procedencia": "captura observada de PreToolUse con claude --print; git commit --dry-run en un repositorio aislado, sin crear commits; identificadores y rutas anonimizados",
+      "cli_version": "2.1.322",
+      "capturado": "2026-11-10",
+      "payload": {
+        "session_id": "00000000-0000-4000-8000-000000000001",
+        "transcript_path": "/usuario/.claude/projects/-proyecto/00000000-0000-4000-8000-000000000001.jsonl",
+        "cwd": "/proyecto",
+        "prompt_id": "00000000-0000-4000-8000-000000000002",
+        "permission_mode": "dontAsk",
+        "effort": { "level": "medium" },
+        "hook_event_name": "PreToolUse",
+        "tool_name": "PowerShell",
+        "tool_input": {
+          "command": "git commit --dry-run",
+          "description": "Simulate a git commit without creating it"
+        },
+        "tool_use_id": "toolu_000000000000000000000009"
+      }
+    },
+    {
       "id": "PreToolUse-Agent",
       "subagente": false,
       "payload": {

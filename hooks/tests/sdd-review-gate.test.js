@@ -52,6 +52,12 @@ function commit(mensaje, sessionId) {
   return bashPayload('git commit -m "' + mensaje + '"', sessionId);
 }
 
+function powerShellCommit(mensaje, sessionId) {
+  const payload = { tool_name: 'PowerShell', tool_input: { command: 'git commit -m "' + mensaje + '"' } };
+  if (sessionId !== null) payload.session_id = sessionId === undefined ? SESSION : sessionId;
+  return payload;
+}
+
 // Emite la senal igual que el flujo de implementacion: mismo modulo, misma funcion.
 // El hash es el del diff que la revision aprobo.
 function emitirSenal(env, diffRevisado, edadMs) {
@@ -86,6 +92,13 @@ test('sin senal, con diff staged: DENIEGA el commit', () => {
   assert.strictEqual(r.code, 2);
   assert.strictEqual(r.decision.hookSpecificOutput.permissionDecision, 'deny');
   assert.match(r.decision.reason, /no consta revisado/);
+});
+
+test('PowerShell sin senal con diff staged: DENIEGA igual que Bash', () => {
+  const env = entorno(CONFIG_ON, { SDD_STAGED_DIFF: DIFF });
+  const r = runHook(HOOK, powerShellCommit('feat: entrega PowerShell'), env);
+  assert.strictEqual(r.code, 2);
+  assert.strictEqual(r.decision.decision, 'deny');
 });
 
 test('sin senal: el mensaje de bloqueo nombra /implementar-spec como via que emite la senal', () => {

@@ -124,6 +124,8 @@ function loadConfig(defaultFile) {
  * sin `enabled` está encendida.
  */
 const HOOK_ENABLED_DEFAULTS = Object.freeze({
+  sdd_pipeline_guard: true,
+  sdd_commit_guard: true,
   sdd_read_before_edit: true,
   sdd_review_gate: false,
   sdd_session_start: true,
@@ -141,6 +143,18 @@ function hookEnabled(name, cfg) {
   return HOOK_ENABLED_DEFAULTS[name] === true;
 }
 
+const HOOK_CONFIG_KEY = Object.freeze({
+  'sdd-pipeline-guard': 'sdd_pipeline_guard',
+  'sdd-pipeline-guard-codex': 'sdd_pipeline_guard',
+  'sdd-commit-guard': 'sdd_commit_guard',
+  'sdd-commit-guard-codex': 'sdd_commit_guard',
+});
+
+function hookApagado(hookName, config) {
+  const key = HOOK_CONFIG_KEY[hookName];
+  return !!key && !hookEnabled(key, config && config[key]);
+}
+
 /**
  * Normaliza la llamada a herramienta de las CLIs soportadas a una forma unica.
  *
@@ -154,22 +168,25 @@ function hookEnabled(name, cfg) {
 function readToolCall(data) {
   const call = data && data.toolCall;
   if (call && typeof call === 'object') {
-    return { name: call.name || '', input: call.args || {}, stdoutOnly: true };
+    return { name: call.name || '', input: call.args || {}, stdoutOnly: true, backend: 'antigravity' };
   }
   return {
     name: (data && data.tool_name) || '',
     input: (data && data.tool_input) || {},
     stdoutOnly: false,
+    backend: data && data.hook_event_name === 'PreToolUse' && data.tool_use_id ? 'claude' : 'other',
   };
 }
 
 // stdout/stderr hacia un pipe son asincronos: escribir con fs.writeSync evita
 // perder la decision cuando el proceso termina inmediatamente despues.
-function emit(payload, reason, code) {
-  fs.writeSync(1, JSON.stringify(payload) + '\n');
-  fs.writeSync(2, '[SDD] ' + reason + '\n');
-  process.exit(code);
+function emitResult(result) {
+  if (result.stdout) fs.writeSync(1, result.stdout);
+  if (result.stderr) fs.writeSync(2, result.stderr);
+  process.exit(result.exit);
 }
+
+const ALLOW = Object.freeze({ exit: 0, stdout: '', stderr: '' });
 
 /**
  * Deja pasar la accion explicando por que. `call` es lo que devuelve readToolCall().
@@ -181,15 +198,20 @@ function emit(payload, reason, code) {
  * automatizado distinga motivos dentro del mismo hook sin parsear el texto de `reason`.
  * Es opcional: si no se pasa, el payload se emite igual que antes (retrocompatible).
  */
-function warn(reason, call, code) {
-  const decision = call && call.stdoutOnly ? 'allow' : 'warn';
-  const payload = { decision, reason };
+function warnResult(reason, call, code) {
+  const isClaude = call && call.backend === 'claude';
+  const payload = isClaude ? { reason } : { decision: call && call.stdoutOnly ? 'allow' : 'warn', reason };
   if (code) payload.code = code;
-  emit(payload, reason, 0);
+  if (isClaude) {
+    payload.hookSpecificOutput = { hookEventName: 'PreToolUse', additionalContext: reason };
+  }
+  return { exit: 0, stdout: JSON.stringify(payload) + '\n', stderr: '[SDD] ' + reason + '\n' };
 }
 
+function warn(reason, call, code) { emitResult(warnResult(reason, call, code)); }
+
 /** Bloquea la accion. El codigo 2 es la senal de bloqueo de las CLIs que la usan; ver readToolCall. */
-function deny(reason, call, code) {
+function denyResult(reason, call, code) {
   const exitCode = call && call.stdoutOnly ? 0 : 2;
   const payload = {
     decision: 'deny',
@@ -204,8 +226,10 @@ function deny(reason, call, code) {
     payload.code = code;
     payload.hookSpecificOutput.code = code;
   }
-  emit(payload, reason, exitCode);
+  return { exit: exitCode, stdout: JSON.stringify(payload) + '\n', stderr: '[SDD] ' + reason + '\n' };
 }
+
+function deny(reason, call, code) { emitResult(denyResult(reason, call, code)); }
 
 // Subcarpeta propia del estado efímero por sesión dentro del temporal del
 // sistema: los registros no se mezclan con los de otros programas en la raíz.
@@ -414,6 +438,7 @@ function runWithFailOpen(hookName, mainFn) {
   };
 
   try {
+    if (hookApagado(hookName, loadConfig(path.join(__dirname, 'config.json')))) process.exit(0);
     const pending = mainFn();
     if (pending && typeof pending.then === 'function') pending.then(undefined, failOpen);
   } catch (err) {
@@ -433,7 +458,12 @@ module.exports = {
   skipRequested,
   loadConfig,
   hookEnabled,
+  hookApagado,
   HOOK_ENABLED_DEFAULTS,
+  ALLOW,
+  warnResult,
+  denyResult,
+  emitResult,
   warn,
   deny,
   purgeExpired,
