@@ -14,7 +14,7 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 3. **EXPLICA el porque** — Para cada test, explica QUE escenario cubre y POR QUE es importante.
 4. **SUGIERE mejoras** — Si detectas areas sin tests o tests de baja calidad, mencionalos.
 5. **VERIFICA despues** — Ejecuta los tests y muestra los resultados.
-6. **ESCALA cuando corresponda** — Si no hay infraestructura de testing, sugiere configurarla primero con `core_templates/04_setup_testing.md`.
+6. **ESCALA cuando corresponda** — Si no hay infraestructura de testing, usa `configurar-tests` antes de escribir casos.
 7. **NUNCA asumas que la primera solucion es la mejor** — Si hay varias formas de testear algo, menciona las opciones.
 
 **Instrucciones adicionales para esta plantilla:**
@@ -22,6 +22,8 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 - NUNCA escribas tests que solo comprueban que "algo no falla" sin verificar el resultado concreto.
 - Si se corrige un bug, SIEMPRE incluir un test de regresion que lo reproduzca.
 - RESPETA el framework de testing existente. Si el proyecto usa Jest, no propongas migrar a Vitest.
+- Si no existe framework de testing, `configurar-tests` detecta el stack y prepara la infraestructura; esta
+  plantilla vuelve a aplicarse después para escribir los casos.
 - Solo escribe tests para el codigo que se esta modificando o creando. NO crees suites de tests masivas para codigo que ya existe y no se ha tocado.
 - En el flujo SDD, cada task debe tener sus tests. No dejes los tests para el final de todas las tasks.
 
@@ -57,7 +59,7 @@ Todo test sigue este patron:
 Antes de escribir tests:
 
 1. **Hay framework de testing?** Buscar en la configuracion del proyecto (package.json, pyproject.toml, etc.)
-   - Si NO hay: sugerir configurarlo primero con `core_templates/04_setup_testing.md`
+   - Si NO hay: usar `configurar-tests` para preparar la infraestructura antes de escribir casos
    - Si SI hay: usarlo tal cual
 2. **Hay tests existentes?** Buscar carpetas `tests/`, `__tests__/`, archivos `*.test.*` o `*.spec.*`
 3. **Que funciones/modulos son criticos?** Identificar el codigo que mas importa testear
@@ -243,6 +245,6 @@ Antes de dar el fix por cerrado:
 3. **RESPETAR el framework existente** — no migrar, no cambiar configuracion
 4. **Los tests son archivos NUEVOS** — no modifican el codigo de produccion
 5. **Si se corrige un bug**, el test de regresion (RED-GREEN) es OBLIGATORIO
-6. **Si no hay framework de testing**, sugerir configurarlo con `core_templates/04_setup_testing.md` antes de escribir tests
+6. **Si no hay framework de testing**, usar `configurar-tests` antes de escribir tests
 7. **Solo testear lo que se modifica** — no crear suites masivas para codigo intacto
 8. **En el flujo SDD**, cada task incluye sus tests — no dejar testing para despues de todas las tasks

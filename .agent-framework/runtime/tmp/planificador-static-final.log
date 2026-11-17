@@ -1,0 +1,760 @@
+TAP version 13
+# Subtest: existe, es ejecutable y usa shebang node
+ok 1 - existe, es ejecutable y usa shebang node
+  ---
+  duration_ms: 43.196604
+  ...
+# Subtest: --help muestra uso con subcomandos y sale sin error
+ok 2 - --help muestra uso con subcomandos y sale sin error
+  ---
+  duration_ms: 251.006317
+  ...
+# Subtest: --help menciona el menu interactivo cuando se omite --backend
+ok 3 - --help menciona el menu interactivo cuando se omite --backend
+  ---
+  duration_ms: 222.739062
+  ...
+# Subtest: install --help muestra uso del subcomando y menciona el menu interactivo
+ok 4 - install --help muestra uso del subcomando y menciona el menu interactivo
+  ---
+  duration_ms: 257.682389
+  ...
+# Subtest: sin subcomando muestra uso y sale sin error
+ok 5 - sin subcomando muestra uso y sale sin error
+  ---
+  duration_ms: 252.980274
+  ...
+# Subtest: subcomando desconocido sale con codigo 1 y error a stderr
+ok 6 - subcomando desconocido sale con codigo 1 y error a stderr
+  ---
+  duration_ms: 483.825064
+  ...
+# Subtest: --version imprime la version de package.json y sale sin error
+ok 7 - --version imprime la version de package.json y sale sin error
+  ---
+  duration_ms: 336.768528
+  ...
+# Subtest: install con --backend invalido sale con codigo 1 y no copia nada
+ok 8 - install con --backend invalido sale con codigo 1 y no copia nada
+  ---
+  duration_ms: 202.202497
+  ...
+# Subtest: install sin --backend y stdin no-TTY sale con codigo 1 sin colgarse
+ok 9 - install sin --backend y stdin no-TTY sale con codigo 1 sin colgarse
+  ---
+  duration_ms: 272.97636
+  ...
+# Subtest: install --backend claude copia rutas comunes y de backend, y crea directorios del proyecto
+ok 10 - install --backend claude copia rutas comunes y de backend, y crea directorios del proyecto
+  ---
+  duration_ms: 253.957439
+  ...
+# Subtest: install --backend claude nunca copia package.json literal del framework
+ok 11 - install --backend claude nunca copia package.json literal del framework
+  ---
+  duration_ms: 293.821472
+  ...
+# Subtest: install --backend claude con package.json preexistente preserva claves del usuario y anade scripts.test
+ok 12 - install --backend claude con package.json preexistente preserva claves del usuario y anade scripts.test
+  ---
+  duration_ms: 215.93647
+  ...
+# Subtest: install --backend claude con package.json sin clave scripts crea scripts con solo test
+ok 13 - install --backend claude con package.json sin clave scripts crea scripts con solo test
+  ---
+  duration_ms: 323.576402
+  ...
+# Subtest: install --backend claude sin package.json previo crea uno minimo con solo scripts.test
+ok 14 - install --backend claude sin package.json previo crea uno minimo con solo scripts.test
+  ---
+  duration_ms: 306.05756
+  ...
+# Subtest: install --backend claude con scripts.test propio no lo sobrescribe
+ok 15 - install --backend claude con scripts.test propio no lo sobrescribe
+  ---
+  duration_ms: 402.014927
+  ...
+# Subtest: install --dry-run con package.json preexistente reporta sin escribir
+ok 16 - install --dry-run con package.json preexistente reporta sin escribir
+  ---
+  duration_ms: 281.932412
+  ...
+# Subtest: install --dry-run sin package.json previo reporta creacion sin escribir
+ok 17 - install --dry-run sin package.json previo reporta creacion sin escribir
+  ---
+  duration_ms: 206.696228
+  ...
+# Subtest: install con colision de archivo no protegido y stdin no-TTY sin --force sale con codigo 1 y no copia
+ok 18 - install con colision de archivo no protegido y stdin no-TTY sin --force sale con codigo 1 y no copia
+  ---
+  duration_ms: 183.466272
+  ...
+# Subtest: install --force sobre el mismo escenario de colision copia sin preguntar
+ok 19 - install --force sobre el mismo escenario de colision copia sin preguntar
+  ---
+  duration_ms: 236.134027
+  ...
+# Subtest: install sobre directorio vacio no dispara el preflight (0 colisiones)
+ok 20 - install sobre directorio vacio no dispara el preflight (0 colisiones)
+  ---
+  duration_ms: 230.497992
+  ...
+# Subtest: install --dry-run con colision no dispara el preflight: reporta preview sin pedir confirmacion
+ok 21 - install --dry-run con colision no dispara el preflight: reporta preview sin pedir confirmacion
+  ---
+  duration_ms: 191.152432
+  ...
+# Subtest: install con colisiones solo en archivos protegidos no dispara el preflight
+ok 22 - install con colisiones solo en archivos protegidos no dispara el preflight
+  ---
+  duration_ms: 200.789855
+  ...
+# Subtest: update --force salta el preflight de colision pero no anula la proteccion de hash-sidecar
+ok 23 - update --force salta el preflight de colision pero no anula la proteccion de hash-sidecar
+  ---
+  duration_ms: 419.689576
+  ...
+# Subtest: --force aparece documentado en la ayuda de install y update
+ok 24 - --force aparece documentado en la ayuda de install y update
+  ---
+  duration_ms: 449.796278
+  ...
+# Subtest: install con package.json del destino malformado reporta error sin crash ni sobrescritura
+ok 25 - install con package.json del destino malformado reporta error sin crash ni sobrescritura
+  ---
+  duration_ms: 264.134207
+  ...
+# Subtest: install --backend gemini sobre proyecto con marcador de claude avisa del backend preexistente
+ok 26 - install --backend gemini sobre proyecto con marcador de claude avisa del backend preexistente
+  ---
+  duration_ms: 232.126722
+  ...
+# Subtest: install --backend gemini crea las rutas del framework bajo el namespace .gemini/ en el destino
+ok 27 - install --backend gemini crea las rutas del framework bajo el namespace .gemini/ en el destino
+  ---
+  duration_ms: 407.350251
+  ...
+# Subtest: install --backend gemini no toca un directorio commands/ propio del proyecto (namespace evita la colision)
+ok 28 - install --backend gemini no toca un directorio commands/ propio del proyecto (namespace evita la colision)
+  ---
+  duration_ms: 345.652373
+  ...
+# Subtest: update --backend gemini avisa si detecta el layout antiguo (agents/, commands/, skills/ sueltos)
+ok 29 - update --backend gemini avisa si detecta el layout antiguo (agents/, commands/, skills/ sueltos)
+  ---
+  duration_ms: 423.707437
+  ...
+# Subtest: install --backend gemini en un proyecto nuevo (sin marcador previo) no avisa de layout antiguo
+ok 30 - install --backend gemini en un proyecto nuevo (sin marcador previo) no avisa de layout antiguo
+  ---
+  duration_ms: 588.514369
+  ...
+# Subtest: install --backend all no avisa de backend equivocado aunque no haya marcador previo
+ok 31 - install --backend all no avisa de backend equivocado aunque no haya marcador previo
+  ---
+  duration_ms: 541.327504
+  ...
+# Subtest: install --backend codex sobre proyecto con AGENTS.md de antigravity no avisa (comparten archivo)
+ok 32 - install --backend codex sobre proyecto con AGENTS.md de antigravity no avisa (comparten archivo)
+  ---
+  duration_ms: 396.730769
+  ...
+# Subtest: install --backend claude seguido de install --backend gemini conserva los archivos de claude, anade los de gemini y refresca los comunes
+ok 33 - install --backend claude seguido de install --backend gemini conserva los archivos de claude, anade los de gemini y refresca los comunes
+  ---
+  duration_ms: 1017.720548
+  ...
+# Subtest: install --backend claude seguido de install --backend codex conserva los archivos de claude y anade AGENTS.md
+ok 34 - install --backend claude seguido de install --backend codex conserva los archivos de claude y anade AGENTS.md
+  ---
+  duration_ms: 743.767625
+  ...
+# Subtest: los archivos comunes tras install claude + install gemini son identicos a los de un install claude solo
+ok 35 - los archivos comunes tras install claude + install gemini son identicos a los de un install claude solo
+  ---
+  duration_ms: 1115.309978
+  ...
+# Subtest: install --backend claude es idempotente: ejecutarlo dos veces seguidas produce el mismo resultado
+ok 36 - install --backend claude es idempotente: ejecutarlo dos veces seguidas produce el mismo resultado
+  ---
+  duration_ms: 967.548765
+  ...
+# Subtest: ruta ausente en el manifiesto se salta con mensaje y continua con el resto
+ok 37 - ruta ausente en el manifiesto se salta con mensaje y continua con el resto
+  ---
+  duration_ms: 291.472844
+  ...
+# Subtest: no sobrescribe ni borra archivos preexistentes en ai_docs/core
+ok 38 - no sobrescribe ni borra archivos preexistentes en ai_docs/core
+  ---
+  duration_ms: 380.124307
+  ...
+# Subtest: install --backend all copia la union deduplicada de todos los backends
+ok 39 - install --backend all copia la union deduplicada de todos los backends
+  ---
+  duration_ms: 380.848561
+  ...
+# Subtest: no nombra al meta-repo ni jerga interna (anti-fuga)
+ok 40 - no nombra al meta-repo ni jerga interna (anti-fuga)
+  ---
+  duration_ms: 22.668054
+  ...
+# Subtest: update --help muestra uso del subcomando y sale sin error
+ok 41 - update --help muestra uso del subcomando y sale sin error
+  ---
+  duration_ms: 181.043768
+  ...
+# Subtest: update --help menciona el menu interactivo cuando se omite --backend
+ok 42 - update --help menciona el menu interactivo cuando se omite --backend
+  ---
+  duration_ms: 194.526082
+  ...
+# Subtest: update --help menciona --reset-protected
+ok 43 - update --help menciona --reset-protected
+  ---
+  duration_ms: 169.058508
+  ...
+# Subtest: update con --backend invalido sale con codigo 1 y no copia nada
+ok 44 - update con --backend invalido sale con codigo 1 y no copia nada
+  ---
+  duration_ms: 163.82477
+  ...
+# Subtest: update sin --backend y stdin no-TTY sale con codigo 1 sin colgarse
+ok 45 - update sin --backend y stdin no-TTY sale con codigo 1 sin colgarse
+  ---
+  duration_ms: 192.820623
+  ...
+# Subtest: update --backend claude preserva intacto el contenido de ai_docs/core
+ok 46 - update --backend claude preserva intacto el contenido de ai_docs/core
+  ---
+  duration_ms: 250.224298
+  ...
+# Subtest: update sobre un directorio sin instalacion previa aborta y recomienda install
+ok 47 - update sobre un directorio sin instalacion previa aborta y recomienda install
+  ---
+  duration_ms: 223.210173
+  ...
+# Subtest: update --force sobre un directorio sin instalacion previa tambien aborta
+ok 48 - update --force sobre un directorio sin instalacion previa tambien aborta
+  ---
+  duration_ms: 250.160221
+  ...
+# Subtest: update sobre un directorio con solo ai_docs/core creado a mano aborta y recomienda install
+ok 49 - update sobre un directorio con solo ai_docs/core creado a mano aborta y recomienda install
+  ---
+  duration_ms: 228.237228
+  ...
+# Subtest: update sobre una instalacion antigua sin sidecar pero con marcador en CLAUDE.md continua normalmente
+ok 50 - update sobre una instalacion antigua sin sidecar pero con marcador en CLAUDE.md continua normalmente
+  ---
+  duration_ms: 229.828126
+  ...
+# Subtest: update --backend all anade las rutas de los backends nuevos sobre una instalacion parcial
+ok 51 - update --backend all anade las rutas de los backends nuevos sobre una instalacion parcial
+  ---
+  duration_ms: 215.094851
+  ...
+# Subtest: update comparte la funcion de copia con install (sin duplicar logica)
+ok 52 - update comparte la funcion de copia con install (sin duplicar logica)
+  ---
+  duration_ms: 27.234844
+  ...
+# Subtest: install crea el sidecar de hashes con los archivos protegidos copiados
+ok 53 - install crea el sidecar de hashes con los archivos protegidos copiados
+  ---
+  duration_ms: 311.831713
+  ...
+# Subtest: update salta un archivo protegido con cambios locales y avisa por stdout
+ok 54 - update salta un archivo protegido con cambios locales y avisa por stdout
+  ---
+  duration_ms: 495.752223
+  ...
+# Subtest: update sobrescribe un archivo protegido sin cambios locales
+ok 55 - update sobrescribe un archivo protegido sin cambios locales
+  ---
+  duration_ms: 563.281036
+  ...
+# Subtest: update sin sidecar previo trata los archivos protegidos preexistentes como posiblemente editados
+ok 56 - update sin sidecar previo trata los archivos protegidos preexistentes como posiblemente editados
+  ---
+  duration_ms: 233.95815
+  ...
+# Subtest: update sincroniza el marcador de version con la version del paquete fuente
+ok 57 - update sincroniza el marcador de version con la version del paquete fuente
+  ---
+  duration_ms: 646.757587
+  ...
+# Subtest: update no actualiza el marcador de un archivo saltado por proteccion local
+ok 58 - update no actualiza el marcador de un archivo saltado por proteccion local
+  ---
+  duration_ms: 475.617247
+  ...
+# Subtest: update sin sidecar previo y contenido identico al del paquete copia el archivo y siembra el hash
+ok 59 - update sin sidecar previo y contenido identico al del paquete copia el archivo y siembra el hash
+  ---
+  duration_ms: 216.952339
+  ...
+# Subtest: update sin sidecar previo y contenido distinto al del paquete protege el archivo
+ok 60 - update sin sidecar previo y contenido distinto al del paquete protege el archivo
+  ---
+  duration_ms: 235.101031
+  ...
+# Subtest: update --reset-protected sobrescribe archivos protegidos con ediciones locales y refresca el sidecar
+ok 61 - update --reset-protected sobrescribe archivos protegidos con ediciones locales y refresca el sidecar
+  ---
+  duration_ms: 548.690761
+  ...
+# Subtest: update generaliza la proteccion a un hook fuera de la lista fija de 6 rutas
+ok 62 - update generaliza la proteccion a un hook fuera de la lista fija de 6 rutas
+  ---
+  duration_ms: 489.691242
+  ...
+# Subtest: update generaliza la proteccion a CHANGELOG.md editado localmente
+ok 63 - update generaliza la proteccion a CHANGELOG.md editado localmente
+  ---
+  duration_ms: 509.302247
+  ...
+# Subtest: update --reset-protected sobrescribe tambien archivos fuera de la lista fija de 6 rutas
+ok 64 - update --reset-protected sobrescribe tambien archivos fuera de la lista fija de 6 rutas
+  ---
+  duration_ms: 746.594368
+  ...
+# Subtest: update sin sidecar previo protege por retrocompatibilidad un archivo fuera de la lista fija
+ok 65 - update sin sidecar previo protege por retrocompatibilidad un archivo fuera de la lista fija
+  ---
+  duration_ms: 328.717523
+  ...
+# Subtest: update con sidecar de hashes corrupto avisa por stderr y no aborta
+ok 66 - update con sidecar de hashes corrupto avisa por stderr y no aborta
+  ---
+  duration_ms: 587.497665
+  ...
+# Subtest: update recrea un archivo del framework que el usuario elimino (no lo trata como editado)
+ok 67 - update recrea un archivo del framework que el usuario elimino (no lo trata como editado)
+  ---
+  duration_ms: 492.148048
+  ...
+# Subtest: update --reset-protected sin --backend sigue el flujo interactivo normal
+ok 68 - update --reset-protected sin --backend sigue el flujo interactivo normal
+  ---
+  duration_ms: 190.639783
+  ...
+# Subtest: actualizarMarcador no falla ni inserta el marcador en un archivo que no lo tiene
+ok 69 - actualizarMarcador no falla ni inserta el marcador en un archivo que no lo tiene
+  ---
+  duration_ms: 332.29796
+  ...
+# Subtest: el marcador se sustituye en todas sus ocurrencias si aparece mas de una vez
+ok 70 - el marcador se sustituye en todas sus ocurrencias si aparece mas de una vez
+  ---
+  duration_ms: 280.957924
+  ...
+# Subtest: install --backend claude sin --skip copia componentes core y opcionales
+ok 71 - install --backend claude sin --skip copia componentes core y opcionales
+  ---
+  duration_ms: 298.143233
+  ...
+# Subtest: install --backend claude --skip asesor,bugfix omite esos componentes y copia el resto
+ok 72 - install --backend claude --skip asesor,bugfix omite esos componentes y copia el resto
+  ---
+  duration_ms: 402.370082
+  ...
+# Subtest: install --backend claude --skip testing omite el grupo completo de testing
+ok 73 - install --backend claude --skip testing omite el grupo completo de testing
+  ---
+  duration_ms: 276.581143
+  ...
+# Subtest: el manifiesto real agrupa testing y configurar-tests bajo el único componente testing
+ok 74 - el manifiesto real agrupa testing y configurar-tests bajo el único componente testing
+  ---
+  duration_ms: 8.977968
+  ...
+# Subtest: control negativo: separar configurar-tests de testing deja una salida que --skip testing no omite
+ok 75 - control negativo: separar configurar-tests de testing deja una salida que --skip testing no omite
+  ---
+  duration_ms: 222.333069
+  ...
+# Subtest: install --backend gemini --skip asesor avisa y copia todo (skip solo aplica a claude)
+ok 76 - install --backend gemini --skip asesor avisa y copia todo (skip solo aplica a claude)
+  ---
+  duration_ms: 238.578311
+  ...
+# Subtest: install --backend claude --skip con nombre invalido avisa y continua sin fallar
+ok 77 - install --backend claude --skip con nombre invalido avisa y continua sin fallar
+  ---
+  duration_ms: 248.944592
+  ...
+# Subtest: install --backend claude --skip "" trata como sin skip (copia todo, sin error)
+ok 78 - install --backend claude --skip "" trata como sin skip (copia todo, sin error)
+  ---
+  duration_ms: 231.916284
+  ...
+# Subtest: install --backend claude con manifiesto en formato antiguo (array plano) trata todo como core
+ok 79 - install --backend claude con manifiesto en formato antiguo (array plano) trata todo como core
+  ---
+  duration_ms: 202.279868
+  ...
+# Subtest: install --dry-run --backend claude reporta preview y no crea ningun fichero en el destino
+ok 80 - install --dry-run --backend claude reporta preview y no crea ningun fichero en el destino
+  ---
+  duration_ms: 211.560104
+  ...
+# Subtest: update --dry-run reporta un archivo protegido editado localmente sin sobrescribirlo
+ok 81 - update --dry-run reporta un archivo protegido editado localmente sin sobrescribirlo
+  ---
+  duration_ms: 514.811076
+  ...
+# Subtest: install exitoso no deja .sdd-install-in-progress en disco
+ok 82 - install exitoso no deja .sdd-install-in-progress en disco
+  ---
+  duration_ms: 351.68243
+  ...
+# Subtest: install con lockfile preexistente de una instalacion interrumpida aborta sin copiar
+ok 83 - install con lockfile preexistente de una instalacion interrumpida aborta sin copiar
+  ---
+  duration_ms: 240.390313
+  ...
+# Subtest: install con lockfile de un backend distinto menciona el backend anterior y el solicitado
+ok 84 - install con lockfile de un backend distinto menciona el backend anterior y el solicitado
+  ---
+  duration_ms: 217.969843
+  ...
+# Subtest: install con lockfile de JSON invalido aborta de forma generica sin crash
+ok 85 - install con lockfile de JSON invalido aborta de forma generica sin crash
+  ---
+  duration_ms: 233.378378
+  ...
+# Subtest: install --dry-run no crea .sdd-install-in-progress
+ok 86 - install --dry-run no crea .sdd-install-in-progress
+  ---
+  duration_ms: 213.929445
+  ...
+# Subtest: install con fallo durante la copia retira igualmente .sdd-install-in-progress
+ok 87 - install con fallo durante la copia retira igualmente .sdd-install-in-progress
+  ---
+  duration_ms: 187.632821
+  ...
+# Subtest: install con una ruta de destino no escribible reporta rutas fallidas, copia las demas y sale con exit != 0
+ok 88 - install con una ruta de destino no escribible reporta rutas fallidas, copia las demas y sale con exit != 0
+  ---
+  duration_ms: 226.861502
+  ...
+# Subtest: install sin fallos se comporta igual que antes: todas las rutas copiadas, sin reporte de fallidas, exit 0
+ok 89 - install sin fallos se comporta igual que antes: todas las rutas copiadas, sin reporte de fallidas, exit 0
+  ---
+  duration_ms: 262.491405
+  ...
+# Subtest: .npmignore existe, fuerza la inclusion de .gitignore y no excluye rutas criticas del manifiesto
+ok 90 - .npmignore existe, fuerza la inclusion de .gitignore y no excluye rutas criticas del manifiesto
+  ---
+  duration_ms: 21.89195
+  ...
+# Subtest: los artefactos locales de install/update ignorados en git también se excluyen del paquete
+ok 91 - los artefactos locales de install/update ignorados en git también se excluyen del paquete
+  ---
+  duration_ms: 20.917226
+  ...
+# Subtest: templates/.gitignore.template existe y es identico byte a byte a .gitignore
+ok 92 - templates/.gitignore.template existe y es identico byte a byte a .gitignore
+  ---
+  duration_ms: 27.21973
+  ...
+# Subtest: install copia .gitignore desde templates/.gitignore.template aunque el paquete de origen no tenga un .gitignore literal
+ok 93 - install copia .gitignore desde templates/.gitignore.template aunque el paquete de origen no tenga un .gitignore literal
+  ---
+  duration_ms: 225.030576
+  ...
+# Subtest: install --backend claude escribe ai_docs/_meta/ecosystem.json con la revision instalada
+ok 94 - install --backend claude escribe ai_docs/_meta/ecosystem.json con la revision instalada
+  ---
+  duration_ms: 310.158438
+  ...
+# Subtest: install usa gitHead del paquete de origen como upstream_sha cuando esta presente
+ok 95 - install usa gitHead del paquete de origen como upstream_sha cuando esta presente
+  ---
+  duration_ms: 255.36937
+  ...
+# Subtest: update sobrescribe el inventario previo con un installed_at mas reciente
+ok 96 - update sobrescribe el inventario previo con un installed_at mas reciente
+  ---
+  duration_ms: 506.479634
+  ...
+# Subtest: install --dry-run reporta el inventario sin escribirlo
+ok 97 - install --dry-run reporta el inventario sin escribirlo
+  ---
+  duration_ms: 258.773254
+  ...
+# Subtest: F1: ai_docs/core creado como fichero se detecta y la instalacion no declara exito
+ok 98 - F1: ai_docs/core creado como fichero se detecta y la instalacion no declara exito
+  ---
+  duration_ms: 255.19626
+  ...
+# Subtest: F2: CLAUDE.md como directorio durante install no revienta y nombra el fichero
+ok 99 - F2: CLAUDE.md como directorio durante install no revienta y nombra el fichero
+  ---
+  duration_ms: 235.911864
+  ...
+# Subtest: F2: CLAUDE.md como directorio durante update no revienta y nombra el fichero
+ok 100 - F2: CLAUDE.md como directorio durante update no revienta y nombra el fichero
+  ---
+  duration_ms: 200.708361
+  ...
+# Subtest: F2: GEMINI.md como directorio no revienta el aviso de layout antiguo
+ok 101 - F2: GEMINI.md como directorio no revienta el aviso de layout antiguo
+  ---
+  duration_ms: 276.679525
+  ...
+# Subtest: F3: dos instalaciones concurrentes sobre el mismo destino terminan sin corromper el resultado
+ok 102 - F3: dos instalaciones concurrentes sobre el mismo destino terminan sin corromper el resultado
+  ---
+  duration_ms: 499.797604
+  ...
+# Subtest: F4: con al menos una ruta fallida, el mensaje final no declara exito
+ok 103 - F4: con al menos una ruta fallida, el mensaje final no declara exito
+  ---
+  duration_ms: 348.082707
+  ...
+# Subtest: F5: package.json como directorio se reporta sin afirmar que el JSON es invalido
+ok 104 - F5: package.json como directorio se reporta sin afirmar que el JSON es invalido
+  ---
+  duration_ms: 461.115803
+  ...
+# Subtest: Caso A: ai_docs como fichero regular no sella el destino, el siguiente intento tras corregirlo completa
+ok 105 - Caso A: ai_docs como fichero regular no sella el destino, el siguiente intento tras corregirlo completa
+  ---
+  duration_ms: 650.994988
+  ...
+# Subtest: Caso B: excepcion inyectada en el cuerpo (SDD_TEST_THROW_IN_BODY) retira el lockfile igual que un fallo real
+ok 106 - Caso B: excepcion inyectada en el cuerpo (SDD_TEST_THROW_IN_BODY) retira el lockfile igual que un fallo real
+  ---
+  duration_ms: 317.607812
+  ...
+# Subtest: Caso C: ai_docs/core como enlace simbolico roto deja error parcial sin sellar el destino
+ok 107 - Caso C: ai_docs/core como enlace simbolico roto deja error parcial sin sellar el destino
+  ---
+  duration_ms: 372.974886
+  ...
+# Subtest: la nota del modelo de sesion cita el modelo real de .claude/settings.json del paquete de origen, no un literal
+ok 108 - la nota del modelo de sesion cita el modelo real de .claude/settings.json del paquete de origen, no un literal
+  ---
+  duration_ms: 277.537886
+  ...
+# Subtest: sin .claude/settings.json en el paquete de origen, la nota se omite o sale sin nombre de modelo y la instalacion no falla
+ok 109 - sin .claude/settings.json en el paquete de origen, la nota se omite o sale sin nombre de modelo y la instalacion no falla
+  ---
+  duration_ms: 564.013375
+  ...
+# Subtest: con .claude/settings.json invalido en el paquete de origen, la nota se omite o sale sin nombre de modelo y la instalacion no falla
+ok 110 - con .claude/settings.json invalido en el paquete de origen, la nota se omite o sale sin nombre de modelo y la instalacion no falla
+  ---
+  duration_ms: 458.120704
+  ...
+# Subtest: install --backend codex avisa del modelo que configura el .codex/config.toml instalado
+ok 111 - install --backend codex avisa del modelo que configura el .codex/config.toml instalado
+  ---
+  duration_ms: 450.892744
+  ...
+# Subtest: update --backend codex nombra el modelo del fichero instalado, aunque el usuario lo haya cambiado
+ok 112 - update --backend codex nombra el modelo del fichero instalado, aunque el usuario lo haya cambiado
+  ---
+  duration_ms: 1226.701815
+  ...
+# Subtest: install --backend claude no imprime la nota del modelo de Codex
+ok 113 - install --backend claude no imprime la nota del modelo de Codex
+  ---
+  duration_ms: 797.995735
+  ...
+# Subtest: extraerModeloToml lee el model de primer nivel y tolera su ausencia
+ok 114 - extraerModeloToml lee el model de primer nivel y tolera su ausencia
+  ---
+  duration_ms: 2.882927
+  ...
+# Subtest: hashContenido: un texto en LF da el mismo hash que el hash crudo (los sidecars existentes siguen valiendo)
+ok 115 - hashContenido: un texto en LF da el mismo hash que el hash crudo (los sidecars existentes siguen valiendo)
+  ---
+  duration_ms: 2.919152
+  ...
+# Subtest: hashContenido: CRLF se normaliza a LF; un \\r aislado y el resto del EOL mixto no
+ok 116 - hashContenido: CRLF se normaliza a LF; un \\r aislado y el resto del EOL mixto no
+  ---
+  duration_ms: 11.283231
+  ...
+# Subtest: hashContenido: un fichero con algún byte 0 se hashea en crudo, sin normalizar CRLF
+ok 117 - hashContenido: un fichero con algún byte 0 se hashea en crudo, sin normalizar CRLF
+  ---
+  duration_ms: 2.105758
+  ...
+# Subtest: update: CRLF sin otra edición se actualiza, una edición real en CRLF se preserva y un fichero convergido refresca el sidecar
+ok 118 - update: CRLF sin otra edición se actualiza, una edición real en CRLF se preserva y un fichero convergido refresca el sidecar
+  ---
+  duration_ms: 543.152936
+  ...
+# Subtest: diferenciaCableado: settings.json nombra el hook ausente y el de matcher cambiado; nada si están todos
+ok 119 - diferenciaCableado: settings.json nombra el hook ausente y el de matcher cambiado; nada si están todos
+  ---
+  duration_ms: 3.941763
+  ...
+# Subtest: diferenciaCableado: hooks/config.json nombra las claves de primer nivel ausentes, sin las _comment
+ok 120 - diferenciaCableado: hooks/config.json nombra las claves de primer nivel ausentes, sin las _comment
+  ---
+  duration_ms: 1.782854
+  ...
+# Subtest: update avisa de los hooks y claves de la plantilla ausentes en settings.json y config.json editados
+ok 121 - update avisa de los hooks y claves de la plantilla ausentes en settings.json y config.json editados
+  ---
+  duration_ms: 546.45572
+  ...
+# Subtest: update con settings.json editado que conserva todos los hooks y JSON de config.json inválido: sin aviso de cableado ni excepción
+ok 122 - update con settings.json editado que conserva todos los hooks y JSON de config.json inválido: sin aviso de cableado ni excepción
+  ---
+  duration_ms: 468.945427
+  ...
+# Subtest: update --dry-run con un fichero convergido: lo informa en condicional y no escribe el sidecar
+ok 123 - update --dry-run con un fichero convergido: lo informa en condicional y no escribe el sidecar
+  ---
+  duration_ms: 411.038808
+  ...
+# Subtest: diferenciaCableado: un hook sin command en la plantilla no se informa como ausente
+ok 124 - diferenciaCableado: un hook sin command en la plantilla no se informa como ausente
+  ---
+  duration_ms: 1.471869
+  ...
+# Subtest: esquema: una respuesta con todos los campos obligatorios es valida
+ok 125 - esquema: una respuesta con todos los campos obligatorios es valida
+  ---
+  duration_ms: 4.641078
+  ...
+# Subtest: esquema: una respuesta sin veredicto no es valida
+ok 126 - esquema: una respuesta sin veredicto no es valida
+  ---
+  duration_ms: 1.431433
+  ...
+# Subtest: esquema: los tres veredictos del enum coinciden con los que el workflow ramifica
+ok 127 - esquema: los tres veredictos del enum coinciden con los que el workflow ramifica
+  ---
+  duration_ms: 2.502248
+  ...
+# Subtest: esquema: una lista que llega como texto no es valida
+ok 128 - esquema: una lista que llega como texto no es valida
+  ---
+  duration_ms: 1.125637
+  ...
+# Subtest: LISTO_PARA_PLANIFICAR: la planificacion continua a la fase Spec
+ok 129 - LISTO_PARA_PLANIFICAR: la planificacion continua a la fase Spec
+  ---
+  duration_ms: 1.908192
+  ...
+# Subtest: NECESITA_CLARIFICACION: se detiene y devuelve las preguntas sin crear spec
+ok 130 - NECESITA_CLARIFICACION: se detiene y devuelve las preguntas sin crear spec
+  ---
+  duration_ms: 0.975568
+  ...
+# Subtest: NECESITA_CLARIFICACION sin preguntas: error explicito, no continuacion
+ok 131 - NECESITA_CLARIFICACION sin preguntas: error explicito, no continuacion
+  ---
+  duration_ms: 1.055944
+  ...
+# Subtest: DIVIDIR_EN_SPECS: se detiene y devuelve la particion con sus dependencias
+ok 132 - DIVIDIR_EN_SPECS: se detiene y devuelve la particion con sus dependencias
+  ---
+  duration_ms: 1.185028
+  ...
+# Subtest: DIVIDIR_EN_SPECS con una sola spec: error explicito, no continuacion
+ok 133 - DIVIDIR_EN_SPECS con una sola spec: error explicito, no continuacion
+  ---
+  duration_ms: 1.006848
+  ...
+# Subtest: veredicto desconocido: error explicito, la planificacion no continua
+ok 134 - veredicto desconocido: error explicito, la planificacion no continua
+  ---
+  duration_ms: 2.805429
+  ...
+# Subtest: respuesta ausente o no objeto: error explicito, la planificacion no continua
+ok 135 - respuesta ausente o no objeto: error explicito, la planificacion no continua
+  ---
+  duration_ms: 0.72687
+  ...
+# Subtest: una contradiccion con ai_docs/core/ no detiene la planificacion: manda la solicitud
+ok 136 - una contradiccion con ai_docs/core/ no detiene la planificacion: manda la solicitud
+  ---
+  duration_ms: 0.70189
+  ...
+# Subtest: control positivo: con la sesion arrancada en un subdirectorio, el modulo se encuentra igual
+ok 137 - control positivo: con la sesion arrancada en un subdirectorio, el modulo se encuentra igual
+  ---
+  duration_ms: 55.266023
+  ...
+# Subtest: cero cambio en el camino feliz: desde la raiz del proyecto resuelve lo mismo que antes
+ok 138 - cero cambio en el camino feliz: desde la raiz del proyecto resuelve lo mismo que antes
+  ---
+  duration_ms: 12.31458
+  ...
+# Subtest: una ruta absoluta se devuelve tal cual: no se asciende buscando nada
+ok 139 - una ruta absoluta se devuelve tal cual: no se asciende buscando nada
+  ---
+  duration_ms: 9.951821
+  ...
+# Subtest: un modulo que no existe en ningun nivel: la ruta de siempre, para que el error nombre el sitio esperado
+ok 140 - un modulo que no existe en ningun nivel: la ruta de siempre, para que el error nombre el sitio esperado
+  ---
+  duration_ms: 13.089206
+  ...
+# Subtest: el ascenso esta acotado: por encima de MAX_ASCENSO niveles ya no se busca
+ok 141 - el ascenso esta acotado: por encima de MAX_ASCENSO niveles ya no se busca
+  ---
+  duration_ms: 47.434835
+  ...
+# Subtest: canary: la traduccion de separadores del workflow coincide con la de la orquestacion
+ok 142 - canary: la traduccion de separadores del workflow coincide con la de la orquestacion
+  ---
+  duration_ms: 2.019384
+  ...
+# Subtest: cero cambio de comportamiento: sobre rutas nativas, traducir no altera el resolve
+ok 143 - cero cambio de comportamiento: sobre rutas nativas, traducir no altera el resolve
+  ---
+  duration_ms: 2.012185
+  ...
+# Subtest: control positivo: sin traducir, la ruta de Windows se resuelve como un solo tramo en Unix
+ok 144 - control positivo: sin traducir, la ruta de Windows se resuelve como un solo tramo en Unix
+  ---
+  duration_ms: 0.834847
+  ...
+# Subtest: planificar.js: ningun modulo se resuelve contra el directorio en curso del proceso
+ok 145 - planificar.js: ningun modulo se resuelve contra el directorio en curso del proceso
+  ---
+  duration_ms: 1.209075
+  ...
+# Subtest: planificar.js: nada aguas abajo de la carga ejecuta comandos ni descarta trabajo
+ok 146 - planificar.js: nada aguas abajo de la carga ejecuta comandos ni descarta trabajo
+  ---
+  duration_ms: 5.555614
+  ...
+# Subtest: contrato: orientación, lectura selectiva y sesión independiente viven en las fuentes
+ok 147 - contrato: orientación, lectura selectiva y sesión independiente viven en las fuentes
+  ---
+  duration_ms: 299.151905
+  ...
+# Subtest: la plantilla de tasks contiene los seis campos de autocomprobación, revisión y handover
+ok 148 - la plantilla de tasks contiene los seis campos de autocomprobación, revisión y handover
+  ---
+  duration_ms: 19.653306
+  ...
+# Subtest: el inventario del planificador y tareas deriva fuentes y proyecciones del manifiesto de artefactos
+ok 149 - el inventario del planificador y tareas deriva fuentes y proyecciones del manifiesto de artefactos
+  ---
+  duration_ms: 422.397414
+  ...
+# Subtest: bugfix registra el resultado del experimento y no presenta una causa sin distinguir alternativas
+ok 150 - bugfix registra el resultado del experimento y no presenta una causa sin distinguir alternativas
+  ---
+  duration_ms: 16.798419
+  ...
+1..150
+# tests 150
+# suites 0
+# pass 150
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 41099.973191

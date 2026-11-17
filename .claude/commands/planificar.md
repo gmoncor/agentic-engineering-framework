@@ -31,6 +31,10 @@ Si el veredicto es **APROBADO**: indica que puede implementar de dos formas:
 Si el veredicto es **NECESITA_AJUSTES**: detalla los ajustes y pregunta si quiere aplicarlos.
 Si el veredicto es **NECESITA_REPLANTEAMIENTO**: recomienda rehacer la solicitud con mas detalle.
 
+Tras aprobar la spec, recomienda una sesión nueva e independiente con `implementa la tarea <ruta de la task>`.
+Es una recomendación, no un bloqueo. Si la petición incluye planificar e implementar, muestra esa línea y
+continúa sin pedir una segunda aprobación.
+
 Solicitud del usuario:
 
 $ARGUMENTS

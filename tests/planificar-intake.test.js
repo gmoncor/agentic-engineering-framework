@@ -349,3 +349,148 @@ test('planificar.js: nada aguas abajo de la carga ejecuta comandos ni descarta t
     { path: 'b', dependencias: ['a'], contratos: [{ tipo: 'consume', nombre: 'Api' }] },
   ]).length, 0, 'sin tocar disco y sin raiz: el contrato bien declarado no da problema');
 });
+
+test('contrato: orientación, lectura selectiva y sesión independiente viven en las fuentes', () => {
+  const root = path.resolve(__dirname, '..');
+  const leer = relative => fs.readFileSync(path.join(root, relative), 'utf8');
+  const asesores = [
+    '.claude/agents/asesor.md',
+    'docs-src/agents/asesor.md',
+    '.claude/commands/asesor.md',
+  ].map(ruta => ({ ruta, contenido: leer(ruta) }));
+  const planificadores = [
+    '.claude/agents/planificador.md',
+    'docs-src/agents/planificador.md',
+    'docs-src/skills/planificar.md',
+    '.claude/commands/planificar.md',
+    '.claude/workflows/planificar.js',
+  ].map(ruta => ({ ruta, contenido: leer(ruta) }));
+  const tareas = leer('ai_docs/dev_templates/tareas.md');
+
+  const comprobarPlanificador = contenido => {
+    assert.match(contenido, /sesi[oó]n nueva\s+e independiente/i);
+    assert.match(contenido, /implementa la tarea <ruta de la\s+task>/i);
+    assert.match(contenido, /recomendaci[oó]n, no un bloqueo/i);
+    assert.match(contenido, /sin pedir una segunda aprobaci[oó]n|sin pedir otra aprobacion/i);
+  };
+  const comprobarLecturaSelectiva = contenido => {
+    assert.match(contenido, /abre primero el [íi]ndice y los headings/i);
+    assert.match(contenido, /lee solo las secciones y rutas que sostienen\s+(?:cada\s+|un\s+)?criterio/i);
+    assert.match(contenido, /si falta un locator, una premisa central o hay contradicci[oó]n, ampl[ií]a la lectura de\s+(?:ese\s+)?criterio/i);
+  };
+  const comprobarReutilizacion = contenido => {
+    assert.match(contenido, /selecci[oó]n, contenido, entorno y dependencias son id[eé]nticos/i);
+    assert.match(contenido, /con un\s+delta, ejecuta\s+[úu]nicamente la cobertura afectada/i);
+  };
+  const comprobarAsesor = contenido => {
+    assert.match(contenido, /[úu]nico siguiente paso accionable/i);
+    assert.match(contenido, /m[aá]ximo una pregunta/i);
+    assert.match(contenido, /no interceptes? (?:el trabajo|una orden concreta)/i);
+  };
+  const normalizarLiteralesConcatenados = contenido => contenido.replace(/['"]\s*\+\s*['"]/g, ' ');
+
+  for (const { ruta, contenido } of asesores) {
+    comprobarAsesor(contenido);
+    assert.throws(() => comprobarAsesor(contenido.replace(/no interceptes? (?:el trabajo|una orden concreta)/i, 'intercepta una orden concreta')), ruta);
+  }
+  for (const { ruta, contenido } of planificadores) comprobarPlanificador(normalizarLiteralesConcatenados(contenido), ruta);
+
+  const fuentesLectura = [
+    '.claude/agents/planificador.md',
+    'docs-src/agents/planificador.md',
+    '.claude/workflows/planificar.js',
+  ].map(ruta => ({ ruta, contenido: leer(ruta) }));
+  for (const { ruta, contenido } of fuentesLectura) {
+    comprobarLecturaSelectiva(contenido);
+    for (const [clausula, mutante] of [
+      ['lectura acotada', /lee solo las secciones y rutas/i],
+      ['locator', /locator/i],
+      ['premisa central', /premisa central/i],
+      ['contradicción', /contradicci[oó]n/i],
+    ]) {
+      assert.throws(() => comprobarLecturaSelectiva(contenido.replace(mutante, '')), `${ruta}: ${clausula}`);
+    }
+  }
+
+  const fuentesReutilizacion = fuentesLectura.slice(0, 2);
+  for (const { ruta, contenido } of fuentesReutilizacion) {
+    comprobarReutilizacion(contenido);
+    const identidad = /selecci[oó]n, contenido, entorno y dependencias son id[eé]nticos/i;
+    for (const [clausula, sustituto] of [
+      ['selección', 'contenido, entorno y dependencias son idénticos'],
+      ['contenido', 'selección, entorno y dependencias son idénticos'],
+      ['entorno', 'selección, contenido y dependencias son idénticos'],
+      ['dependencias', 'selección, contenido y entorno son idénticos'],
+    ]) {
+      assert.throws(() => comprobarReutilizacion(contenido.replace(identidad, sustituto)), `${ruta}: ${clausula}`);
+    }
+    assert.throws(() => comprobarReutilizacion(contenido.replace(/cobertura afectada/i, 'otra comprobación')), `${ruta}: cobertura ante delta`);
+  }
+
+  const agentePlanificador = planificadores[0].contenido;
+  assert.doesNotMatch([...planificadores.map(({ contenido }) => contenido), tareas].join('\n'), /toca 6 archivos|toca mas de 6 archivos/i);
+  const comprobarAlcance = contenido => {
+    assert.match(contenido, /no dividas por un n[uú]mero fijo de archivos/i);
+    assert.match(contenido, /m[aá]s de seis archivos es v[aá]lida si su alcance\s+y\s+riesgo\s+son coherentes/i);
+    assert.match(contenido, /menos de seis archivos no es v[aá]lida si su alcance\s+o\s+riesgo\s+son incoherentes/i);
+  };
+  const fuentesAlcance = [
+    { ruta: 'ai_docs/dev_templates/tareas.md', contenido: tareas },
+    { ruta: '.claude/workflows/planificar.js', contenido: leer('.claude/workflows/planificar.js') },
+  ];
+  for (const { ruta, contenido } of fuentesAlcance) {
+    comprobarAlcance(contenido);
+    assert.throws(() => comprobarAlcance(contenido.replace(/no dividas por un n[uú]mero fijo de archivos/i, 'divide por tamaño')), ruta);
+    assert.throws(() => comprobarAlcance(contenido.replace(/m[aá]s de seis archivos es v[aá]lida/i, 'mas de seis archivos')), ruta);
+    assert.throws(() => comprobarAlcance(contenido.replace(/menos de seis archivos no es v[aá]lida/i, 'menos de seis archivos es valida')), ruta);
+  }
+
+  // Los mutantes prueban que el canario detecta perder la orden, volver la recomendación un bloqueo
+  // o pedir una aprobación extra en una petición conjunta.
+  assert.throws(() => comprobarPlanificador(agentePlanificador.replace('implementa la tarea <ruta de la task>', 'ejecuta el trabajo')));
+  assert.throws(() => comprobarPlanificador(agentePlanificador.replace('Es una recomendación, no un bloqueo.', 'Es un bloqueo.')));
+  assert.throws(() => comprobarPlanificador(agentePlanificador.replace('continúa sin pedir una segunda aprobación.', 'pide una segunda aprobación.')));
+});
+
+test('la plantilla de tasks contiene los seis campos de autocomprobación, revisión y handover', () => {
+  const plantilla = fs.readFileSync(path.join(__dirname, '..', 'ai_docs', 'dev_templates', 'tareas.md'), 'utf8');
+  const campos = ['Premisas', 'Dependencias', 'Riesgo', 'Revisión recomendada', 'Criterios', 'Handover'];
+  const inventario = contenido => {
+    const inicio = contenido.indexOf('## Autocomprobación antes de revisar');
+    const fin = contenido.indexOf('## Revisión recomendada', inicio);
+    return [...contenido.slice(inicio, fin).matchAll(/\*\*([^:]+):\*\*/g)].map(match => match[1]);
+  };
+
+  assert.deepStrictEqual(inventario(plantilla), campos,
+    'la autocomprobación debe enumerar exactamente los seis campos, sin omisiones ni extras');
+  assert.match(plantilla, /^## Revisión recomendada$/m);
+  assert.match(plantilla, /^## Handover$/m);
+
+  const sinCampo = plantilla.replace('**Handover:**', '**Entrega:**');
+  const conExtra = plantilla.replace('**Handover:**', '**Handover:**\n- **Extra:** dato no vinculante.');
+  assert.notDeepStrictEqual(inventario(sinCampo), campos, 'control negativo: una omisión debe fallar');
+  assert.notDeepStrictEqual(inventario(conExtra), campos, 'control negativo: un extra debe fallar');
+});
+
+test('el inventario del planificador y tareas deriva fuentes y proyecciones del manifiesto de artefactos', () => {
+  const root = path.join(__dirname, '..');
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'scripts', 'artifact-manifest.json'), 'utf8'));
+  const ids = new Set(['agent-planificador', 'command-planificar', 'command-tareas', 'skill-planificar', 'skill-tareas']);
+  const rutas = manifest.artifacts
+    .filter(artifacto => ids.has(artifacto.id))
+    .flatMap(artifacto => [artifacto.source, ...(artifacto.outputs || []).map(salida => salida.path)])
+    .sort();
+
+  assert.ok(rutas.length > ids.size, 'el inventario debe incluir proyecciones además de las fuentes');
+  for (const ruta of rutas) assert.ok(fs.existsSync(path.join(root, ruta)), `ruta del manifiesto ausente: ${ruta}`);
+
+  const contenidos = rutas.map(ruta => fs.readFileSync(path.join(root, ruta), 'utf8')).join('\n');
+  assert.doesNotMatch(contenidos, /toca 6 archivos|toca mas de 6 archivos/i);
+  assert.match(contenidos, /alcance y riesgo|riesgo o una unidad independiente/i);
+});
+
+test('bugfix registra el resultado del experimento y no presenta una causa sin distinguir alternativas', () => {
+  const plantilla = fs.readFileSync(path.join(__dirname, '..', 'ai_docs', 'dev_templates', 'correccion_de_bugs.md'), 'utf8');
+  assert.match(plantilla, /Resultado del experimento/);
+  assert.match(plantilla, /solo si el resultado del experimento distingue/i);
+});

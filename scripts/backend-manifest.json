@@ -37,7 +37,7 @@
       { "nombre": "auditar-sesion", "rutas": [".claude/skills/auditar-sesion"] },
       { "nombre": "bugfix", "rutas": [".claude/commands/bugfix.md", ".claude/skills/bugfix"] },
       { "nombre": "cleanup", "rutas": [".claude/skills/cleanup"] },
-      { "nombre": "testing", "rutas": [".claude/skills/testing"] },
+      { "nombre": "testing", "rutas": [".claude/skills/testing", ".claude/skills/configurar-tests"] },
       { "nombre": "pr", "rutas": [".claude/commands/pr.md", ".claude/skills/pr"] }
     ]
   },

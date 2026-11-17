@@ -48,6 +48,7 @@
     { "id": "skill-revisar-tarea", "source": ".claude/skills/revisar-tarea/SKILL.md", "transform": "skill-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/skills/revisar-tarea/SKILL.md" }, { "backend": "antigravity", "path": ".agents/skills/revisar-tarea/SKILL.md" } ] },
     { "id": "skill-revision-adversarial", "source": ".claude/skills/revision-adversarial/SKILL.md", "transform": "skill-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/skills/revision-adversarial/SKILL.md" }, { "backend": "antigravity", "path": ".agents/skills/revision-adversarial/SKILL.md" } ] },
     { "id": "skill-testing", "source": ".claude/skills/testing/SKILL.md", "transform": "skill-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/skills/testing/SKILL.md" }, { "backend": "antigravity", "path": ".agents/skills/testing/SKILL.md" } ] },
+    { "id": "skill-configurar-tests", "source": ".claude/skills/configurar-tests/SKILL.md", "transform": "skill-to-backend", "mode": "managed", "outputs": [ { "backend": "gemini", "path": ".gemini/skills/configurar-tests/SKILL.md" }, { "backend": "antigravity", "path": ".agents/skills/configurar-tests/SKILL.md" } ] },
 
     { "id": "skill-auditar-sesion", "source": ".claude/skills/auditar-sesion/SKILL.md", "transform": "none", "mode": "preserve", "outputs": [] },
     { "id": "workflows-claude", "source": ".claude/workflows", "transform": "none", "mode": "preserve", "outputs": [] },

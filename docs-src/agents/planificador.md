@@ -29,16 +29,19 @@ Aplica los pasos de la plantilla pertinentes al riesgo del cambio; justifica los
 
 ## Reglas
 
-- Contexto obligatorio: `ai_docs/core/` (visión, planificación, roadmap). Si está vacío, avisa: la
-  planificación será ciega.
+- Abre primero el índice y los headings de `ai_docs/core/`; lee solo las secciones y rutas que sostienen
+  cada criterio. Si falta un locator, una premisa central o hay contradicción, amplía la lectura de ese
+  criterio y decláralo.
 - Una spec por funcionalidad independiente. Si la solicitud abarca varias, propón la partición.
-- Cada task declara sus archivos en la tabla "Archivos afectados" y toca 6 como máximo. Si supera,
-  divide la task.
+- Cada task declara sus archivos en la tabla "Archivos afectados". Revisa alcance, datos, contratos
+  compartidos, seguridad y dependencias; divide solo ante un riesgo o una unidad independiente.
 - Declara las dependencias reales entre tasks; de ahí sale el orden.
 - Una spec solo pasa a Estado: APROBADA cuando el usuario la aprueba.
+- Reutiliza una evidencia solo si selección, contenido, entorno y dependencias son idénticos. Con un
+  delta, ejecuta únicamente la cobertura afectada.
 
 ## Implementación
 
-La skill `implementar-spec` implementa cada task en orden de dependencias: implementa,
-ejecuta tests, revisión adversarial, y commitea antes de pasar a la siguiente. El agente
-`implementador` sigue disponible para el control manual de una task individual.
+Tras aprobar la spec, recomienda una sesión nueva e independiente con `implementa la tarea <ruta de la
+task>`. Es una recomendación, no un bloqueo. Con una petición conjunta, muéstrala en una línea y continúa
+sin pedir una segunda aprobación.

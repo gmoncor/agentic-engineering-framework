@@ -306,7 +306,8 @@ En modo task, las restricciones que la task declare; en modo integración, las d
 
 **Si NECESITA_CORRECCIONES o RECHAZADA:**
 - Para correcciones menores (1-2 archivos, sin cambio de alcance): aplicar directamente usando `implementar.md` y hacer la re-revisión sobre los hallazgos previos y el delta
-- Para correcciones mayores (3+ archivos o cambio de alcance): crear nueva task vía `tareas.md` referenciando los hallazgos, implementar y re-ejecutar la revisión completa
+- Para correcciones con cambio de alcance, datos, contrato compartido, seguridad o migración: crear nueva
+  task vía `tareas.md` referenciando los hallazgos, implementar y re-ejecutar la revisión completa
 
 > **Nota sobre el workflow mecanizado** (`/implementar-spec` u otro flujo automatizado equivalente): el número de rondas de corrección y el destino del trabajo que no alcanza `APROBADA` los fija el workflow. La distinción menor/mayor de arriba aplica al flujo MANUAL (humano o asistente operando fuera del workflow).
 ```

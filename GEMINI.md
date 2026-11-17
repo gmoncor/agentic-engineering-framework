@@ -98,7 +98,7 @@ proyecto/
 ├── .gemini/
 │   ├── agents/          # planificador, revisor, implementador, asesor
 │   ├── commands/        # 13 comandos SDD (.toml)
-│   └── skills/          # 8 skills (auto-activacion)
+│   └── skills/          # 9 skills (auto-activacion)
 ├── hooks/              # 5 hooks (pipeline-guard + commit-guard + read-before-edit + turn-budget + session-start)
 ├── ai_docs/
 │   ├── core/           # vision, planificacion, roadmap y decisiones

@@ -168,8 +168,9 @@ const { INTAKE_SCHEMA, evaluarIntake } = await cargarModulo('.claude/workflows/l
 phase('Intake')
 const intakeResult = await agent(`
 Eres el asesor del proyecto. Analiza la solicitud del usuario ANTES de que se escriba ninguna spec.
-Lee ai_docs/core/ para contexto del proyecto. Si no existe o esta vacio, dilo: planificar sin vision
-ni roadmap es planificar a ciegas, y el usuario deberia rellenar ai_docs/core_templates/ primero.
+Abre primero el indice y los headings de ai_docs/core/. Lee solo las secciones y rutas que sostienen un
+criterio. Si falta un locator, una premisa central o hay contradiccion, amplia la lectura de ese criterio.
+Si no existe o esta vacio, dilo: planificar sin vision ni roadmap es planificar a ciegas.
 
 REGLAS:
 1. Reformula la solicitud en 1-3 frases. Copia LITERALMENTE cifras, nombres propios, entidades y
@@ -249,8 +250,10 @@ Lee de ai_docs/core/ solo las secciones que cite la spec.
 IMPORTANTE:
 - NO hagas preguntas ni esperes aprobacion. Trabaja con lo que hay.
 - Identifica modulos independientes, documenta dependencias y define orden de ejecucion.
-- Cada task debe ser independiente y atomica. Si toca mas de 6 archivos, dividir.
-- Minimo 3 edge cases por task con logica de negocio.
+- Cada task debe tener alcance y riesgo coherentes. Revisa datos, contratos compartidos, seguridad y
+  dependencias; divide solo ante un riesgo o una unidad independiente.
+- No dividas por un número fijo de archivos: una task de más de seis archivos es válida si su alcance y
+  riesgo son coherentes; una de menos de seis archivos no es válida si su alcance o riesgo son incoherentes.
 - Crea cada task como archivo en ai_docs/tasks/NNN_descriptor.md.
 - Verifica numeracion existente para no pisar archivos.
 - Declara los contratos entre tasks: lo que una task PRODUCE (API, tipo, export) y
@@ -507,7 +510,9 @@ const instrucciones = veredicto === 'APROBADO'
   ? 'Presenta al usuario la spec, las tasks y el resultado de la auditoria. '
     + 'La spec sigue en BORRADOR: pide al usuario que la revise y escriba "apruebo" '
     + 'para cambiar su estado a APROBADA. Solo entonces edita el estado en el archivo. '
-    + 'Sin aprobacion explicita del usuario, no se implementa.'
+    + 'Sin aprobacion explicita del usuario, no se implementa. Tras aprobar, recomienda una sesion nueva '
+    + 'e independiente con "implementa la tarea <ruta de la task>"; es una recomendacion, no un bloqueo. '
+    + 'Si la peticion incluia planificar e implementar, muestrala en una linea y continua sin pedir otra aprobacion.'
   : 'Presenta al usuario los problemas encontrados por la auditoria (' + veredicto + ', tras '
     + pasadas + ' pasada' + (pasadas > 1 ? 's' : '') + ') y propon como resolverlos. '
     + (hallazgoMasSevero && hallazgoMasSevero.resumen

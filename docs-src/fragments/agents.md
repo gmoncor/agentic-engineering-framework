@@ -40,6 +40,7 @@ entre. Tambien puedes nombrarla explicitamente.
 | `bugfix` | — | Diagnostica y corrige un bug con causa raiz |
 | `cleanup` | — | Revision de calidad: codigo muerto, tipos, seguridad |
 | `testing` | — | Escritura de tests |
+| `configurar-tests` | — | Prepara la infraestructura de tests cuando falta |
 | `diff` | — | Resumen legible de los cambios pendientes |
 | `commit` | — | Crea un commit limpio con mensaje descriptivo |
 | `pr` | — | Crea o revisa una Pull Request |
@@ -50,7 +51,7 @@ entre. Tambien puedes nombrarla explicitamente.
 |-----------|---------|------|------|
 | Conversar, leer, orientar o mostrar estado | `asesor`, `estado` | skill | automático |
 | Planificar | `planificar`, `spec`, `tareas`, `auditar`, `revisar-tarea` | skill | automático |
-| Implementar | `implementar-spec`, `implementar`, `testing`, `cleanup`, `revision`, `revision-adversarial` | skill | automático |
+| Implementar | `implementar-spec`, `implementar`, `testing`, `configurar-tests`, `cleanup`, `revision`, `revision-adversarial` | skill | automático |
 | Corregir un bug | `bugfix` | skill | automático |
 | Revisar cambios o preparar entrega | `diff`, `commit`, `pr` | skill | automático |
 | Iniciar un proyecto | `inicio` | skill | automático |
@@ -196,7 +197,7 @@ presupuesto.
 │   ├── hooks.json      # 3 hooks (pipeline-guard-codex + commit-guard-codex + session-start)
 │   └── rules/          # sdd-enforcement.rules (refuerzo de politica de ejecucion)
 ├── .agents/
-│   ├── skills/         # 18 skills (auto-activacion)
+│   ├── skills/         # 19 skills (auto-activacion)
 │   ├── plugins/sdd/    # agentes (asesor, implementador, planificador, revisor) + manifiesto del bundle
 │   └── hooks.json      # 4 hooks (pipeline-guard + commit-guard + read-before-edit + turn-budget)
 ├── hooks/              # hooks compartidos por los dos backends (variantes -codex incluidas)

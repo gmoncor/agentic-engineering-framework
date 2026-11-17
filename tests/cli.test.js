@@ -1554,6 +1554,77 @@ test('install --backend claude --skip asesor,bugfix omite esos componentes y cop
   assert.strictEqual(stderr, '');
 });
 
+test('install --backend claude --skip testing omite el grupo completo de testing', () => {
+  const paquete = crearPaqueteFixture(
+    {
+      common: [],
+      claude: {
+        core: ['.claude/commands/spec.md'],
+        optional: [{
+          nombre: 'testing',
+          rutas: ['.claude/skills/testing', '.claude/skills/configurar-tests'],
+        }],
+      },
+    },
+    {
+      '.claude/commands/spec.md': 'spec',
+      '.claude/skills/testing/SKILL.md': 'testing',
+      '.claude/skills/configurar-tests/SKILL.md': 'configurar',
+    },
+  );
+  const proyecto = dirTemporal();
+  const { codigo } = ejecutar(['install', '--backend', 'claude', '--skip', 'testing'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'commands', 'spec.md')));
+  assert.ok(!fs.existsSync(path.join(proyecto, '.claude', 'skills', 'testing', 'SKILL.md')));
+  assert.ok(!fs.existsSync(path.join(proyecto, '.claude', 'skills', 'configurar-tests', 'SKILL.md')));
+});
+
+test('el manifiesto real agrupa testing y configurar-tests bajo el único componente testing', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(RAIZ, 'scripts', 'backend-manifest.json'), 'utf8'));
+  const gruposTesting = manifest.claude.optional.filter(grupo => grupo.nombre === 'testing');
+
+  assert.strictEqual(gruposTesting.length, 1, 'debe existir un único grupo opcional testing');
+  assert.deepStrictEqual(gruposTesting[0].rutas.sort(), [
+    '.claude/skills/configurar-tests',
+    '.claude/skills/testing',
+  ]);
+  assert.ok(!manifest.claude.optional.some(grupo => grupo.nombre === 'configurar-tests'),
+    'configurar-tests no puede escapar de --skip testing como componente independiente');
+});
+
+test('control negativo: separar configurar-tests de testing deja una salida que --skip testing no omite', () => {
+  const paquete = crearPaqueteFixture(
+    {
+      common: [],
+      claude: {
+        core: [],
+        optional: [
+          { nombre: 'testing', rutas: ['.claude/skills/testing'] },
+          { nombre: 'configurar-tests', rutas: ['.claude/skills/configurar-tests'] },
+        ],
+      },
+    },
+    {
+      '.claude/skills/testing/SKILL.md': 'testing',
+      '.claude/skills/configurar-tests/SKILL.md': 'configurar',
+    },
+  );
+  const proyecto = dirTemporal();
+  const { codigo } = ejecutar(['install', '--backend', 'claude', '--skip', 'testing'], {
+    cwd: proyecto,
+    env: { SDD_FRAMEWORK_ROOT: paquete },
+  });
+
+  assert.strictEqual(codigo, 0);
+  assert.ok(fs.existsSync(path.join(proyecto, '.claude', 'skills', 'configurar-tests', 'SKILL.md')),
+    'el mutante prueba que una salida separada escapa al grupo testing');
+});
+
 test('install --backend gemini --skip asesor avisa y copia todo (skip solo aplica a claude)', () => {
   const paquete = crearPaqueteGranular();
   const proyecto = dirTemporal();

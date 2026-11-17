@@ -51,6 +51,10 @@ Analiza la spec y agrupa los cambios en modulos o funcionalidades que se puedan 
 | Dependencia clara | Task B necesita que Task A exista primero |
 | Testeable por separado | Cada task puede tener sus propios tests |
 
+No dividas por un número fijo de archivos. Revisa alcance, datos, contratos compartidos, seguridad,
+dependencias y unidades independientes. Una task de más de seis archivos es válida si su alcance y riesgo
+son coherentes. Una task de menos de seis archivos no es válida si su alcance o riesgo son incoherentes.
+
 **Criterios para fusionar en una sola task:**
 
 | Criterio | Ejemplo |
@@ -145,9 +149,9 @@ también con un control positivo y otro negativo: el mismo comando detecta el ca
 cuando existe (por ejemplo, revirtiendo el cambio de forma temporal) y deja de
 detectarlo tras el cambio.
 
-## Casos limite minimos
+## Casos límite relevantes
 
-Minimo 3:
+Incluye los casos que cubran el riesgo real:
 
 - <caso limite 1: que pasa si X>
 - <caso limite 2: que pasa si Y>
@@ -163,6 +167,26 @@ Minimo 3:
 - [ ] TDD reutilizando infra existente.
 - [ ] Si la task añade o cambia un test, un hook o un job de CI: punto del ciclo en que corre, quién espera su resultado y coste medido (tiempo, procesos lanzados).
 - [ ] Si la task toca acceso a datos: volumen esperado, índice para cada filtro nuevo, plan de ejecución de la consulta y secuencia add → backfill → drop si cambia el esquema.
+
+## Autocomprobación antes de revisar
+
+Antes de enviar la task a revisión, comprueba y registra estos seis campos. No declares la task lista si
+falta uno: corrige la omisión o marca el hecho como no verificado con su motivo.
+
+- **Premisas:** cada premisa tiene locator o motivo de no verificación.
+- **Dependencias:** las productoras, consumidoras y el orden están declarados.
+- **Riesgo:** datos, contratos compartidos, seguridad y reversibilidad tienen evaluación.
+- **Revisión recomendada:** indica la revisión independiente necesaria y por qué.
+- **Criterios:** son medibles e incluyen el negativo cuando el criterio expresa una ausencia.
+- **Handover:** deja el siguiente ejecutor, la primera acción y la evidencia que debe releer.
+
+## Revisión recomendada
+
+<Revisor o rol independiente, alcance que debe comprobar y evidencia de entrada.>
+
+## Handover
+
+<Ejecutor siguiente, primera acción concreta y rutas o salidas que debe releer.>
 ```
 
 **Ciclo de vida del campo `Estado`:**
@@ -260,7 +284,8 @@ El siguiente paso es revisar cada task individualmente con `revisar_tarea.md`.
 ## Reglas inquebrantables
 
 1. **NUNCA derives tasks de una spec no aprobada** — la spec debe tener estado APROBADA
-2. **NUNCA crees una task que toque mas de 6 archivos** — si es mas grande, dividirla
+2. **Revisa alcance y riesgo antes de dividir** — datos, contratos compartidos, seguridad, dependencias y
+   unidades independientes justifican separar; un conteo de archivos no lo justifica por sí solo
 3. **Cada task tiene un alcance acotado** — si depende de otra, la dependencia debe estar documentada
 4. **NUNCA repitas el contexto completo de la spec** en cada task — referencia la spec madre
 5. **Si dos tasks tocan el mismo archivo**, una depende de la otra — documentar el orden

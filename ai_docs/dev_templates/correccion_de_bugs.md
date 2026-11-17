@@ -14,13 +14,15 @@ Estas instrucciones son OBLIGATORIAS. Debes seguirlas en todo momento:
 3. **EXPLICA el porque** — No solo corrijas el error, explica QUE lo causaba y POR QUE la solucion funciona.
 4. **SUGIERE mejoras** — Si detectas otros problemas relacionados, mencionalos.
 5. **VERIFICA despues** — Tras la correccion, sugiere como verificar que el bug esta resuelto Y que no se ha roto nada mas.
-6. **ESCALA cuando corresponda** — Si el bug requiere cambios en 3+ archivos, cambios de base de datos, o cambios de arquitectura, DETENTE y sugiere crear una task en lugar de un fix rapido.
+6. **ESCALA cuando corresponda** — Crea una task si hay riesgo de datos, contrato compartido, seguridad,
+   migración o alcance ambiguo. El número de archivos no decide el riesgo.
 7. **NUNCA asumas que la primera solucion es la mejor** — Si hay mas de una forma de corregirlo, presenta las opciones.
 
 **Instrucciones adicionales para esta plantilla:**
 - NUNCA propongas una solucion sin haber identificado la causa raiz.
 - Si el usuario no proporciona el mensaje de error exacto, PIDELO antes de continuar.
-- Si la solucion es compleja (3+ archivos, cambios de base de datos, o cambios de arquitectura), DETENTE y sugiere crear una task para planificarlo. Esto NO es opcional.
+- Si hay riesgo de datos, contrato compartido, seguridad, migración o alcance ambiguo, DETENTE y sugiere
+  crear una task para planificarlo. Esto NO es opcional.
 - Si el bug afecta a una spec en curso, documentar el hallazgo en la spec para que las tasks lo consideren.
 
 ---
@@ -93,10 +95,17 @@ No te quedes en el sintoma. Pregunta POR QUE hasta llegar a la causa real:
 ```
 
 **Rellenar obligatoriamente:**
+- **Hecho observado:** [Salida, span o síntoma reproducible]
+- **Hipótesis falsable:** [Explicación que un experimento concreto puede refutar]
+- **Experimento de refutación:** [Comando, prueba o medición]
+- **Resultado del experimento:** [Salida observada y si refuta o respalda la hipótesis]
 - **Comportamiento esperado:** [Que deberia ocurrir]
 - **Comportamiento real:** [Que ocurre en realidad]
 - **Punto de quiebre:** [Donde exactamente empieza a ir mal]
 - **Causa raiz:** [Por que ocurre — la razon de fondo, NO el sintoma]
+
+Declara una causa raiz solo si el resultado del experimento distingue esa hipótesis de las alternativas
+plausibles. Si no la distingue, conserva la hipótesis como no probada y continúa la investigación.
 
 ### 3.3 Opciones de solucion
 
@@ -120,7 +129,14 @@ No te quedes en el sintoma. Pregunta POR QUE hasta llegar a la causa real:
 
 ---
 
-## Paso 4: Aplicar la correccion
+## Paso 4: Test de caracterización
+
+Antes de corregir, escribe y ejecuta un test de caracterización que reproduzca el fallo en rojo cuando el
+riesgo lo justifique. Si no puede escribirse, declara el límite y conserva la evidencia de reproducción.
+
+---
+
+## Paso 5: Aplicar la correccion
 
 1. **Aplicar el cambio minimo necesario** — no "mejorar" codigo que no esta relacionado con el bug
 2. **Verificar que el error ya no ocurre** — reproducir el escenario original
@@ -128,7 +144,7 @@ No te quedes en el sintoma. Pregunta POR QUE hasta llegar a la causa real:
 
 ---
 
-## Paso 5: Test de regresion (OBLIGATORIO si hay framework de testing)
+## Paso 6: Test de regresion (OBLIGATORIO si hay framework de testing)
 
 Para evitar que el mismo bug vuelva en el futuro, seguir el protocolo RED-GREEN:
 
@@ -142,7 +158,7 @@ Si no hay infraestructura de testing en el proyecto, sugiere al usuario configur
 
 ---
 
-## Paso 6: Resumen
+## Paso 7: Resumen
 
 Presenta al usuario:
 
@@ -150,6 +166,7 @@ Presenta al usuario:
 ## Bug corregido
 
 **Error:** [Descripcion breve]
+**Resultado del experimento:** [Salida observada que respalda o refuta la hipótesis]
 **Causa raiz:** [Por que ocurria — la causa real, no el sintoma]
 **Solucion:** [Que se hizo para corregirlo]
 **Archivos modificados:** [Lista]
@@ -176,7 +193,8 @@ Presenta al usuario:
 
 1. **NUNCA corrijas sin diagnosticar** — entender la causa raiz es obligatorio
 2. **NUNCA hagas cambios no relacionados** al bug durante la correccion
-3. **Si el bug es complejo** (3+ archivos, cambios de BD, o cambios de arquitectura), DETENTE y sugiere crear una task. No es opcional.
+3. **Si el bug tiene riesgo de datos, contrato compartido, seguridad, migración o alcance ambiguo**, DETENTE
+   y sugiere crear una task. No es opcional.
 4. **Si no puedes reproducir el bug**, pide mas informacion al usuario en lugar de adivinar
 5. **SIEMPRE sugiere test de regresion** — si hay framework de testing, es obligatorio crearlo
 6. **Si el bug afecta a una spec en curso**, documentar el hallazgo en la spec

@@ -28,7 +28,8 @@ Estado: BORRADOR. Solo el usuario la pasa a APROBADA.
 ## 3. Tasks
 
 Delega en el agente `planificador`, que sigue `ai_docs/dev_templates/tareas.md`. Cada task declara
-su tabla "Archivos afectados" y toca 6 archivos como maximo.
+su tabla "Archivos afectados" y se revisa por alcance, datos, contratos compartidos, seguridad y
+dependencias; se divide solo ante un riesgo o una unidad independiente.
 
 ## 4. Revision de cada task + auditoria cruzada
 
@@ -50,3 +51,7 @@ Si el veredicto es **APROBADO**, indica que el usuario puede aprobar la spec e i
 (la skill `implementar-spec` implementa todas las tasks; `implementar`, una sola).
 Si es **NECESITA_AJUSTES**, detalla los ajustes y pregunta si los aplica.
 Si es **NECESITA_REPLANTEAMIENTO**, recomienda rehacer la solicitud con mas detalle.
+
+Tras aprobar la spec, recomienda una sesión nueva e independiente con `implementa la tarea <ruta de la task>`.
+Es una recomendación, no un bloqueo. Si la petición incluye planificar e implementar, muéstrala en una línea
+y continúa sin pedir una segunda aprobación.

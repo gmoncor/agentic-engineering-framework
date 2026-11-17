@@ -218,7 +218,7 @@ Sin hooks, nada bloquea una escritura no planificada ni un commit sin revisión:
 |------------|-----------------|-----------------|----------------|----------------------|
 | Comandos | `.claude/commands/` (13) | `.gemini/commands/` (13) | — (entregados como skills) | — (entregados como skills) |
 | Agentes | `.claude/agents/` (4) | `.gemini/agents/` (4) | `.codex/agents/` (4, `.toml`) | `.agents/plugins/sdd/agents/` (4) |
-| Skills | `.claude/skills/` (9)* | `.gemini/skills/` (8) | `.agents/skills/` (18) | `.agents/skills/` (18) |
+| Skills | `.claude/skills/` (10)* | `.gemini/skills/` (9) | `.agents/skills/` (19) | `.agents/skills/` (19) |
 | Hooks | `hooks/` (6, wired en settings) | `hooks/` (5, wired en `hooks/hooks.json`) | `hooks/` (3, wired en `.codex/hooks.json`) | `hooks/` (4, wired en `.agents/hooks.json`) |
 | Workflows | `.claude/workflows/` (2) | — (el orquestador implementa en orden) | — (idem) | — (idem) |
 | Contexto | `CLAUDE.md` | `GEMINI.md` | `AGENTS.md` | `AGENTS.md` |
@@ -403,18 +403,18 @@ agentic-engineering-framework/
 │   ├── settings.json            #   model: opus-4.8 + hooks wiring
 │   ├── agents/                  #   planificador, revisor, implementador, asesor
 │   ├── commands/                #   13 comandos SDD
-│   ├── skills/                  #   9 skills (auto-activacion; 1 exclusiva de Claude Code)
+│   ├── skills/                  #   10 skills (auto-activacion; 1 exclusiva de Claude Code)
 │   └── workflows/               #   planificar.js y soporte de implementación
 │
 ├── .gemini/                     # Configuracion Gemini CLI (namespace evita colision con carpetas del usuario)
 │   ├── agents/                  #   4 agentes Gemini CLI
 │   ├── commands/                #   13 comandos Gemini CLI (.toml)
-│   └── skills/                  #   8 skills Gemini CLI
+│   └── skills/                  #   9 skills Gemini CLI
 ├── gemini-extension.json        # Manifest extension Gemini
 │
 ├── AGENTS.md                    # Contexto compartido (Codex + Antigravity)
 ├── .codex/                      # Config, agentes (.toml), hooks y reglas de Codex
-├── .agents/                     # Skills (18), subagentes y hooks de Antigravity
+├── .agents/                     # Skills (19), subagentes y hooks de Antigravity
 │
 ├── hooks/                       # Enforcement SDD + registro de sesiones (compartido por los 4 backends)
 ├── docs/                        # Referencia: esquema de sdd.config.json (configuracion propia del proyecto)

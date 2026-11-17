@@ -87,7 +87,7 @@ Contrato de la senal de revision (emisor `/implementar-spec`, consumidor `sdd-re
 ├── .claude/
 │   ├── agents/         # planificador, revisor, implementador, asesor
 │   ├── commands/       # 13 comandos SDD
-│   ├── skills/         # 9 skills (auto-activacion; auditar-sesion es exclusiva de este backend)
+│   ├── skills/         # 10 skills (auto-activacion; auditar-sesion es exclusiva de este backend)
 │   ├── workflows/      # planificar.js + implementar-spec.js + lib/ (orquestacion)
 │   └── settings.json   # modelo de sesión sugerido + hooks
 ├── hooks/              # 6 hooks (pipeline-guard + review-gate + commit-guard + read-before-edit + turn-budget + session-start)

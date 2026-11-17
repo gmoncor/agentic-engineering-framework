@@ -119,7 +119,7 @@ function mostrarAyudaInstall() {
 Instala el framework en el directorio actual: copia las rutas del backend elegido y crea ai_docs/{core,tasks,refs}/ si no existen.
 
 Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).
---skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing, pr); solo aplica al backend claude.
+--skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing —incluye configurar-tests—, pr); solo aplica al backend claude.
 --dry-run muestra que ficheros se copiarian/saltarian sin escribir nada en disco.
 --force si hay archivos no protegidos que se sobrescribirian, salta la confirmacion (util en CI/pipe). No afecta a los archivos protegidos con ediciones locales: para esos sigue haciendo falta --reset-protected.`);
 }
@@ -130,7 +130,7 @@ function mostrarAyudaUpdate() {
 Actualiza el framework instalado en el directorio actual: copia las rutas del backend elegido sin tocar ai_docs/core/, ai_docs/tasks/ ni ai_docs/refs/. Requiere una instalacion previa (ejecuta 'install' primero si el directorio nunca se instalo).
 
 Si se omite --backend, se muestra un menu interactivo para elegir (requiere terminal; en pipe/CI, falla con mensaje claro).
---skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing, pr); solo aplica al backend claude.
+--skip omite componentes opcionales (asesor, auditar, bugfix, cleanup, testing —incluye configurar-tests—, pr); solo aplica al backend claude.
 --reset-protected sobrescribe cualquier archivo del framework con ediciones locales detectadas (no solo los archivos nucleares como CLAUDE.md o hooks/config.json) y refresca el sidecar de hashes al final.
 Un cambio solo de fin de línea (CRLF frente a LF) no cuenta como edición local: el archivo se actualiza igual. Un archivo que ya coincide con la versión nueva se informa como convergido y se actualiza su hash.
 Si .claude/settings.json o hooks/config.json se saltan por cambios locales, update avisa de los hooks y claves de la versión nueva que les faltan, con la entrada exacta a añadir.
